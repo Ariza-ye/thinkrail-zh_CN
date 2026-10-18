@@ -2,27 +2,57 @@
 id: submodule-web-shell-layout-state
 type: submodule-design
 status: active
-title: shell/layoutState — frontend-local layout ownership
+title: shell/layoutState — 前端本地布局所有权
 parent: submodule-web-shell
 depends-on: [module-contracts]
 tags: [layout, local-state, persistence]
 ---
 
-## Responsibility
+## 职责
 
-Own one frontend surface's current workbench state: initialize the singular resource-free frame, hydrate and persist its per-workspace views/attention and local layout preferences, and commit atomic frame-plus-view mutations into Zustand.
+拥有某一个前端表面的当前工作台状态：初始化那个唯一的无资源 frame，水合并持久化它按工作区的视图/注意与本地
+布局偏好，并把原子的 frame 加视图改动提交进 Zustand。
 
-## Boundary
+## 边界
 
-- **Owns:** the versioned local document and validation boundary; browser endpoint/surface-qualified identity and native stable-key selection; pristine Balanced initialization; hydration and best-effort persistence lifecycle; local default/limit preferences; atomic commit helpers that install pure `layout/` results; and workspace cleanup.
-- **Public surface (`index.ts`):** the mounted hydration/persistence hook, local layout commit and workspace-initialization entry points, surface-state readiness, and deterministic storage seams for tests.
-- **External deps:** browser storage/session primitives, Web Locks with a `BroadcastChannel` claim fallback, the optional stable string preference adapter, React, `transport` for browser endpoint identity and error normalization, and `@thinkrail/contracts` only for the synchronized `LayoutPreset` type.
-- **Forbidden:** any current-layout request or push; optimistic revision/conflict queues; feature rendering; domain resource lifetime; importing server/shared/pi; reading old host snapshots or old browser attention keys; or putting browser storage calls in the Zustand store.
+- **拥有：** 带版本的本地文档与校验边界；浏览器端点/表面限定的身份与原生稳定键选择；全新 Balanced 初始化；
+  水合与尽力而为的持久化生命周期；本地默认/上限偏好；安装纯 `layout/` 结果的原子提交助手；以及工作区清理。
+- **Public surface（公开接口，`index.ts`）：** 已挂载的水合/持久化 hook、本地布局提交与工作区初始化入口、
+  表面状态就绪判定，以及供测试使用的确定性存储接缝。
+- **外部依赖：** 浏览器 storage/session 原语、带 `BroadcastChannel` 声明回退的 Web Locks、可选的稳定字符串
+  偏好适配器、React、用于浏览器端点身份与错误归一化的 `transport`，以及仅用于同步 `LayoutPreset` 类型的
+  `@thinkrail/contracts`。
+- **绝不触碰：** 任何当前布局请求或推送；乐观修订/冲突队列；功能渲染；领域资源生命周期；导入
+  server/shared/pi；读取旧宿主快照或旧浏览器注意键；或把浏览器存储调用放进 Zustand store。
 
-The live state belongs to one browser tab or native window. Browser keys are qualified by transport endpoint and a session-restorable surface id. Before reading that key, the browser claims the endpoint/id for the live document through an origin-local Web Lock, falling back to a bounded `BroadcastChannel` occupancy probe. A copied id already claimed by another live tab is reminted and written back to the clone's session storage; reload releases and reacquires the same id. The claim channel carries identity probes only—never frame or workspace state. Browser endpoint/surface locking and storage behavior are unchanged when no native adapter exists.
+实时状态属于某一个浏览器标签页或原生窗口。浏览器键由传输层端点与会话可恢复的表面 id 限定。在读取该键之前，
+浏览器通过源本地的 Web Lock 为实时文档声明该端点/id，回退到有界的 `BroadcastChannel` 占用探测。已被另一个
+活着的标签页声明的复制 id 会被重新铸造，并写回该克隆的会话存储；重新加载会释放并重新获取同一个 id。声明
+频道只承载身份探测——绝不承载 frame 或工作区状态。没有原生适配器时，浏览器端点/表面加锁与存储行为保持不变。
 
-A native adapter is already scoped by `{ backendProfileId, windowId }`, so `layoutState` reads and writes one fixed layout key through it without incorporating the current transport endpoint or claiming a browser surface. It serializes the identical versioned document and runs the identical decoder as the browser path: there is no cross-host layout sync or native-only migration. A serialized document above 256 Ki characters is rejected as one persistence failure rather than chunked or partially written; the live frame remains usable and the native adapter retains its 1 MiB aggregate protection.
+原生适配器已经以 `{ backendProfileId, windowId }` 为作用域，因此 `layoutState` 通过它读写一个固定的布局键，
+而不并入当前传输层端点，也不声明浏览器表面。它序列化同一份带版本文档，并运行与浏览器路径相同的解码器：不存
+在跨宿主的布局同步，也没有原生专属迁移。序列化后超过 256 Ki 字符的文档会被作为一次持久化失败拒绝，而不是
+分块或部分写入；实时 frame 仍然可用，原生适配器保留其 1 MiB 总量保护。
 
-The shell initializes this state even on Welcome, before any workspace is open, so local default/limit edits are immediately durable. A missing, invalid, or future local document starts directly from the Balanced frame. Previously persisted host snapshots and old attention entries remain untouched and inert. Simultaneous surfaces never consume each other's storage events. Persistence failure leaves live state usable.
+外壳即使在 Welcome 上、在任何工作区打开之前也初始化这份状态，因此本地默认/上限编辑立即持久。缺失、无效或
+将来的本地文档直接从 Balanced frame 开始。先前持久化的宿主快照与旧的注意条目保持不被触碰且不生效。同时存在
+的表面绝不消费彼此的存储事件。持久化失败让实时状态保持可用。
 
-A newly opened workspace receives an empty local view projected through the surface's current frame; when the local frame is already hydrated this happens synchronously in a layout effect, and only the pre-hydration path awaits. The empty-view projection is one public pure derivation shared by installation, frame validation, and the workbench's pre-install render, so what renders before installation is structurally identical to what gets installed. That projection adopts the tool selections of the most recently active retained workspace, and every local attention write fans a newly selected tool out to the other retained views in the same transaction, and an attention write whose normalized result equals the stored attention (a focus event landing on the already selected tab, a re-selection) is dropped before it reaches the store so it cannot re-render the workbench; a frame commit re-applies the committing view's tool selections to every reprojected view. None of these ever replaces a view's selected resource. Frame commands that change the frame's shape advance one frame-level projection epoch shared by every workspace view; geometry-only commits (side widths, bottom height, group and split weights) never do. The epoch is a gesture fence, not a remount key: the workbench uses it to cancel a drag or keyboard resize whose base shape vanished underneath it, while panel groups and resource bodies stay mounted across shape changes. A plain workspace switch never changes it either; host domain hydration subsequently populates only resources the surface explicitly opens or passively owns, such as its deterministic initial terminal. A frame mutation and every required workspace-view remap are one store transaction and one persisted local document. Projected callbacks carry their rendered base and may carry the complete resulting attention; a stale callback rebases only the top-level regions it actually changed onto the latest projection, so nested resize/layout effects cannot revert a newer region. Document and attention changes publish together through one `applyLocalLayoutState` call, including singleton fan-out; interactive callers never persist an intermediate attention-only state before a frame commit. Optional terminal recall is normalized against surviving group membership and stays workspace-local. Old version-1 documents without it remain valid; malformed recall is discarded independently rather than resetting an otherwise valid frame. Closing a resource changes only its workspace view. Empty frame groups survive. Explicit group removal/merge and preset application may change topology, so their pure result includes deterministic remaps for every retained workspace view; no view may reference a removed group after commit.
+新打开的工作区会收到一个空本地视图，它通过该表面的当前 frame 投影而出；当本地 frame 已经水合时，这会在一次
+布局 effect 中同步发生，只有水合之前的路径才会等待。空视图投影是一个公开的纯派生，由安装、frame 校验与工作
+台的预安装渲染共享，因此安装前渲染的内容与最终安装的内容在结构上完全一致。该投影采用最近活跃的保留工作区的
+工具选择；每一次本地注意写入都会在同一次事务中把新选中的工具扇出到其他保留视图；而一个注意写入，如果其归一
+化结果等于已存储的注意（焦点事件落在已选中的标签页上、一次重新选择），会在到达 store 之前被丢弃，因此它无法
+让工作台重新渲染；一次 frame 提交会把提交视图的工具选择重新施加到每个重新投影的视图。这些都不会替换某个视图
+已选中的资源。改变 frame 形状的 frame 命令会推进一个由每个工作区视图共享的 frame 级投影纪元；仅几何的提交
+（侧边宽度、底部高度、组与拆分权重）绝不推进。该纪元是手势栅栏，而不是重挂载键：工作台用它取消一个底下的基础
+形状已消失的拖拽或键盘缩放，而面板组与资源体在形状变化之间保持挂载。普通的工作区切换也绝不改变它；宿主领域
+水合随后只填充该表面显式打开或被动拥有的资源，例如它确定性的初始终端。一次 frame 改动与所有必需的工作区视图
+重映射是一次 store 事务和一份持久化的本地文档。投影出的回调携带其渲染基线，并可能携带完整的最终注意；过期的
+回调只会把它真正改动过的顶层区域重基到最新投影上，因此嵌套的缩放/布局 effect 无法回退更新的区域。文档与注意
+的变更通过一次 `applyLocalLayoutState` 调用一起发布，包括单例扇出；交互式调用方绝不在一次 frame 提交之前持久
+化中间那种仅有注意的状态。可选的终端召回按仍然存在的组成员关系归一化，并保持工作区本地。不含它的旧 version-1
+文档仍然有效；格式错误的召回会被独立丢弃，而不是重置一个本来有效的 frame。关闭一个资源只改变它的工作区视图。
+空的 frame 组会保留。显式的组移除/合并与预设应用可能改变拓扑，因此它们的纯结果包含对每个保留工作区视图的确定
+性重映射；提交之后任何视图都不得引用已被移除的组。

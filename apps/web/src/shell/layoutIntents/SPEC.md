@@ -2,22 +2,31 @@
 id: submodule-web-shell-layout-intents
 type: submodule-design
 status: active
-title: shell/layoutIntents — arrangement intent orchestration
+title: shell/layoutIntents — 排布意图编排
 parent: submodule-web-shell
 tags: [layout, intents, orchestration]
 ---
 
-## Responsibility
+## 职责
 
-Consume arrangement-agnostic store intents for one mounted workspace and translate each into one pure local frame/workspace-view transaction plus the corresponding attention/focus transition.
+为一个已挂载的工作区消费与排布无关的 store 意图，并把每个意图转换成一次纯本地的 frame/工作区视图事务，外加
+对应的注意/焦点迁移。
 
-## Boundary
+## 边界
 
-- **Owns:** stale frame/view/attention identity guards; consume-once handling; destination and navigation arbitration; open/select/close/tool/terminal/auxiliary-toggle dispatch; attention/focus calculation; and issuing at most one atomic local transition for a result.
-- **Public surface (`index.ts`):** the workspace intent-processing hook and narrow callback types.
-- **External deps:** store intent, attention, and navigation APIs; transport error normalization for domain requests only; React.
-- **Forbidden:** current-layout WS calls; local persistence ownership; session or terminal catalogs/lifetime; panel rendering; server/shared/pi imports; or mutable topology logic outside the pure `layout` sibling.
+- **拥有：** 过期的 frame/视图/注意身份守卫；消费一次的处理；目标与导航仲裁；open/select/close/tool/
+  terminal/auxiliary-toggle 派发；注意/焦点计算；以及为一次结果至多发出一次原子本地迁移。
+- **Public surface（公开接口，`index.ts`）：** 工作区意图处理 hook 与窄回调类型。
+- **外部依赖：** store 的意图、注意与导航 API；仅针对领域请求的传输层错误归一化；React。
+- **绝不触碰：** 当前布局的 WS 调用；本地持久化所有权；会话或终端目录/生命周期；面板渲染；server/shared/
+  pi 导入；或纯 `layout` 同级模块之外的可变拓扑逻辑。
 
-An intent is consumed only after confirming that its captured frame, workspace view, and attention are still current. Deferred chat/history work retains its request-time navigation stamp so a late completion cannot steal focus. Every emitted focus request carries its workspace id; the mounted workbench rejects requests from a superseded workspace. A global terminal placement resolves to the workspace's last surviving bottom focus and selects an existing compatible slot; creating a new frame slot is an explicit frame command, never a hidden consequence of domain reconciliation. A contextual group id still wins.
+只有在确认意图捕获的 frame、工作区视图与注意仍然是最新的之后，该意图才会被消费。被推迟的聊天/历史工作保留
+其请求时刻的导航戳，因此迟到的完成无法抢走焦点。每个发出的焦点请求都携带其工作区 id；已挂载的工作台会拒绝
+来自被取代工作区的请求。全局终端放置解析为该工作区最后一个仍然存在的底部焦点，并选中一个已有的兼容槽位；
+创建新的 frame 槽位是一条显式的 frame 命令，绝不是领域调和的隐藏后果。带上下文的组 id 仍然胜出。
 
-Bottom show/toggle uses the same consume-once transition as left/right, including eligible singleton restoration before offering the process-free terminal creation surface and non-bottom focus recovery on hide. Showing a region never calls terminal creation; only an explicit New terminal action does. An all-folded region restores a suitable last-focused group on the first toggle. The resulting document and attention are committed together, not through separate observable writes. Singleton-tool actions mutate the one frame; resource opens/moves among existing groups mutate only the named workspace view.
+底部显示/切换使用与左/右相同的消费一次迁移，包括在提供无进程终端创建界面之前恢复合格的单例，以及隐藏时恢复
+非底部焦点。显示一个区域绝不调用终端创建；只有显式的 New terminal 动作才会。全部折叠的区域在首次切换时恢复
+一个合适的、最后获得焦点的组。产生的文档与注意一起提交，而不是通过彼此独立的可观察写入。单例工具动作只改动
+那一个 frame；资源在既有组之间的打开/移动只改动所指名的工作区视图。

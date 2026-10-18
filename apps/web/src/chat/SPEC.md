@@ -2,1481 +2,1185 @@
 id: submodule-web-chat
 type: submodule-design
 status: active
-title: chat — pi conversation UI primitives
+title: chat — pi 会话 UI 原语
 parent: module-web
 depends-on: [module-contracts]
 tags: [chat]
 ---
 
-## Responsibility
+## 职责
 
-The chat/agent conversation UI: **presentational React primitives** that render pi's **canonical
-message / content-block model**, a **tool-renderer registry** (the extension point), and `ChatView`
-(the app-integration layer). Hand-rolled — pi ships no web UI, and the official
-`@earendil-works/pi-web-ui` (MIT, **Lit**, runs the agent in-browser / "Direct Mode") is the canonical
-event→render *reference* we learn from but do **not** adopt (architecture + framework mismatch with our
-host-runs-pi / typed-WS / React+shadcn model). Built so others can reuse/contribute (extraction-ready as
-a future `packages/chat-ui`). Built-in tool renderers live in the child
-[tools/SPEC.md](tools/SPEC.md); extracted extension renderers live in [[module-thinkrail-extensions]].
+chat/agent 会话 UI：**呈现型 React 原语**，用于渲染 pi 的**规范化消息 / 内容块模型**；一个**工具渲染器
+注册表**（扩展点）；以及 `ChatView`（应用集成层）。全部手写——pi 不提供 Web UI，而官方的
+`@earendil-works/pi-web-ui`（MIT、**Lit**、在浏览器内运行 agent /“Direct Mode”）是我们在学习的规范化
+事件→渲染*参考*，但**不**采纳（架构 + 框架与我们的“宿主运行 pi / 类型化 WS / React+shadcn”模型不
+匹配）。它的构建方式让人可以复用/贡献（可抽取为未来的 `packages/chat-ui`）。内置工具渲染器住在子模块
+[tools/SPEC.md](tools/SPEC.md)；抽取出去的扩展渲染器住在 [[module-thinkrail-extensions]]。
 
-## Rendering model — rows and progressive disclosure
+## 渲染模型 —— 行与渐进披露
 
-The transcript is pi-canonical turns (`ChatTurn` in `types.ts`: user/assistant are pi messages; `system`,
-`error`, `retry` are web-local notices; `compaction` carries both the live lifecycle and the durable summary
-record pi leaves where it replaced earlier messages), but the list renders **derived rows, not raw turns** — folding
-spans assistant-message boundaries (pi emits one assistant message per tool round), so a per-turn item
-model can't group. The pure **`deriveRows(turns, toolResults, isStreaming, isSpec?)`** (`rows.ts`) walks
-blocks in order into rows; `ChatTurnView` dispatches on row kind:
+对话记录是 pi 规范化的轮次（`types.ts` 里的 `ChatTurn`：user/assistant 是 pi 消息；`system`、`error`、
+`retry` 是 Web 本地通知；`compaction` 同时承载实时生命周期与 pi 在替换早先消息处留下的持久摘要记录），
+但列表渲染的是**派生行，而不是原始轮次**——折叠会跨越 assistant 消息边界（pi 每轮工具调用发一条
+assistant 消息），因此按轮次的条目模型无法分组。纯函数 **`deriveRows(turns, toolResults,
+isStreaming, isSpec?)`**（`rows.ts`）按顺序把块走成行；`ChatTurnView` 按行种类分发：
 
-- `user` / `system` / `retry` — 1:1 renderers. A user message that is Pi's canonical expanded skill block (`<skill name="…" location="…">`) renders
-  as one **collapsed skill-invocation card** rather than exposing the full `SKILL.md`: the skill name is
-  always visible, any request supplied after `/skill:<name>` stays visible as ordinary user text beneath
-  it, and disclosure reveals the exact persisted instructions as Markdown. Parsing comes from `lib`'s
-  anchored Pi-format mirror (browser code cannot value-import Pi); the disclosure rides the shared fold
-  cache, so a manual choice survives virtualization. A user message that IS a review context package
-  (`reviewPackage.ts` recognizes the `<review …>` header + `<comment …>` items the server's
-  `packageRender` emits — the parser is the read half of that format, pinned in unit tests against the
-  renderer's verbatim output) renders as a **compact card**: the one-sentence
-  summary ("Sent 3 review comments on script.ts") with the COMMENT rows right under it — no file
-  level, because a send is ONE MESSAGE PER FILE (`review.sendBatch` groups by file and fires each
-  group as its own message), so a file row would always hold exactly one entry the summary already
-  names. Each row is one comment (`▸ L2 · the remark…`, one line), unfolding to its full text plus
-  the quoted `<fragment>` verbatim — or the comment's `<locator>` line(s) when the position has no
-  source text — in monospace, height-capped. Attribute and locator values are read back through the
-  renderer's own escaping, so a path or node ref carrying `" < > &` or a newline round-trips exactly.
-  Everything is parsed from the MESSAGE itself — never the review snapshot, which the next review
-  replaces — so any transcript answers "what was sent" forever, on any client; the comment-row folds
-  ride the shared fold cache (keyed
-  `rowId:<content-key>`), surviving virtualization. A **plain** user bubble (not a skill/review card)
-  whose text exceeds **500 characters** collapses to a `line-clamp` preview + a `Show more`/`Show less`
-  toggle **inside the card** (within its padding, directly below the message body, so line-clamp truncates
-  only the body's own element — never the control) once the agent has started responding to it: `UserTurn`
-  folds on `useFold(`${id}:user-collapse`,
-  !agentResponded)`, so the fallback is *expanded* until the agent responds and *collapsed* after — with
-  the shared cache's "a manual toggle always wins over a fallback flip" giving exactly the required
-  behavior (shown expanded right after send; auto-collapses the instant the agent produces anything;
-  a manual `Show more` then survives continued streaming). The shared `deriveMessageActions` classifier
-  derives `agentResponded` from chronological rows (a later `markdown`/`tool`/`activity`/`divider` row
-  exists after this user row, **or** it is the trailing user row while `isStreaming`) and every transcript
-  integration supplies that state to the renderer. It remains client view state only, with no wire impact.
-  Below 500 chars the bubble is unchanged. When expanded, a large body is height-capped with an internal
-  scroll (`max-h-[60vh] overflow-y-auto`) so a huge paste never balloons the row into a multi-thousand-px
-  DOM node; and `estimateChatRowHeight` estimates a large user row at its collapsed size (the resting
-  state) rather than its full wrapped height — both prevent the virtualizer from over-reserving space and
-  stranding a phantom empty gap during streaming. The retry countdown carries a `source` (`turn` =
-  pi `auto_retry_*`; `summarization` = compaction/branch-summary `summarization_retry_*`, pi ≥0.81.1) —
-  the flows can overlap mid-run, each keeps exactly one indicator (re-scheduling replaces, each source's
-  end event clears only its own), and `RetryIndicator` labels them apart ("Retrying" vs "Retrying
-  summarization"). **`ErrorTurn`** is a persistent failure notice
-  (provider/model error, an unrecovered `length` truncation, or a rejected send), drawn in the shared
-  [[web-notices]] style: neutral fill, error border and icon, **Try again** in a footer row. It is **never folded**, so
-  a failed turn can't look like nothing happened. Only the current settlement-derived failure carries the
-  web-local `try-again` recovery action; its **Try again** button sends one visible ordinary `Try again.` user
-  message through `ChatView`'s existing immediate-send path. Rejected sends, extension notifications, and
-  generic app errors stay non-actionable because the missing prompt or repair may not be in Pi's context.
-  The optimistic user append consumes the action immediately, and any later `agent_start` consumes it for
-  other-client/custom-message starts, so a historical error never regains the affordance. Live settlement
-  and transcript hydration share the same assistant-failure classifier and action derivation, so reload
-  cannot turn the latest unresolved failure into success or lose its recovery; recovered historical
-  `length` attempts followed by later work are not re-labeled as current failures.
-- `compaction` — a 1:1, fold-breaking row with two sources that converge. Live `compaction_start` /
-  `compaction_end` events produce `CompactionNotice` (see the store SPEC): running "Compacting context…"
-  (spinner), done **"Context compacted"** (+ "— resuming…" while pi's overflow retry continues the run, +
-  tokens before→after when the result carried them), failed with the actionable error text, or cancelled as a
-  muted notice. These states are assertable via `data-testid="compaction-notice"` +
-  `data-status="running|done|failed|cancelled"`. A successful live end asks the app-integration transcript
-  synchronizer to read Pi's canonical summary-plus-tail; reconnect does the same for a runtime from an older
-  connection generation. **No snapshot is installed while its host summary is streaming**, whether the need
-  came from reconnect or compaction: Pi's persisted `session.messages` omits the in-flight assistant partial,
-  and a revision fence cannot protect an update already folded before the read began. The synchronizer waits
-  for settlement and re-reads rather than deleting that partial and clearing its correlation id. A pending
-  connection-generation sync dominates even when the same read also satisfies an unresolved compaction need.
-  Transient transcript-read failures retry with a bounded backoff; only exhaustion
-  raises the refresh error, and a new generation/compaction key gets a fresh budget. Store reconciliation
-  replaces only host-derived conversation state and preserves browser-local state. The persisted
-  `compactionSummary` then becomes the same row in place (the live id,
-  estimated-after count, and live `resuming` flag survive when they still apply), and the messages Pi
-  summarized disappear immediately rather than only after reload. Its `summary` opens on click
-  (`data-testid="chat-compaction"`). Hydration/reopen starts directly from that same durable form. Both forms
-  share the **"Context compacted"** title; only facts unavailable after reload disappear.
-- `markdown` — a non-empty assistant text block (react-markdown + remark-gfm + shiki). Safe
-  worktree-relative links in assistant prose open the target in ThinkRail through `ChatTurnView`'s existing
-  workspace-file callback; absolute paths are accepted only when they normalize inside the active worktree,
-  while URL schemes, protocol-relative URLs, fragments, and unsafe/outside paths retain ordinary safe
-  new-tab anchor behavior. Percent-encoded file paths are decoded once before validation, so encoded
-  separators and traversal cannot bypass containment. A narrow assistant-only URL transform preserves
-  recognized Windows drive-letter anchor paths, including Markdown's percent-encoded backslash form, until
-  validation; drive-rooted containment compares case-insensitively while preserving the linked path's casing.
-  Every other value delegates to react-markdown's default sanitizer, and a rejected Windows path
-  is re-sanitized before fallback anchor rendering. The generic `Markdown` primitive remains props-driven and
-  receives this behavior only as an `a` component override at the assistant-turn integration edge;
-  accepted workspace targets render as button controls without a raw browser `href`, so alternate native
-  anchor activation cannot escape into the SPA fallback. That override keeps a stable component identity
-  while its workspace inputs are unchanged: workbench focus can rerender a chat row between pointer-down and
-  click, and replacing the control in that interval cancels activation. A fenced
-  ```mermaid block renders as a themed diagram via `@thinkrail/ext-visualize/web`'s `MermaidView` (fullscreen
-  pan-zoom, error → source fallback) — uniform across every `Markdown` surface (chat, file/specs
-  preview); until mounted it renders as highlighted source, so static contexts (`RenderedDiff`'s
-  `renderToStaticMarkup`) degrade to code exactly like shiki blocks do.
-  Assistant text renders per top-level block (`BlockMarkdown`): `markdownBlocks` splits it with the `marked`
-  block lexer, and each block is a memoized react-markdown render, so a streamed delta re-parses only the
-  tail. Blocks are direct children of the prose `div`, separated by the same `"\n"` the whole-document
-  render emits. The splitter is per instance and incremental: it re-lexes from the last closed block that
-  has two blocks after it. A block is closed when it ends in a blank line or in an ATX heading, a rule, or a
-  fence that CommonMark also closes, unless raw HTML (an open tag, or an unended `<!--`, `<?`, `<!X`,
-  `<![CDATA[` on any line) or an open fence (also inside a list item or quote) may still continue it.
-  Each token's blank-line check looks only at the previous token's trailing whitespace, so one long block
-  costs linear time. Invariants: incremental split equals fresh split; block render equals whole-document
-  render, except for the known gaps below; a link or footnote definition (also inside a list item)
-  renders the message whole for the rest of the stream once its line has ended (a half-streamed
-  `[Label]: x` line re-checks on the next delta); fallbacks (open HTML, lazy lines, indented code, a
-  fence only `marked` closes, lexer output that is not lossless) only merge blocks, never split them. `marked` over a micromark split: its block lex is several times
-  faster than a micromark parse, and the split runs on top of the per-block micromark render; the cost is
-  about 12 KB gzip in the eager bundle. The `BlockMarkdown` memo needs stable `components`, so callers memoize
-  them. Known gaps, where `marked` and micromark read the structure differently and a block can render
-  differently from the whole document: raw HTML lines (comments) lazily continuing a list; a lazy line that
-  `marked` ends a block on and micromark continues; an HTML block that `marked` lets swallow a link
-  definition; a blockquote and indented code that `marked` folds into a list, splitting off a later
-  non-1 ordered list that micromark reads as a paragraph; an empty list item with a trailing space before
-  a table; an unclosed fence in a list item followed by 2+ blank lines and a dedent; one construct with no closed block, such as a list whose items run on through lazy lines,
-  re-lexes from the start on every delta; when blocks merge or the message turns whole, the moved blocks
-  remount, so a code block re-renders from the highlight cache (highlighted at once on a hit), a Mermaid diagram redraws, and focus
-  or a selection inside them is lost; kept blocks hold substrings of older stream texts, about 1 MB for a
-  110k-char message, until the row unmounts.
-- **Configurable transcript measure** — the host-synchronized `chatLineWidth` (40–240, default 120)
-  is an approximate CSS `ch` text measure because chat retains its proportional reading font. `ChatView`,
-  the store-aware integration boundary, applies it to one centered outer column shared by every transcript
-  row, the stream indicator, and sticky activity breadcrumbs; ordinary row gutters sit outside the measure,
-  and user bubbles retain their 85% maximum inside it. Composer/header/queue/history chrome remains
-  pane-width. With `chatLineWidthBounded` (default `true`), the column is capped by the mounted chat pane;
-  without it, the column keeps its configured measure and the transcript viewport scrolls horizontally from
-  its left edge — but the right-aligned **user side** is additionally clamped to the pane width (a
-  container-query cap keyed off `data-line-width-bounded=false`), so a user message never lands past the
-  visible viewport and clips on the left; only assistant/tool content uses the full measure. Code blocks
-  and tables retain their own inner scrolling. This changes presentation only:
-  canonical turns and the props-driven row renderers never acquire settings state.
-- **Message copy** — plain user bubbles and the **round's concluding assistant answer** carry a
-  hover-revealed (`group`/`opacity-0 group-hover:opacity-100`) **`CopyButton`** (`chat/CopyButton.tsx`,
-  `data-testid="chat-copy"`) that copies the full message **source** — `userText(message.content)` for a
-  user bubble, the markdown `text` for an assistant row — never the collapsed preview or any UI chrome.
-  Only the **final** `markdown` row of a round is copyable, not the intermediate narration the agent emits
-  between tool steps: `deriveMessageActions` marks a markdown row final when no later
-  `markdown`/`tool`/`activity` row precedes the next user turn (`finalAnswerRowIds`, supplied by every
-  transcript integration as `isFinalAnswer`); a non-final markdown row renders plain, without the action.
-  Both go through **one shared layout**, `MessageWithCopy` (in `turns.tsx`): a `relative` wrapper that
-  overlays the action **inside the role's bottom corner on the same line as content** — bottom-left for
-  an assistant answer (`left-0 bottom-0`), bottom-right for a user bubble (`right-0 bottom-8`, aligned
-  within the bubble's existing vertical padding) — never in a row below it. The user bubble stays
-  content-only: the button is positioned against the outer wrapper, not injected into the bubble markup.
-  The message content reserves one horizontal `size-24` band on the action's side (`pl-24` for the final
-  assistant Markdown wrapper, `pr-24` for the user bubble) instead of a vertical band, so text and the
-  large-message toggle cannot sit beneath the hit target. Final-answer list markers stay inside their
-  content box rather than painting back into the assistant's action band. The assistant wrapper removes
-  only its final Markdown block's trailing margin to align the action with the actual final line;
-  inter-block and leading margins stay unchanged. `MessageWithCopy` also carries the
-  `data-testid="chat-message"`/`data-role` hooks the jump/flash + tests rely on. `CopyButton` is a
-  self-contained presentational primitive that copies through the shared `copyText()` (`@/lib`) — the
-  one clipboard-write path with its degradation baked in — flipping to a local ~1.2s `Copy`→`Check` icon
-  only when it reports success; it does **not** reach the store toast the way `panels/PlanPane` does,
-  keeping the message renderers props-driven.
-  Skill-invocation and review-package cards keep their own disclosure UI and carry no copy affordance.
-- `tool` — a **primary** tool call: the collapsible `ToolCard` frame (collapsed unless registered
-  `defaultExpanded`; errors auto-expand; a manual toggle wins), or a `"bare"` renderer that owns its
-  frame. A `"bare"` call on a dead message (`stopReason` aborted/error — pi never executes those calls)
-  renders as errored rather than staying interactive forever. Every renderer invocation — registered or
-  fallback, routine or primary, card or bare — passes through one common result-content layer. Once a result
-  completes, each valid canonical image block appends a bounded in-card preview with an explicit full-screen
-  dialog action; multiple images retain block order. This is content-type behavior, not a `read` special case,
-  and it does not promote or auto-expand the tool. The result bytes are already in the transcript, so preview
-  needs no host fetch and works for paths outside the workspace. Previewable blocks require non-empty data
-  and one of `contracts`' shared raster media types (PNG/JPEG/GIF/WebP); malformed shapes and unsupported
-  media types are ignored, while canonical content arrays are never serialized into base64 JSON.
-- `activity` — one contiguous run of routine work stays one **collapsed outer disclosure** whose header
-  summarizes every atomic step (thinking blocks + routine tool calls). Expanding it preserves tools before
-  the first thought as direct rows, then renders each non-empty thinking block as a nested disclosure. When
-  that block's first non-empty line is a complete standalone Markdown strong span (`**…**` or `__…__`),
-  its folded header surfaces the model-authored inner text in place of the redundant visible `Thinking`
-  label, using the row's ordinary inherited weight while retaining its default text colour, before the
-  trailing tool/character metadata; the teaser truncates before that metadata and
-  disappears when expanded, where the disclosure retains the generic label and contains the exact text.
-  Blocks without that convention keep the generic label while folded. Semantic breadcrumb and assistive
-  labels remain `Thinking` in every state. Every following routine
-  tool call stays under that thought until the next thinking block or activity boundary. Those thinking
-  groups are siblings **inside** the outer run, even across assistant-message
-  boundaries; the hierarchy is presentational, never invented pi entry parentage. A single atomic step
-  still renders directly. Non-empty text, primary tools, and non-assistant turns break the outer run. Only
-  its trailing instance carries the live ticker. Errored routine tools get **no special treatment**
-  (deliberate — agents often recover; `ErrorTurn` and primary error-auto-expand are the safety nets).
-- `subagentCompletion` — a `subagent-completion` custom message: a detached (background) subagent run's
-  terminal report, injected into the parent by `pi-subagents` when the run finishes. Rendered as a compact
-  self-framed card (`tools/subagent/SubagentCompletionCard`) — **the** terminal signal for a background
-  run, whose `Agent` tool card froze at its ack (why + card anatomy:
-  [tools/subagent/SPEC.md](tools/subagent/SPEC.md)). Never folded into activity groups.
-- `reviewFix` — a `todo-review-fix` custom message (#363): a plan-review verdict's fix request the host
-  delivers to the worker chat as **structured `ReviewFixDetails`** (not a synthetic user turn). Rendered as
-  a compact `ReviewFixCard` (`turns.tsx`, `data-testid="review-fix-card"`) — a one-line summary
-  (`Requested a fix on “<title>” · N findings`), the optional feedback note, and the findings as
-  fold-out comments via the shared `ReviewPackageComments` (`ReviewPackageComments.tsx`, the fold-out
-  row primitive), path/lines pre-resolved server-side. That shared list + the `ReviewFixComment`→
-  `ReviewPackageItem` mapping (`reviewPackage.ts`) are reused by the review-package card and the
-  `request_review` verdict card ([[submodule-chat-tools]]).
-  Distinct from the file-chat review-comments card above: that path stays a `<review …>` **user** message
-  parsed by `reviewPackage.ts` (own `review-package-*` testids); only the todo-fix path is structured.
-  Never folded into activity groups.
-- `divider` — the round-end summary (`TurnDivider` + pure `turnDivider` deriver), anchored the instant a
-  round ends: elapsed time, tool-call count, and the round's written files as **two chips split by owning
-  tool** — “N specs” and “N files changed”. The split is a **partition** (a path lands on exactly
-  one side, never counted twice) computed in the deriver from the injected `isSpec` predicate — the store's
-  `specPathMatcher` over the workspace's spec graph, plus `spec_create`'s target, which is a spec by
-  construction even before the graph snapshot catches up. Why it matters: a spec is often **gitignored**
-  scratch (`.thinkrail/context/`), so counting it as a "changed file" deep-linked the user to a Changes view
-  that structurally cannot show it. Each chip now routes to the panel that owns the artifact.
-  **One artifact → the chip is a direct deep link; several → it is a disclosure** that expands the round's
-  set as a list right here in the transcript (`ArtifactChip` + `ArtifactList`), each row deep-linking one
-  path. The set is kept in the chat rather than framed over the panels on purpose: it belongs to *this
-  round*, while the panels show *now* — a round from days ago would mark rows that have since moved on (or,
-  for Changes, are no longer in the diff at all). It also keeps the count honest: clicking "5 files changed"
-  can never quietly surface just the first one, and the handlers take exactly ONE path, so nothing
-  downstream has to guess which of several the user meant.
-- The two chips are a **switch, not two independent folds**: at most one list is open, choosing the other
-  side replaces it, and re-choosing the open one clears the selection. That invariant is *structural* — the
-  divider stores the **selected key** (`useSelection`, one entry per divider row), so no state exists in
-  which both are expanded. Expanding also **reveals the owning singleton side tool** (`onReveal` → the
-  store's arrangement-agnostic tool-reveal intent) without surfacing any path, which is what makes the pair
-  read as switching between Specs and Changes; closing is “never mind” and leaves the tool where the user
-  last sent it.
-- **The host's turn receipt beats tool arguments.** `deriveRows` also takes **this chat's** recorded agent
-  runs (`store.turnsByWorkspace` filtered by `sessionId` in `ChatTranscript` — a workspace's other chats write
-  files too); `matchTurnReceipt` joins them to a round by the run's start time, from the
-  prompt up to (excluding) the *next* prompt. Both timestamps come from the host, and pi timestamps
-  the user message before starting the run, so no clock-skew allowance belongs here: shifting the
-  interval backwards steals receipts when prompts are less than a second apart. The canonical user echo
-  replaces the optimistic message while retaining its row identity and attachment labels, so live receipts
-  use the host clock even when the browser clock differs. When a round has a receipt
-  the files chip lists *those* paths with per-file `+/−` counts and reads `N files changed · +a −r` —
-  tool arguments miss shell writes, formatters and renames, while the snapshot is what the agent actually
-  left behind (see the server `turns` SPEC). Tool paths are canonicalized against the workspace before
-  merging receipts; `spec_create` classification survives a pending graph refresh, so one spec can never
-  appear in both chips or twice under absolute and relative paths. Several runs in
-  one round (a steer, a retry) merge into one receipt spanning the first run's base tree to the last run's
-  head tree under its own scope id (`first..last`), so it never shares a review tab with the last run alone. A **Review turn** chip appears beside the files chip and calls `onReviewTurn(scope)`, which
-  `ChatTranscript` routes to `requestChangesView(workspaceId, null, scope)`: the Changes panel adopts the turn
-  scope and opens the review tab for it; the chip's `+a −r` is summed over the files it counts (specs
-  are their own chip), and a multi-run round's per-file stats are the last run's for that path — the
-  review tab shows the true first-base → last-head diff. Without a receipt (older host, zero-change run) the divider
-  behaves exactly as before; a receipt whose snapshot has since been pruned still renders (the client cannot
-  know), and the pruning surfaces only when *Review turn* is clicked — as the review tab's scope-aware
-  `UNKNOWN_COMMIT` notice.
+- `user` / `system` / `retry` —— 1:1 渲染器。一条用户消息若是 Pi 规范化的展开技能块（`<skill name="…"
+  location="…">`），会渲染成一张**折叠的技能调用卡片**，而不是暴露整份 `SKILL.md`：技能名始终可见，
+  `/skill:<name>` 之后提供的任何请求仍作为普通用户文本显示在其下，展开则把持久化的确切指令以 Markdown
+  呈现。解析来自 `lib` 的锚定 Pi 格式镜像（浏览器代码不能 value-import Pi）；该展开走共享的折叠缓存，
+  因此手动的选择能在虚拟化中存活。一条本身就是复查上下文包的用户消息（`reviewPackage.ts` 识别
+  `<review …>` 头 + `<comment …>` 条目，即服务端 `packageRender` 生成的格式——解析器是该格式的读取半边，
+  并由单元测试对着渲染器的逐字输出钉住）渲染为一张**紧凑卡片**：一句摘要（“Sent 3 review comments on
+  script.ts”）加上正下方的 COMMENT 行——没有文件层级，因为一次发送就是每个文件一条消息
+  （`review.sendBatch` 按文件分组，并把每组作为自己的消息发出），所以文件行永远只会持有摘要已经点名的
+  恰好一个条目。每行是一条评论（`▸ L2 · the remark…`，一行），展开后显示其全文加上原样引用的
+  `<fragment>`——或者当该位置没有源文本时显示该评论的 `<locator>` 行——用等宽字体，并限制高度。属性值与
+  locator 值都经由渲染器自己的转义读回，因此带 `" < > &` 或换行的路径/node 引用能精确往返。一切都从
+  消息本身解析——绝不用复查快照（下一次复查会替换它）——所以在任何客户端上，任何对话记录都能永远回答
+  “发了什么”；评论行的折叠走共享折叠缓存（键为
+  `rowId:<content-key>`），在虚拟化中存活。一个**普通**用户气泡（不是技能/复查卡片），
+  其文本超过 **500 个字符**，会在 agent 已开始对它响应之后折叠成 `line-clamp` 预览 + 一个
+  `Show more`/`Show less` 切换，该切换**位于卡片内部**（在其内边距里、紧贴消息正文下方，因此 line-clamp
+  只截断正文自身的元素——绝不截断该控件）：`UserTurn` 基于 `useFold(`${id}:user-collapse`,
+  !agentResponded)` 折叠，因此回退状态在 agent 响应之前是*展开*、之后是*折叠*——共享缓存的“手动切换
+  永远胜过回退翻转”正好给出所需行为（发送后立即显示为展开；agent 一产出任何东西就自动折叠；随后一次
+  手动 `Show more` 能在持续流式期间存活）。共享的 `deriveMessageActions` 分类器从按时间顺序的行派生
+  `agentResponded`（该用户行之后存在更晚的 `markdown`/`tool`/`activity`/`divider` 行，**或**它就是
+  末尾的用户行且 `isStreaming` 为真），每个对话记录集成都会把这个状态提供给渲染器。它仍然只是客户端
+  视图状态，对线上协议零影响。低于 500 字符时气泡不变。展开时，大正文会被限制高度并带内部滚动
+  （`max-h-[60vh] overflow-y-auto`），因此一次巨型粘贴绝不会把该行撑成几千 px 的 DOM 节点；而
+  `estimateChatRowHeight` 按折叠尺寸（静止状态）而不是完整折行后的高度来估算大用户行——两者都防止
+  虚拟化器预留过多空间、在流式期间留下幻影般的空白间隙。重试倒计时携带 `source`（`turn` =
+  pi 的 `auto_retry_*`；`summarization` = compaction/分支摘要的 `summarization_retry_*`，pi ≥0.81.1）——
+  这些流程可以在运行中重叠，每个保持恰好一个指示器（重新调度会替换，每个来源的结束事件只清除自己的），
+  而 `RetryIndicator` 用标签把它们区分开（“Retrying” vs “Retrying summarization”）。**`ErrorTurn`** 是
+  持久化的失败通知（provider/模型错误、未恢复的 `length` 截断，或被拒绝的发送），按共享的
+  [[web-notices]] 样式绘制：中性填充、错误色边框与图标、页脚行里的 **Try again**。它**绝不折叠**，因此
+  失败的轮次不会看起来像什么都没发生。只有当前由落定派生的失败才带 Web 本地的 `try-again` 恢复动作；
+  它的 **Try again** 按钮通过 `ChatView` 既有的立即发送路径发出一条可见的普通 `Try again.` 用户消息。
+  被拒绝的发送、扩展通知与通用应用错误保持不可操作，因为缺失的提示词或修复可能不在 Pi 的上下文里。
+  乐观的用户追加会立即消费掉该动作，之后任何 `agent_start` 都会为其他客户端/自定义消息的启动消费它，
+  因此历史错误绝不会重新获得该提示。实时落定与对话记录水合共用同一个 assistant 失败分类器与动作派生，
+  因此重新加载不会把最新的未解决失败变成成功、也不会丢掉它的恢复能力；已恢复的历史 `length` 尝试如果
+  后面还有更晚的工作，不会被重新标为当前失败。
+- `compaction` —— 一条 1:1 的、打破折叠的行，有两个汇聚的来源。实时 `compaction_start` /
+  `compaction_end` 事件产出 `CompactionNotice`（见 store 规范）：运行中为“Compacting context…”
+  （spinner），完成为 **“Context compacted”**（+ “— resuming…”，当 pi 的溢出重试仍在继续该运行时；
+  + token 前→后的变化，当结果携带了它们时），失败时显示可操作的错误文本，被取消则作为一条弱化的通知。
+  这些状态可通过 `data-testid="compaction-notice"` +
+  `data-status="running|done|failed|cancelled"` 断言。一次成功的实时结束会让应用集成的对话记录同步器去读
+  Pi 的规范化摘要加尾部；对来自更旧连接世代的运行时，重连做同样的事。**当它的宿主摘要正在流式时不安装任何
+  快照**，无论需求来自重连还是 compaction：Pi 持久化的 `session.messages` 不含在途的 assistant 片段，
+  而版本栅栏无法保护一个在读取开始之前就已折叠的更新。同步器等待落定并重新读取，而不是删除那个片段
+  并清除它的关联 id。待处理的连接世代同步优先，即使同一次读取同时也满足了一个未解决的 compaction 需求。
+  瞬时的对话记录读取失败以有界退避重试；只有耗尽才抛出刷新错误，而新的世代/compaction 键会得到全新的
+  预算。store 的对账只替换宿主派生的会话状态，并保留浏览器本地状态。随后持久化的 `compactionSummary`
+  就地变回同一行（实时 id、估算后的计数，以及实时 `resuming` 标志在仍然适用时存活下来），而被 Pi
+  摘要掉的这些消息立即消失，而不是等到重新加载之后。它的 `summary` 点击即可展开
+  （`data-testid="chat-compaction"`）。水合/重开会直接从同一份持久形态开始。两种形态共享
+  **“Context compacted”** 标题；只有重新加载后不再可用的事实才消失。
+- `markdown` —— 一个非空的 assistant 文本块（react-markdown + remark-gfm + shiki）。assistant 散文里
+  安全的工作树相对链接会通过 `ChatTurnView` 既有的工作区文件回调在 ThinkRail 中打开目标；绝对路径只在它
+  归一化后落在活跃工作树内时才被接受，而 URL scheme、协议相对 URL、片段，以及不安全/外部路径保留普通的
+  安全新标签页锚点行为。百分号编码的文件路径在校验前被解码一次，因此编码过的分隔符与路径穿越无法绕过
+  包含检查。一个窄的、仅限 assistant 的 URL 变换会把可识别的 Windows 盘符锚点路径（包括 Markdown 的
+  百分号编码反斜杠形式）保留到校验为止；盘符根的包含性比较不区分大小写，但保留被链接路径的大小写。
+  其他所有值都委托给 react-markdown 的默认消毒器，而被拒绝的 Windows 路径在回退锚点渲染前会再次消毒。
+  通用的 `Markdown` 原语保持 props 驱动，只在 assistant 轮次的集成边缘以 `a` 组件覆盖的形式获得这一
+  行为；被接受的工作区目标渲染为按钮控件、不带原生浏览器 `href`，因此备用的原生锚点激活无法逃逸进 SPA
+  回退。该覆盖在其工作区输入不变时保持稳定的组件身份：工作台焦点可能在 pointer-down 与 click 之间重渲染
+  一行聊天，而在那个间隙替换控件会取消激活。一个围栏式
+  ```mermaid 块通过 `@thinkrail/ext-visualize/web` 的 `MermaidView` 渲染为带主题的图表（全屏
+  平移缩放，错误 → 源文本回退）——在每个 `Markdown` 表面（聊天、文件/规范预览）都一致；在挂载之前它
+  渲染为高亮的源码，因此静态上下文（`RenderedDiff` 的 `renderToStaticMarkup`）会像 shiki 块那样降级为
+  代码。
+  Assistant 文本按顶层块渲染（`BlockMarkdown`）：`markdownBlocks` 用 `marked` 的块词法器切分它，每个块
+  是一次带 memo 的 react-markdown 渲染，因此流式的增量只重新解析尾部。块是散文 `div` 的直接子节点，用与
+  整文档渲染相同的 `"\n"` 分隔。切分器按实例且增量：它从最后一个已闭合且其后还有两个块的块开始重新
+  做词法分析。一个块在它以空行、或 ATX 标题、分隔线、CommonMark 也会闭合的围栏结尾时闭合，除非原始 HTML
+  （一个未闭合标签，或任意行上未结束的 `<!--`、`<?`、`<!X`、`<![CDATA[`）或一个未闭合围栏（也在列表项
+  或引用里）可能仍在延续它。每个 token 的空行检查只看前一个 token 的尾随空白，因此一个长块花费线性时间。
+  不变量：增量切分等于全新切分；块渲染等于整文档渲染，除了下面已知的缺口；一个链接或脚注定义（也在列表项
+  里）在其行结束后，会让消息在流的剩余部分整体渲染（半流式的 `[Label]: x` 行会在下一个增量时重新检查）；
+  回退情形（未闭合 HTML、惰性行、缩进代码、只有 `marked` 闭合的围栏、并非无损的词法输出）只会合并块，
+  绝不切分块。选择 `marked` 而非 micromark 切分：它的块词法分析比一次 micromark 解析快好几倍，而切分
+  跑在逐块 micromark 渲染之上；代价是即时打包里约 12 KB gzip。`BlockMarkdown` 的 memo 需要稳定的
+  `components`，因此调用方要对它们做 memo。已知缺口——`marked` 与 micromark 对结构的读法不同、导致一个块
+  渲染可能与整文档不同：原始 HTML 行（注释）惰性地延续列表；一个惰性行 `marked` 在其上结束块而 micromark
+  继续；一个 HTML 块 `marked` 让它吞掉一个链接定义；一个引用块与缩进代码 `marked` 把它们折进列表，并切出
+  一个更晚的非 1 起始有序列表，而 micromark 把它读成段落；一个表格前带尾随空格的空列表项；一个列表项里
+  未闭合的围栏后面跟着 2+ 空行和一次 dedent；某个构造没有闭合块，比如一个列表的条目靠惰性行一直延续，
+  此时每个增量都从开头重新做词法分析；当块合并或消息变为整体时，被移动的块会重新挂载，因此代码块从高亮
+  缓存重新渲染（命中时立刻高亮），Mermaid 图重新绘制，而它们内部的焦点或选区丢失；保留的块持有更旧流
+  文本的子串，对一条 11 万字符的消息约 1 MB，直到该行卸载。
+- **可配置的对话记录度量** —— 宿主同步的 `chatLineWidth`（40–240，默认 120）是一个近似 CSS `ch` 的
+  文本度量，因为聊天保留了它比例字宽的阅读字体。`ChatView` 这个感知 store 的集成边界把它应用到一个居中的
+  外部列上，该列由每个对话记录行、流指示器与粘性活动面包屑共享；普通行的侧边留白落在这个度量之外，用户
+  气泡在其内部保留 85% 的上限。输入框/头部/队列/历史等外壳保持窗格宽度。启用 `chatLineWidthBounded`
+  （默认 `true`）时，该列被挂载的聊天窗格封顶；不启用时，列保持它配置的度量，对话记录视口从它的左边缘
+  水平滚动——但右对齐的**用户侧**还会额外被夹到窗格宽度（一个以 `data-line-width-bounded=false` 为键的
+  容器查询封顶），因此用户消息永远不会越过可见视口而在左侧被裁掉；只有 assistant/工具内容使用完整的
+  度量。代码块与表格保留它们自己的内部滚动。这只改变呈现：规范化轮次与 props 驱动的行渲染器绝不获取
+  设置状态。
+- **消息复制** —— 普通用户气泡与**本轮收尾的 assistant 回答**携带一个悬停才显示（`group`/`opacity-0
+  group-hover:opacity-100`）的 **`CopyButton`**（`chat/CopyButton.tsx`、`data-testid="chat-copy"`），
+  它复制整条消息的**源文本**——用户气泡用 `userText(message.content)`，assistant 行用 markdown
+  `text`——绝不复制折叠后的预览或任何 UI 外壳。一轮里只有**最后**那条 `markdown` 行可复制，而不是 agent
+  在工具步骤之间发出的中间叙述：当没有更晚的 `markdown`/`tool`/`activity` 行位于下一条用户轮次之前时，
+  `deriveMessageActions` 就把该 markdown 行标为最终（`finalAnswerRowIds`，由每个对话记录集成以
+  `isFinalAnswer` 提供）；非最终的 markdown 行按普通方式渲染，不带该动作。两者都走**同一个共享布局**
+  `MessageWithCopy`（在 `turns.tsx`）：一个 `relative` 包装器，把动作覆盖在**角色底部角落、与内容同一行**
+  ——assistant 回答在左下（`left-0 bottom-0`），用户气泡在右下（`right-0 bottom-8`，对齐在气泡现有的垂直
+  内边距内）——绝不在其下方单独一行。用户气泡保持纯内容：按钮对着外部包装器定位，而不是注入气泡标记。
+  消息内容在动作那一侧预留一条横向的 `size-24` 带（最终 assistant Markdown 包装器用 `pl-24`，用户气泡用
+  `pr-24`），而不是预留一条纵向带，因此文本与大消息切换不会落在点击目标之下。最终答案的列表标记留在其
+  内容盒内，而不会反向画进 assistant 的动作带。assistant 包装器只移除它最后那个 Markdown 块的尾随外边距，
+  以便把动作与实际最后一行对齐；块间与起始外边距保持不变。`MessageWithCopy` 还携带跳转/闪烁 + 测试所
+  依赖的 `data-testid="chat-message"`/`data-role` 钩子。`CopyButton` 是一个自包含的呈现型原语，通过共享的
+  `copyText()`（`@/lib`）复制——那是唯一一条把降级内建的剪贴板写入路径——只有当它报告成功时才翻成本地的
+  约 1.2s `Copy`→`Check` 图标；它**不**像 `panels/PlanPane` 那样去碰 store 的 toast，从而保持消息渲染器
+  props 驱动。
+  技能调用卡片与复查包卡片保留它们自己的展开 UI，也不携带复制入口。
+- `tool` —— 一次**主要**工具调用：可折叠的 `ToolCard` 框架（除非注册了 `defaultExpanded`，否则折叠；
+  出错时自动展开；手动切换优先），或一个拥有自己框架的 `"bare"` 渲染器。死消息上的 `"bare"` 调用
+  （`stopReason` 为 aborted/error——pi 从不执行这些调用）渲染为出错态，而不是永远保持可交互。每一次渲染器
+  调用——已注册或回退、常规或主要、卡片或 bare——都经过同一个公共的结果内容层。一旦结果完成，每个合法的
+  规范化图像块都会追加一个受约束的卡内预览，并带一个明确的全屏对话框动作；多个图像保留块顺序。这是
+  按内容类型的行为，不是 `read` 的特例，它也不会提升或自动展开该工具。结果字节已经在对话记录里，因此预览
+  不需要宿主抓取，对工作区之外的路径也有效。可预览的块要求非空数据，且属于 `contracts` 共享的光栅媒体
+  类型之一（PNG/JPEG/GIF/WebP）；畸形的形状与不支持的媒体类型被忽略，而规范化内容数组绝不序列化成
+  base64 JSON。
+- `activity` —— 一段连续的常规工作保持为一个**折叠的外部展开块**，其头部汇总每一个原子步骤（思考块 +
+  常规工具调用）。展开它会先把第一个思考之前的工具保留为直接行，然后把每个非空的思考块渲染为一个嵌套的
+  展开块。当该块的第一非空行是一个完整独立的 Markdown 粗体片段（`**…**` 或 `__…__`）时，它的折叠头部
+  会用模型写出的内部文本替代那个冗余可见的 `Thinking` 标签，使用该行普通的继承字重、同时保留其默认文字
+  颜色，放在尾随的工具/字符元数据之前；teaser 在该元数据之前截断，展开时消失——展开时该展开块保留通用
+  标签并包含确切文本。没有这个约定的块在折叠时保持通用标签。语义面包屑与辅助技术标签在任何状态下都保持
+  `Thinking`。之后每一个常规工具调用都留在那个思考之下，直到下一个思考块或活动边界。那些思考组是外部运行
+  **内部**的兄弟节点，甚至跨越 assistant 消息边界；该层级只是呈现层面的，绝不虚构 pi 条目的父子关系。
+  单个原子步骤仍然直接渲染。非空文本、主要工具与非 assistant 轮次会打断外部运行。只有它尾部的那个实例
+  携带实时 ticker。出错的常规工具**不做任何特殊处理**（有意为之——agent 常常能自行恢复；`ErrorTurn`
+  与主要工具的错误自动展开才是安全网）。
+- `subagentCompletion` —— 一条 `subagent-completion` 自定义消息：一个分离的（后台）子代理运行的终端
+  报告，在运行结束时由 `pi-subagents` 注入父级。渲染为紧凑的自带框架卡片
+  （`tools/subagent/SubagentCompletionCard`）——后台运行的**那个**终端信号，其 `Agent` 工具卡片已在
+  它的 ack 处冻结（原因 + 卡片解剖：[tools/subagent/SPEC.md](tools/subagent/SPEC.md)）。绝不折叠进
+  活动组。
+- `reviewFix` —— 一条 `todo-review-fix` 自定义消息（#363）：计划复查裁定里的修复请求，宿主把它作为
+  **结构化的 `ReviewFixDetails`** 投递给 worker 聊天（而不是合成的用户轮次）。渲染为紧凑的
+  `ReviewFixCard`（`turns.tsx`、`data-testid="review-fix-card"`）——一句摘要
+  （`Requested a fix on “<title>” · N findings`）、可选的反馈备注，以及通过共享的
+  `ReviewPackageComments`（`ReviewPackageComments.tsx`，那个可展开行原语）呈现为可展开评论的发现，
+  路径/行号由服务端预先解析。那个共享列表 + `ReviewFixComment`→`ReviewPackageItem` 映射
+  （`reviewPackage.ts`）被复查包卡片与 `request_review` 裁定卡片复用（[[submodule-chat-tools]]）。
+  与上面文件聊天的复查评论卡片不同：那条路径仍是由 `reviewPackage.ts` 解析的 `<review …>` **用户**消息
+  （自己的 `review-package-*` testid）；只有 todo 修复那条路径是结构化的。绝不折叠进活动组。
+- `divider` —— 轮次结束摘要（`TurnDivider` + 纯函数 `turnDivider` 派生器），在轮次结束的那一刻锚定：
+  耗时、工具调用数，以及该轮写出的文件，表现为**按所属工具切分的两个 chip**——“N specs”与
+  “N files changed”。该切分是一次**划分**（一个路径只落在一侧，绝不重复计入），由派生器根据注入的
+  `isSpec` 谓词计算——store 的 `specPathMatcher` 作用于工作区的规范图，外加 `spec_create` 的目标，
+  后者按构造就是规范，即使图快照还没跟上。为何重要：规范常常是**被 git 忽略**的临时产物
+  （`.thinkrail/context/`），因此把它算成一个“变更的文件”会把用户深链到一个结构上无法展示它的
+  Changes 视图。现在每个 chip 都路由到拥有该产物的面板。
+  **一个产物 → chip 就是直接深链；多个 → 它就是一个展开块**，把该轮的文件集就在此处的对话记录里
+  展开成列表（`ArtifactChip` + `ArtifactList`），每行深链一个路径。这个集合被保留在聊天里而不是框在
+  面板之上，是有意的：它属于*这一轮*，而面板显示的是*现在*——几天前的轮次会标出那些早已变动的行（或者
+  对 Changes 而言，已完全不在 diff 里）。这也让计数保持诚实：点“5 files changed”绝不会悄悄只给出第一个，
+  而各 handler 恰好只接受一个路径，因此下游无需猜测用户指的是几个中的哪一个。
+- 这两个 chip 是一个**开关，而不是两个独立的折叠**：最多只有一个列表打开，选择另一侧会替换它，再次选择
+  已打开的那个会清除选择。该不变量是*结构性的*——分隔条存储**选中的键**（`useSelection`，每个分隔条行一个
+  条目），因此不存在两者同时展开的状态。展开还会**揭示拥有该侧的单例工具**（`onReveal` → store 那个与
+  布局无关的工具揭示意图）而不暴露任何路径，这正是让这一对读起来像在 Specs 与 Changes 之间切换的原因；
+  关闭等于“算了”，并把该工具留在用户最后送到的地方。
+- **宿主的轮次回执胜过工具参数。** `deriveRows` 还会接收**本聊天**记录下来的 agent 运行
+  （`ChatTranscript` 里按 `sessionId` 过滤的 `store.turnsByWorkspace`——一个工作区的其他聊天也会写文件）；
+  `matchTurnReceipt` 按运行的开始时间把它们与某一轮关联起来，区间从该提示词到（不含）*下一条*提示词。
+  两个时间戳都来自宿主，而 pi 在开始运行之前就给用户消息打了时间戳，因此这里不该留时钟偏移余地：把区间
+  向后挪会在两条提示词相隔不到一秒时偷走回执。规范化的用户回声会替换懊观消息，同时保留它的行身份与附件
+  标签，因此即使浏览器时钟不同，实时回执也使用宿主时钟。当一轮拥有回执时，文件 chip 会列出*那些*路径
+  并带上每个文件的 `+/−` 计数，读作 `N files changed · +a −r`——工具参数会漏掉 shell 写入、格式化器与
+  重命名，而快照才是 agent 实际留下的东西（见服务端 `turns` 规范）。合并回执之前，工具路径会对着工作区
+  规范化；`spec_create` 的分类能在待处理的图刷新中存活，因此一份规范绝不会同时出现在两个 chip 里，也不会
+  以绝对与相对路径形式出现两次。一轮中的多次运行（一次引导、一次重试）会合并成一份回执，横跨第一次运行的
+  基准树到最后一次运行的头部树，并使用它自己的 scope id（`first..last`），因此它绝不只与最后一次运行共享
+  同一个复查标签页。文件 chip 旁边会出现一个 **Review turn** chip，它调用 `onReviewTurn(scope)`，
+  `ChatTranscript` 把它路由到 `requestChangesView(workspaceId, null, scope)`：Changes 面板采用该轮次的
+  scope 并为其打开复查标签页；chip 的 `+a −r` 是它计入的文件的求和（规范有它们自己的 chip），而多次运行
+  的一轮的每文件统计是最后一次运行对该路径的——复查标签页显示真正的 first-base → last-head diff。没有
+  回执时（更旧的宿主、零变更的运行）分隔条行为与之前完全相同；快照已被清理的回执仍会渲染（客户端无从
+  知道），而清理只在点击 *Review turn* 时才显露——作为复查标签页那个感知 scope 的 `UNKNOWN_COMMIT`
+  通知。
 
-Row/step ids are stable across streaming snapshots (the outer run's first atomic-step id, each thinking
-block's message-anchored index, and each tool's own id — pi appends, never reorders), so fold state survives
-re-derivation and virtualization: **every fold surface (outer activity groups, nested thinking groups, tool
-rows, `ToolCard`, the divider's multi-artifact chips) records manual toggles in the shared `foldState` cache**
-(`foldState.ts`, keyed by row/step id. Two hooks over that module: **`useFold`** for independent booleans,
-and **`useSelection`** for a single-choice group — the divider's chips, which store the *selected key* under
-`${rowId}:artifacts` rather than a boolean per side, so "only one list open" cannot be violated;
-the `AskUserQuestionCard` pattern, see tools/SPEC.md; deliberately
-never evicted — growth is bounded by manual toggles). A manual toggle always wins — over auto-expand
-defaults *and* over a virtualization remount. `FoldGeometryProvider` is the transcript's explicit pre/post
-change seam: every fold header registers a stable row-derived id through `useFold`, including `Collapsible`
-and fallback-driven auto expansion/collapse. It routes detached anchor stabilization through
-`ReadingBandController`'s single motion channel and refreshes from the changing row's measured geometry.
-A wholly offscreen disclosure preserves the visible transcript by its own row-height delta. If a sticky
-breadcrumb collapses the disclosure body that contains the reader's viewport, that content no longer has a
-surviving anchor, so the collapsed original header takes its place at the viewport boundary. Reader input or
-a newer reveal supersedes only the stabilization's scroll leg and cannot strand an in-flight runway release.
+行/步骤 id 在流式快照之间保持稳定（外部运行的第一个原子步骤 id、每个思考块以消息为锚的索引，以及每个
+工具自己的 id——pi 只追加，绝不重排），因此折叠状态能在重新派生与虚拟化中存活：**每个折叠表面（外部
+活动组、嵌套思考组、工具行、`ToolCard`、分隔条的多产物 chip）都把手动切换记录在共享的 `foldState`
+缓存里**（`foldState.ts`，按行/步骤 id 键控。该模块之上有两个 hook：**`useFold`** 用于独立的布尔值，
+**`useSelection`** 用于单选组——分隔条的 chip，它们把*选中的键*存在 `${rowId}:artifacts` 下，而不是
+每侧一个布尔值，因此“只有一个列表打开”不可能被违反；`AskUserQuestionCard` 也是这个模式，见
+tools/SPEC.md；有意地从不驱逐——增长由手动切换限制）。手动切换永远优先——优先于自动展开的默认值*也*
+优先于虚拟化重新挂载。`FoldGeometryProvider` 是对话记录显式的变更前/后接缝：每个折叠头部都通过
+`useFold` 注册一个稳定的、由行派生的 id，包括 `Collapsible` 与由回退驱动的自动展开/折叠。它把脱离锚点的
+稳定化通过 `ReadingBandController` 的单一运动通道路由，并从变化行的测量几何刷新。完全在屏幕外的展开块
+用自身的行高增量来保住可见的对话记录。如果一个粘性面包屑折叠了包含读者视口的展开块体，那段内容就不再
+拥有存活的锚点，于是折叠后的原头部在视口边界处取而代之。读者输入或更新的揭示只取代稳定化的滚动段，
+且不会让一个在途的跑道释放无处安放。
 
-**Message-order projection.** `deriveRows` remains canonical and chronological. The pure
-`projectRows(rows, chatMessageOrder)` partitions that sequence at user rows (a pre-user notice span is its
-own group); oldest-first returns the input unchanged, while newest-first reverses the group order **and**
-every group's top-level rows: `1,2,3 | 4,5,6 → 6,5,4 | 3,2,1`. Stable row ids survive verbatim, so folds,
-flashes, tool state, and history anchors do not fork. The projection never reaches inside one row: Markdown
-paragraphs/code, a tool card body, review-package comments, and an Activity row's own disclosure hierarchy
-retain their semantic order. Virtuoso and DOM traversal consume the projected rows; Pi turns, persistence,
-stream status, and every non-presentation derivation remain chronological. `chatPreferences.ts` owns the
-closed preference and its oldest-first default, then hydrates the store before React mounts. Browser clients
-read/write a host-qualified localStorage key and synchronize that key across same-origin tabs; a native shell
-may inject the same narrow string-storage adapter under its stable backend-profile/window identity so a
-dynamic loopback port cannot erase the preference on restart. It never enters `AppConfig`, so choosing
-newest-first cannot change another browser, device, host, or native window. The same persistence seam owns
-**Streaming response movement**, one `{ settle, trigger }` client-local preference rather than a second
-adapter/subscription path (Trigger is where the response edge triggers a step; Settle is where each step
-places it): both values use 5-point steps, Settle is 25–90, Trigger is 35–100, the gap is at
-least 10 points, and the default is `{ settle: 75, trigger: 100 }`. Invalid storage falls back atomically to
-the default pair. It likewise never enters `AppConfig` or crosses the wire.
+**消息顺序投影。** `deriveRows` 仍然是规范化且按时间顺序的。纯函数 `projectRows(rows, chatMessageOrder)`
+在用户行处划分该序列（用户之前的一段通知自成一个组）；oldest-first 原样返回输入，而 newest-first 反转
+组顺序**以及**每个组的顶层行：`1,2,3 | 4,5,6 → 6,5,4 | 3,2,1`。稳定的行 id 逐字存活，因此折叠、闪烁、
+工具状态与历史锚点都不会分叉。该投影绝不深入到一行内部：Markdown 段落/代码、工具卡片体、复查包评论，
+以及 Activity 行自身的展开层级都保留它们的语义顺序。Virtuoso 与 DOM 遍历消费投影后的行；Pi 轮次、
+持久化、流状态与每一项非呈现的派生都保持时间顺序。`chatPreferences.ts` 拥有这个封闭的偏好及其
+oldest-first 默认值，然后在 React 挂载之前水合 store。浏览器客户端读写一个限定宿主的 localStorage 键，
+并在同源标签页之间同步该键；原生外壳可以在它稳定的后端配置/窗口身份之下注入同一个窄的字符串存储适配器，
+这样动态的 loopback 端口就不会在重启时抹掉该偏好。它绝不进入 `AppConfig`，因此选择 newest-first 不会
+改变另一个浏览器、设备、宿主或原生窗口。同一条持久化接缝还拥有**流式响应移动**，那是一个
+`{ settle, trigger }` 客户端本地偏好，而不是第二条适配器/订阅路径（Trigger 是响应边缘触发一次步进的
+位置；Settle 是每次步进把它放置的位置）：两个值都用 5 点步长，Settle 为 25–90，Trigger 为 35–100，
+两者间隔至少 10 点，默认值为 `{ settle: 75, trigger: 100 }`。无效的存储会原子地回退到默认对。它同样
+绝不进入 `AppConfig`，也不跨线上协议。
 
-**Sticky activity breadcrumb.** While the transcript's top visible content remains inside expanded
-Activity → Thinking → tool disclosures whose original headers have scrolled above the viewport, one
-opaque compact row overlays the scroller with that active root-to-leaf path. Segments join only after
-their own header crosses the top, leave at sibling/end boundaries or when folded, and include the active
-leaf tool. A segment label scrolls and focuses its original header just below the sticky row without
-changing fold state; its separate chevron writes through the existing fold-state source. The trail is
-always one line: metadata truncates before names, then a narrow pane preserves the outermost and active
-segments while compressing middle ancestry to `…`. It never reflows transcript content, creates parallel
-navigation/fold state, or disturbs Virtuoso's mode-aware latest-edge, reading-band, and jump-to-message behavior.
-The root-to-leaf labels and chevrons are distinct keyboard targets in a labelled navigation region; visual
-entry/exit obeys reduced motion.
+**粘性活动面包屑。** 当对话记录顶部可见的内容仍处于已展开的 Activity → Thinking → 工具展开块内部、而
+这些块的原本头部已滚出视口上方时，一行不透明的紧凑行会携该活跃的根到叶路径叠在滚动容器之上。各段只在它
+自己的头部越过顶部之后才加入，在兄弟/结束边界或折叠时离开，并包含活跃的叶子工具。一个段的标签会滚动并
+聚焦它位于粘性行正下方的原头部，而不改变折叠状态；它单独的 chevron 通过既有的折叠状态源写入。这一轨迹
+永远只有一行：元数据在名字之前截断，然后在窄窗格里保留最外层与活跃的段，把中间的祖先压缩为 `…`。它绝不
+重排对话记录内容、创建并行的导航/折叠状态，也不干扰 Virtuoso 那个感知模式的 latest-edge、reading-band
+与跳转消息行为。根到叶的标签与 chevron 在一个有标签的导航区域里是彼此独立的键盘目标；视觉上的进入/退出
+遵循 reduced motion。
 
-## Extension point — the tool registry
+## 扩展点 —— 工具注册表
 
-`toolRegistry.tsx` is **THE extension point**; a tool has two decoupled sides joined by **tool name**:
-the **capability** registers with the pi session server-side (custom tool or pi extension/skill), the
-**presentation** registers here. The registry `Map` and fallback renderer stay app-local;
-`extensions/registerWebExtensions()` feeds the ordered descriptors from `extensions/registry.ts`
-into it when `ChatView` loads. Built-in app renderers retain their local side-effect registrations.
-Render contracts (`ToolRenderProps`, `ToolStatus`, registration metadata) and pure argument/result
-helpers come from `@thinkrail/extension-api/web`, not chat internals. `Markdown` imports the named
-`MermaidView` from `@thinkrail/ext-visualize/web` for fenced mermaid; shiki and highlighted `CodeBlock`
-remain app-local. A registration is:
+`toolRegistry.tsx` 是**那个扩展点**；一个工具有两个解耦的半边，由**工具名**连接：**能力**在服务端向 pi
+会话注册（自定义工具或 pi 扩展/技能），**呈现**在这里注册。注册表 `Map` 与回退渲染器保持应用本地；
+`extensions/registerWebExtensions()` 在 `ChatView` 加载时把来自 `extensions/registry.ts` 的有序描述符
+馈给它。内置应用渲染器保留它们本地的副作用式注册。渲染契约（`ToolRenderProps`、`ToolStatus`、注册
+元数据）与纯的参数/结果辅助函数来自 `@thinkrail/extension-api/web`，而不是 chat 内部。`Markdown` 从
+`@thinkrail/ext-visualize/web` 具名导入 `MermaidView` 用于围栏 mermaid；shiki 与高亮的 `CodeBlock` 仍是
+应用本地的。一次注册包括：
 
-- a **renderer** (the specialized card body; `ToolRenderProps` carries `toolCallId`/`args`/`result`/
-  `status`/`workspaceRoot`/`streaming` plus an optional shell-injected `onOpenFile` callback — enough to
-  stay props-driven; the common invocation seam decorates its completed canonical image results
-  consistently), plus optionally
-- a **`summary`** — a pure one-liner for collapsed headers and activity-step rows,
-- a **`chrome`** — `"card"` (default, the `ToolCard` frame) or `"bare"` (owns its frame; for
-  interactive/primary tools like `ask_user_question`),
-- **prominence metadata** — `prominence`: `"routine"` (default, incl. unregistered tools — enters the
-  outer Activity run, directly before the first thought or under the current nested Thinking disclosure)
-  or `"primary"` (escapes the fold; `"bare"` chrome implies it **unconditionally**, even
-  over an explicit `prominence: "routine"` — a self-framed renderer can't live inside a fold's step
-  rows, so a misregistration must not silently break the fold), and `defaultExpanded` (a
-  primary card renders expanded once complete, e.g. `visualize`). Read through the single
-  **`resolveProminence`** seam — where a per-user override map (settings) can plug in later.
+- 一个**渲染器**（专门的卡片体；`ToolRenderProps` 携带 `toolCallId`/`args`/`result`/
+  `status`/`workspaceRoot`/`streaming`，外加一个可选的、由外壳注入的 `onOpenFile` 回调——足以保持
+  props 驱动；公共调用接缝会一致地装饰它已完成的规范化图像结果），以及可选的
+- 一个 **`summary`** —— 折叠头部与活动步骤行用的纯函数一行摘要，
+- 一个 **`chrome`** —— `"card"`（默认，`ToolCard` 框架）或 `"bare"`（拥有自己的框架；用于
+  `ask_user_question` 这类可交互/主要工具），
+- **显著度元数据** —— `prominence`：`"routine"`（默认，包括未注册的工具——进外部 Activity 运行，
+  直接在第一个思考之前或当前嵌套 Thinking 展开块之下）或 `"primary"`（逃出折叠；`"bare"` chrome
+  **无条件** 蕴含它，甚至压过显式的 `prominence: "routine"`——自带框架的渲染器无法活在折叠的步骤行里，
+  因此错误的注册绝不能让折叠悄悄坏掉），以及 `defaultExpanded`（一个主要卡片在完成后展开渲染，例如
+  `visualize`）。通过单一的 **`resolveProminence`** 接缝读取——按用户覆盖的映射（设置）以后可以从那里
+  接入。
 
-Every registry read (renderer, summary, chrome, prominence) goes through one resolver: the exact tool
-name, else the longest app-local prefix registration (`registerToolRendererPrefix` — today only `mcp__`,
-because pi names MCP tools per server), else the default. Exact names always win, an empty prefix never
-matches, and extension descriptors stay exact-name only.
+每次注册表读取（渲染器、摘要、chrome、显著度）都走同一个解析器：精确工具名，否则最长的应用本地前缀注册
+（`registerToolRendererPrefix`——今天只有 `mcp__`，因为 pi 按服务器给 MCP 工具命名），否则默认值。精确名
+永远优先，空前缀绝不匹配，而扩展描述符只按精确名。
 
-Unregistered tools fall back to `DefaultToolRenderer`. Tools needing user input mid-run either route
-through the extension-UI bridge (`pi.extensionUi` → `ExtUiDialog`) or — for a rich inline card — render
-from their `toolCall` args and reply through **`ChatActions`** (see below). Worked example: the
-`ask_user_question` flow in [tools/SPEC.md](tools/SPEC.md).
+未注册的工具回退到 `DefaultToolRenderer`。运行中需要用户输入的工具，要么走扩展 UI 桥
+（`pi.extensionUi` → `ExtUiDialog`），要么——对于丰富的内联卡片——从它们的 `toolCall` 参数渲染并通过
+**`ChatActions`** 回复（见下文）。完整示例：[tools/SPEC.md](tools/SPEC.md) 里的 `ask_user_question`
+流程。
 
-## Interaction seams
+## 交互接缝
 
-- **Transcript/shell split** — `ChatView` (the exported integration component) splits into a churn-isolated
-  `ChatTranscript` child that owns the per-delta transcript rendering — subscribing (via `useShallow`) to the
-  streaming runtime fields it renders from (turns, toolResults, currentAssistantId, askAnswers,
-  turnIdByMessageIndex, isStreaming, settlementTick, hostState, syncedConnectionGeneration, eventRevision) —
-  and owns the scroll container and
-  rows — plus a chrome shell that reads only granular rarely-changing fields, so text/thinking/tool deltas
-  no longer re-render header/composer/queue/dialogs; completion-ack, location-reveal, and the ask-focus
-  scope live in the child (a private refactor; `ChatActions`/`AskStatesContext` are provided by
-  `ChatTranscript`). The shell still reads `turns`/`askAnswers`/`toolResults`, but only through
-  shallow-compared derived selectors (recent prompts, plan glance) that stay stable across streamed deltas,
-  so it does not re-render on them.
-- **Structured tool-file navigation** — `ChatView` accepts an optional `onOpenFile(path)` from the shell and
-  passes it through every `ToolRenderProps` path (routine, primary, card, or bare). The shared tool-file
-  primitive offers that action only for a non-empty relative path or an absolute path contained by
-  `workspaceRoot`; URLs, escaping relatives, and foreign absolute paths remain selectable text. Renderers
-  source candidates only from explicit tool args/details — never regex guesses over Bash output, code, or
-  prose. A standalone renderer has no callback and therefore stays inert. The callback's preview-slot
-  semantics belong to [[submodule-web-panels]].
-- **`ChatActions`** — a React context (provided by `ChatTranscript`, `null` standalone): how a renderer talks
-  **back** to the agent — or asks the integration layer to open something — without importing
-  store/transport. Today: `answerQuestion(toolCallId, result)` —
-  it rejects when the host refuses (unknown/answered/superseded call), and the caller owns the failure UX —
-  plus `focusComposer()`, for a renderer that resolves *itself*: it unmounts the control the user was
-  standing on, and focus would otherwise fall to `<body>` and swallow every following keystroke (the same
-  stranding the history overlay's dismiss refocus avoids). Only the card's own reply path calls it, and
-  only while the card still holds focus. Plus `openSubagentTranscript(childSessionId)` — the subagent
-  cards' transcript link (no provider → the cards hide the action).
-  The optional MCP actions — `readMcpOutput(toolCallId)` (`mcp.readOutput` for this chat),
-  `openMcpSettings()` (Settings › MCP servers) and `openProviderSettings()` (Settings › Providers for
-  provider-backed authentication) — are supplied by `ChatView` (through `ChatTranscript`'s provider)
-  only on an MCP-capable host;
-  without them (older host, the plan page's provider, or `null`) the MCP cards hide Full output and Sign in
-  ([tools/mcp/SPEC.md](tools/mcp/SPEC.md)).
-- **Subagent transcript view** (`SubagentTranscriptDialog.tsx` — an integration file, like
-  `SkillsDialog`): `SubagentTranscriptPane` renders a hidden child's **read-only** transcript with the
-  same primitives (`messagesToRuntime` → `deriveRows` → `ChatTurnView`), fetched via
-  `subagent.getTranscript` keyed `(workspaceId, parentSessionId = this chat, childSessionId)`; the
-  dialog of the same file wraps the pane as an overlay for the subagent cards'
-  `ChatActions.openSubagentTranscript`, and the Resources inspector embeds the pane as its subagent
-  detail. Both render under a `null` `ChatActions` provider so nothing inside can talk back (and a
-  nested transcript link cannot exist). Liveness comes from the
-  **host** with each response: `subagent.getTranscript` carries the run's current registry `status`
-  (absent once the host no longer knows the run — restart, dispose). The mounted pane keeps exactly one
-  read in flight, scheduling the next ~2.5s poll only after a response while status is queued/running —
-  never from this chat's own runtime, whose frozen background ack can't tell a live run from one lost to
-  a restart. A terminal/absent status or the wire's permanent `SUBAGENT_TRANSCRIPT_NOT_FOUND` stops;
-  plain transport failures retry while the pane stays mounted with a capped backoff. Poll snapshots
-  hydrate with child-scoped ids derived from each persisted message's role/timestamp/index, so an
-  append-only refresh preserves row identity and manual folds instead of remounting the transcript.
-  Works during the run, after completion, and after a host restart (transcripts persist on disk; only
-  the in-memory registry is lost — and its absence is precisely what stops the polling).
-- **`askState`** — the questionnaire lifecycle seam: the pure
-  `deriveAskStates(turns, askAnswers, toolResults)` + `AskStatesContext`/`useAskState` (provided by
-  `ChatTranscript`, and also by the plan page's `PlanAskQuestion` so the SAME `AskUserQuestionCard` can be
-  answered from the plan — see `panels/SPEC.md`; `null` standalone). A live blocking ask resolves through its native tool result; a
-  restart-repaired eligible ack resolves later through `ask-user-answers`; a live ask the user typed past
-  returns that same ack natively, so "superseded" (ack + later user turn) reads identically whether the
-  session was live or restored; a stopped/error/length result is
-  terminal because Pi never executes tools from a length-truncated assistant response. "Answered /
-  superseded / stopped / awaiting" is therefore derived once from all three transcript
-  projections and consumed by the card and plan glance, keeping both props-driven everywhere else.
-  The same seam supplies an opaque **per-mounted-ChatView focus scope**: an awaiting card claims attention
-  once within that scope (so Virtuoso remounts cannot steal focus), while a fresh mount creates a new scope
-  and may focus the still-pending question again. "Fresh mount" is broader than closing/reopening the chat:
-  `CenterTabs` renders only the active tab's body, so **every switch back to the chat tab** — from a file,
-  a diff, another chat — is a new scope and re-claims attention for a question still waiting. That is the
-  intended read (you returned to the chat that needs you), not just a side effect. It carries no store or
-  transport state.
-- **Hydration** (`hydrate.ts`) — the pure
-  `messagesToRuntime(TranscriptMessage[], lastSettlement?, { idScope? })` converter (read-side counterpart
-  of the event reducer): rebuilds `{ turns, toolResults, askAnswers, turnIdByMessageIndex }` (a
-  `HydratedRuntime`) from a persisted transcript so a reconnecting/second client renders identically to
-  the live path (same `raw` result shape). One-shot consumers keep freshly minted ids; a repeated-snapshot
-  consumer supplies its session scope to derive stable role/timestamp/index ids for persisted turns. When supplied, the live summary's `lastSettlement` is authoritative; otherwise only the
-  final conversational assistant can synthesize an error/length turn. Compacted historical length attempts
-  followed by later messages remain history, not a stale current warning. One retry-presentation rule on
-  both paths: pi persists a superseded auto-retry attempt ("keep in session for history") that the live
-  reducer dropped on `auto_retry_start`, so hydration hides an errored assistant message immediately
-  followed by another assistant message — exactly the adjacent shape `_prepareRetry` produces
-  (`isRetriedAttempt`); a terminal failure — errored
-  assistant followed by a user message or nothing — stays visible, its failure reported by the trailing
-  settlement-derived error turn. It also
-  returns `turnIdByMessageIndex` (message-position → minted turn id) — the jump anchor map a
-  history-search "jump to message" deep link (`chatLocationRequest`, see `store/SPEC.md`) resolves
-  against; entries are `null` for a `toolResult` or non-turn `custom` message (a `subagent-completion`
-  message maps to its own completion turn's id; text-less, it is still never an anchor match) and for a
-  `compactionSummary` (its own turn, but never a search hit — the host's index consumes the same slot, so
-  the two stay aligned), and a message that
-  ended in `stopReason: "error"` maps to its own assistant turn's id, never the synthesized error turn's.
-  `custom` messages: `ask-user-answers` indexes into `askAnswers` (never a turn — the questionnaire card
-  is its rendering); `subagent-completion` **becomes its own `subagentCompletion` turn** (the completion
-  card is transcript-positioned, so it maps its message index too); `todo-review-fix` **becomes its own
-  `reviewFix` turn** (same positioning); unknown customTypes are ignored. No
-  store/transport/shiki.
-- **Jump-to-message** (`chatLocationRequest` — set by `useHistorySearch.ts`'s `openMessage` on Enter over
-  a mapped message hit; see `store/SPEC.md` for the store-level request/clear contract and
-  the workbench shell integration's open/reopen/hydrate half) — `ChatTranscript` is the sole consumer. Once
-  `rows.length > 0`,
-  it resolves the request's `messageIndex` via `runtime.turnIdByMessageIndex` (present only on a
-  *hydrated* runtime — a live/already-open session's runtime, built by the event reducer, never carries
-  one), falling back to scanning `turns` for the newest whose own text contains `anchorText`'s prefix — the
-  same fallback also covers a hydrated map entry whose turn no longer contains the anchor (e.g. the
-  transcript changed underneath it). The resolved turn maps to a row via the pure **`rowIndexForTurn(rows,
-  turnId)`** (`rows.ts`), called with the projected rows — a turn's own row for
-  `user`/`system`/`error`/`retry`, or its first `:text:` row for `assistant` (whose turns dissolve
-  into `markdown`/`tool`/`activity` rows, never a row of their own)
-  — then a cancellable, non-animated materialization derives the target from Virtuoso's measured size
-  snapshot (with conservative estimates only for never-measured rows) before the controller-owned centered
-  pixel correction. Materialization remains pending until the exact row stays mounted and measured at that
-  alignment across stable frames; a transient mount during Virtuoso's estimate correction is not success.
-  It never starts Virtuoso's internally retrying `scrollToIndex`, so reader takeover can cancel every
-  outstanding write. Its lifecycle is keyed to request identity rather than streaming row-array churn, and
-  its live row-index resolver follows projections that change while the request is pending. A transient
-  `flashRowId` (rendered as `data-flash` + a `bg-primary-subtle` transition on the row wrapper, cleared after
-  1600ms) draws the eye only after the row mounts. Resolving a row, explicit reader cancellation, or
-  exhausting the bounded materialization wait (toasted as "couldn't locate the message") clears that exact
-  still-current request; an older effect may not clear a newer jump. Cancellation is the user-wins failure
-  path and is intentionally silent rather than restarted against the reader. Effect teardown defers its
-  identity-checked clear for one microtask: an immediate StrictMode or replacement mount claims the same
-  request first, while a real unmount terminates it. `ChatTranscript` is its only terminal consumer, so an
-  unresolved current request must never linger.
-- **Open at the current alignment target** — `ChatMessageOrder` chooses the physical latest edge: bottom
-  for oldest-first, top for newest-first. The reading band is the only mount placement owner. It places
-  once, after the first row mounts, from the work state at that moment: an idle oldest-first transcript jumps
-  to the final row without animation and holds it through measurement frames (motion kind `mount`); an idle
-  newest-first transcript stays at the native zero scroll origin; a working transcript reconstructs directly
-  at Settle with only the room its active response needs and holds Settle through the same measurement frames,
-  re-applied without animation and never backward, so row measurement cannot push the live edge off screen.
-  The mount target skips the follow step cap, so a short viewport still lands the edge at Settle.
-  Virtuoso gets no `initialTopMostItemIndex`: it hides the list until a scroll to that row sees no size
-  change, which a streaming final row never allows, so a returning or just-opened working chat stayed blank.
-  Placement stays pending while native input is pending and while a working transcript has no stream edge
-  yet. A stream that starts during the idle hold cancels the hold and re-places at Settle. Reader takeover,
-  a new turn, or any controller reveal or anchor stabilization (jump-to-message, automatic card reveal,
-  fold) cancels a pending placement; that motion then owns the position. Switching order re-arms placement
-  because preserving a pixel position across total reversal has no stable meaning. There is no
-  intermediate wrong-edge paint or cross-order animation. Initial virtual geometry is
-  **row-aware**: each projected row receives a conservative estimate derived from prose wrapping, block
-  breaks, and physical fenced-code lines without splitting one canonical Markdown block. The estimates mirror the
-  rendered row chrome (row and bubble padding, paragraph gaps, the prose line height, the height floor) and move with it: a density
-  pass once left them stale, which flipped Virtuoso’s measurement corrections from growth to shrink and stranded
-  a newest-first return-to-latest detached (`chat-scroll.spec.ts`). Bounded pixel and
-  item overscan lets nearby outliers replace estimates before coarse input exhausts a false range. Native
-  wheel physics remain untouched. `chat-history.spec.ts` pins the default latest edge and tall-history
-  geometry; `chat-order.spec.ts` pins both projections.
-- **Alignment is explicit, not inferred from proximity** — `useChatScroll` owns two orthogonal facts:
-  actual work (`agent_start` through `agent_settled`) and alignment (`following` or manually `detached`).
-  Following while working means the configured response window; following while idle means the physical
-  latest edge. Detached while working shows the order-aware **Follow response** button; detached while idle
-  shows **Latest**. Automatic focus, row measurement, content growth, programmatic reveal, and Virtuoso's
-  convenience edge thresholds can never create or clear detachment, so the button always means that a
-  person took over.
-- **Reader intent and exact-edge rearm** — wheel, trackpad, touch, scrollbar, and navigation-key input
-  detaches only when it can cause or has caused real viewport movement; pushing outward against the current
-  physical edge is a no-op for a following reader, while a detached reader already exactly at that edge
-  (reader-preserving room can leave nothing to scroll) rearms on the same push. Potential native input
-  pauses competing controller motion, and blocks new automatic motion until it resolves, without changing
-  alignment (continuous following writes nearly every frame, so a write landing between the reader's
-  gesture and its scroll would otherwise swallow it). An interrupted return remains logically moving while
-  awaiting a wheel or navigation-key default action; an explicit pointer hold is stationary. If no movement
-  follows, alignment resumes after the bounded input-intent window rather than on the next frame, because an
-  embedded webview may apply default wheel scrolling after that frame. Movement into history detaches once;
-  native movement that interrupts an active alignment also detaches even when directed toward latest, unless
-  that movement itself reaches the exact edge.
-  Explicit text selection and user-invoked message/history, breadcrumb, or tool-page navigation also detach.
-  Pointer provenance survives release long enough for native scrollbar-track animation, keyboard
-  provenance covers focus-induced scrolling from interactive transcript controls, and both expire on
-  scroll-end or a bounded timeout so later geometry cannot inherit them. A return gesture rearms once only
-  when it reaches the physical latest edge within the shared 1px geometry tolerance; directions invert with
-  order, and touch/trackpad intent survives through momentum. No 50px near-edge threshold and no geometry
-  change alone may rearm. Expanding or collapsing an Activity, Thinking, tool, or message disclosure is a
-  geometry change rather than navigation: it preserves alignment, retargets the current latest/response
-  destination while following, and leaves a detached reader's visible anchor fixed. An own Send deliberately
-  reattaches and places its user row at 10% of transcript height clamped to 48–80px; a queued/background
-  continuation preserves a detached reader when it starts.
-- **Streaming response movement exists only during work, and it moves in window steps** — while following, the
-  view stands still while the active response fills the window below its prompt. Each time the response edge
-  passes Trigger (default 100%), the sole motion owner makes one eased ~220 ms step that places the edge at
-  Settle (default 75%), then stands still again until the edge passes Trigger once more. Reading text that
-  stands still is the point: a continuous follow (the edge held at Settle with per-frame smoothing) was tried
-  and rejected because the line being read never stopped creeping. The step destination is recomputed from live
-  geometry on each frame of the step, so growth during the step is included and the step never overshoots.
-  Steps never move backward. Synthetic room is **derived, never accumulated**: during a step it is exactly the
-  part of the Settle destination beyond the natural scroll range; between steps it is the reader-preserving
-  remainder, recomputed before paint on every content change, so response growth consumes it one-for-one while
-  neither the visible content nor the scroll range moves. The old step implementation consumed room one frame
-  late, which flapped the scroll range and wobbled each step; that defect, not the step model, made it feel
-  jumpy. Oldest-first therefore needs at most the lower `100% - Settle` band; newest-first uses older projected
-  content where available and keeps any synthetic remainder after the oldest group. Synthetic room never splits
-  a reversed request/answer group. **Follow response** and an exact-edge return make one step to Settle and
-  rearm the cycle. Reader takeover never moves the reader: room shrinks only as far as the reader's current
-  position allows (the document may end exactly at their viewport bottom), and later growth or upward reading
-  consumes the rest. A reveal that releases room (tool attention, jump-to-message, breadcrumb) suspends
-  stepping while its target is still the newest row, because it is about to place the viewport itself; the
-  first new latest row after it (for example the answer that follows a resolved question) ends the suspension.
-  Suspending for the rest of the response froze following after every question card and then flew 2–2.6k px at
-  settlement. A settlement that lands while native input is still pending defers its return until that input
-  resolves, and drops the return if the input detached.
-- **A tall arrival shows its start** — in oldest-first the controller remembers the last response edge the
-  reader actually had on screen. When the follow destination would carry that edge above the turn inset —
-  content taller than the reading space (the Settle line minus the turn inset) arrived below it, typically a
-  diagram or card that renders at once, possibly in several quick layout steps — the destination is capped so
-  that point lands at the turn inset, the same place an own prompt lands. Growth within 300 ms of the cap
-  engaging belongs to the arrival; each later growth releases the cap by twice its own height until it reaches
-  Settle, and the view still moves only in window steps: a step happens once the capped destination is at least
-  one window (`Trigger − Settle`) ahead, so the block advances at twice reading pace instead of flying by (one
-  mermaid card measured a 1.5k px glide in under a second, and judging each layout step alone missed cards that
-  land in two steps). A second tall arrival never pushes an active cap further. The cap is evaluated wherever
-  the follow destination is, so it also bounds a step already in flight. Positions are kept relative to the
-  topmost visible row rather than document coordinates, and each evaluation re-expresses them relative to the
-  current one, so height changes above the viewport (Virtuoso replacing an estimate, a code block highlighting)
-  neither trigger nor misplace the cap, rows may unmount, and a block that grows above rows that already follow
-  it (WebKit renders a diagram after the next turn's row exists) still counts. Anchoring to the last row
-  instead missed exactly that case. A width reflow, a reader's own disclosure toggle, and a fresh mount re-take
-  the seen edge instead of counting as an arrival; an automatic expansion (a card opening when it completes)
-  still can. A Markdown mermaid fence replaces its own source in place, so its rendered top sits above the old
-  edge by the source height and the cap shows the diagram from that point. Newest-first prepends its latest
-  rows, so edge growth there is not appended content and the cap does not apply. **Follow response**, an
-  exact-edge return, a new turn, reader takeover, and a room-releasing reveal clear it. Settlement ends the cap
-  like any other following settlement: content still unseen below gets the one forward move to the end.
-  Detaching the reader there instead surfaced **Latest** without anyone taking over and stranded plain text
-  answers whose deltas arrived in large bursts.
-- **Following keeps what is on screen still** — while a following reader watches an oldest-first stream,
-  the topmost visible row is the view's anchor: only the controller's own writes and reader input may move
-  it. After every layout that changes the item list (before paint) and on any scroll the hook did not cause,
-  an anchor that moved is restored in the same frame, adding synthetic room when the scroll range shrank.
-  A scroll that lands exactly on the shrunken range's end is a clamp and is left to the before-paint path,
-  which runs after Virtuoso's own size compensation; restoring it from the scroll event made Virtuoso read
-  the clamp as upward reading and compensate the restore away (an 844 px jump in Chromium).
-  Two measured causes motivate this, and both also appeared without virtualization: an answered question
-  card collapsing by 400–800 px (the browser clamps the range, then Virtuoso's size compensation scrolls the
-  rest), and WebKit resetting `scrollTop` (627 → 0) when a tool row appears beside a re-rendered text row,
-  with no script write, focus, or scroll-anchoring involved. The guard is idle while the reader is detached,
-  while native input is pending, during reveal, fold-anchor, and settlement motions, and for 1.3 s after a
-  turn anchor hands placement to Virtuoso (its `scrollToIndex` retries while sizes keep changing; later
-  retries target the same turn position), so it never fights a placement someone asked for. The synthetic
-  room is always mounted (zero height when unused) so the guard can grow it synchronously; room left behind
-  is reader-preserving and later growth consumes it. Changes that announce themselves avoid the clamp
-  entirely: the fold seam (disclosures, and the question card's own submit, which swaps the card for a small
-  "Answer sent" state) reserves room for the changing row's whole height before the DOM changes while a
-  following reader watches a stream, then trims it to what the reader's position needs. That trim counts
-  content shorter than the viewport, because the true natural scroll range is then negative; clamping it at
-  zero under-reserved by the shortfall and let a short transcript slide 280 px down after an answer.
-- **Settlement never moves a reader who took over, and never moves content backward** — every
-  `agent_settled`, never `agent_end`, ends response movement. In oldest-first a following reader whose
-  content already ends inside the viewport stays exactly where it is: the remaining synthetic room becomes
-  reader-preserving room that disappears as the reader scrolls up or the next turn starts, never by sliding
-  what is on screen. Removing it at settlement slid every finished answer down by up to the `100% − Settle`
-  band (≈100 px measured) and, after an absorbed card collapse, by several hundred px. Only when unseen
-  content remains below does a following reader make one smooth forward move to the physical latest edge;
-  newest-first keeps its one smooth return to its top latest edge. A detached reader's visible content
-  stays exactly where it is and only the affordance changes from **Follow response** to **Latest**. Returning
-  detached readers at settlement was the largest measured yank (tens of thousands of px) and contradicted
-  reader-wins. The store exposes a monotonic per-session settlement tick alongside `isStreaming`, so a start
-  and settlement coalesced into one React render cannot strand an optimistic turn inset or runway. Delayed
-  virtual measurements retarget that same bounded return rather than creating a hard-pin loop. If reader input
-  intersects settlement, either idle reattach path carries the partial room-to-zero leg forward instead of
-  leaking hidden runway. A rejected immediate prompt likewise cancels its locally armed turn state.
-- **Stable work-status geometry** — one fixed-size slot always occupies the logical latest transcript edge:
-  after rows in oldest-first and before rows in newest-first. While work is active it always contains one
-  polite live phase — **Working…**, **Thinking…**, **Running `<tool>`…**, **Writing…**, or
-  **Compacting context…**; retry/provider gaps fall back to Working rather than unmounting it. Idle keeps an
-  inaccessible, visually empty slot with identical geometry. The visible phase is single-line and clipped
-  within the slot on narrow panes while its complete live-region text remains accessible. Starting, changing,
-  or ending a phase therefore moves neither transcript alignment nor composer.
-- **Tool attention preserves alignment provenance** — an awaiting `ask_user_question` may clear temporary
-  room and perform its established bounded start reveal/focus, but that automatic path leaves following or
-  detached exactly as it found it and cannot expose the button. A reader who was already detached keeps the
-  affordance because of that prior action; a subsequent user-driven tool-page navigation may detach. All
-  attention, history, breadcrumb, and row reveals route through the same controller. A history row outside
-  the virtual DOM gets a bounded, hook-owned materialization from Virtuoso's measured size snapshot; once
-  mounted, its centered correction uses the controller, so no independent retry can outlive reader
-  cancellation or compete with settlement. Size-aware `nearest` keeps a
-  tall target's useful leading edge visible.
-- **One cancellable, retargetable motion owner** — renderers and projections never scroll themselves.
-  New-turn placement, window steps, contextual-button returns, settlement, and explicit reveals
-  share one non-overlapping channel whose destination can retarget as Virtuoso measurements, status geometry,
-  or runway changes land. Corrections continue the current motion instead of launching overlapping eases or
-  alternating hard writes. The first real reader movement cancels it synchronously and native physics win.
-  Newest-first header deltas preserve a detached historical anchor; viewport resize reevaluates the live
-  percentages without moving a below-Trigger response. Initial/order placement is direct, and reduced motion
-  makes every programmatic destination immediate while preserving identical state and final geometry.
-- **No hidden motion owners** — nothing but the controller and the reader may move the viewport. The
-  transcript scroller opts out of browser scroll anchoring (`overflow-anchor: none`): Virtuoso excludes its
-  items, but Chromium otherwise anchors to the header/footer and counter-scrolls a reader while the response
-  grows below them. The oldest-first top inset is constant rather than toggling with synthetic room; toggling
-  shifted a reader's content by the 48–80px inset on detach where no anchoring compensates (WebKit).
-  Synthetic room reconciles before paint in the same frame as an item-list resize, so the scroll range and
-  scrollbar never flap between frames. Virtuoso's resize handling runs without its animation-frame deferral,
-  so above-viewport measurement corrections land before paint. The wheel listener stays non-passive: a
-  passive one lets Chromium apply the scroll before the wheel event reaches the hook, so the movement arrives
-  without reader intent and neither detach nor exact-edge rearm fires. Scrolling stays responsive because a
-  streaming delta re-renders only the rows whose content changed, keeping the main thread free.
-- **Composer & chrome** — `Composer` (prompt field + send/steer/followUp/abort, `@`-mentions, `/`
-  commands + template **slot sessions** (Tab-through placeholders — see the Template slots bullet
-  below), image paste/drop — routed through **`imageAttachment.ts`**: `fileToAttachedImage` decodes in
-  the browser and downscales anything over a **1568px long edge** (`fitWithin`; Claude's standard-tier
-  edge — an oversized image in history 400s every later turn once the provider's >20-image 2000px cap
-  kicks in, and pi's own resizer is deliberately off server-side). An image passes through
-  byte-identical only when within pixel bounds **and** a provider-accepted type (png/jpeg/gif/webp)
-  **and** under the provider's **4.5MB encoded-base64 ceiling** (`IMAGE_MAX_BASE64_BYTES`, shared via
-  `contracts` — pi's own headroom under Anthropic's 5MB API limit; the wire carries base64, so the
-  ceiling is measured on `data.length`, with `base64EncodedLength` sizing a raw File before encoding);
-  anything else re-encodes through canvas, walking a **JPEG quality ladder** while the encoding
-  exceeds the ceiling (a within-bounds multi-MB GIF or a small BMP would 400 the request just like an
-  oversized side). An undecodable file falls back to raw **only when its media type is
-  provider-accepted** (`ACCEPTED_IMAGE_TYPES`, shared via `contracts`); undecodable + unsupported
-  (HEIC…) is **refused** (`fileToAttachedImage` → `null`) — raw pass-through would 400 every later
-  turn — and surfaced as a dismissible error chip (`composer-image-error` testid) in the attachment
-  strip, cleared on send. One message's batch is also bounded by the request-wide
-  **`REQUEST_IMAGE_BASE64_BUDGET`** (24MB of base64, headroom under Anthropic's 32MB per-request cap):
-  files that would push the batch over it are refused with the same error-chip surface. The server's
-  `imageGuard` extension is the second line of defense for history. While files are still decoding, a placeholder chip renders
-  (`composer-image-pending` testid) and sends are held (`canSubmit` is the one reading — `submitText`
-  refuses, the send button disables) — a send mid-decode would otherwise go without the image and strand
-  it on the next message. A held send keeps its text: the composer's own gestures leave the draft in
-  place, and `insertAndSubmit` (the overlay's ⌘/Ctrl+Enter, whose text is not in the draft yet) parks it
-  there instead of dropping it. The pending chip shows `filename · W×H` (the picked file's name; mime text appears only in the
-  hydrated-turn fallback when no name survived) (`composer-image` testid +
-  `data-width`/`data-height`/`data-mime` — the `e2e/composer-images.spec.ts` hooks; both chip skins
-  share `FileChip.tsx`). **Chips are bounded, and the label is the only part that gives way**: a chip is
-  `max-w-full` and truncates its `label`, while the icon, the `meta` suffix and the trailing action are
-  shrink-free — filenames are user-controlled, and an unbounded chip would push its own Remove button
-  off a phone viewport (and be clipped by the transcript scroller's `overflow-x-hidden`). So whatever
-  must stay readable at any width goes in `meta`, not `label`: the `· W×H` size, and an attach error's
-  reason (its filename truncates — the reason is what the user can act on, and a phone has no tooltip
-  to fall back to) — and `openHistory` on its
-  imperative handle → `onHistoryOpen`) plus the shared `prompt` module's **slash-completion
-  primitive** (filter/menu/caret + Up/Down, Enter/Tab, Escape); `HistoryOverlay` (the history-recall/search overlay `Composer` opens —
-  presentational, driven entirely by `useHistorySearch.ts`'s state + callbacks, plus **Save as template**
-  and one-click **Trash chat** actions on mapped hits (`ChatView` owns `session.delete` + the idempotent
-  store deletion fold; success closes the overlay, failure toasts; `session.deleted` also drives that fold
-  in every connected client), and a
-  **zoomed-stage preview pane** + **scope picker** — see the next bullet),
-  **`ModelEffortPicker`** (the one **model · effort pill**, also mounted by `NewWorkspaceDialog` in
-  pre-session mode; `ModelsSettings` still mounts the older `ModelSelector` +
-  `ThinkingSelector` pair — the named survivors until they migrate). Decision: a chat's model and effort
-  are **one fact with two parts**, shown by one borderless trigger (`[vendor glyph] name ▂▄▆ level
-  [connection glyph] ▾` — the effort bars light the level's rank among the model's reasoning levels,
-  `litBars`, in the level's **tone** — cool blue for off/minimal/low, accent for medium/high, warning
-  amber for the costly tiers, so cost reads before the word does) and chosen in one popover where the
-  **effort control sits under the model list and follows the chosen model** — so the levels on offer are
-  always *that model's* `thinkingLevels` and a
-  disabled-effort state cannot exist. The flow is **click model → slide effort**: picking a model applies
-  it at once and keeps the popover open (hover never changes anything — an earlier hover-preview made the
-  effort row jump as the pointer moved); the effort control is a **slider**: a thick rail hiding a
-  cool→warm gradient (`feedback-info` → `primary` → `feedback-warning`) that the handle uncovers as it
-  moves, the level word and its glyph riding on the handle, one clickable label per level beneath (the
-  user's saved `defaultEffort` dotted — the web never guesses the host's fallback level), a one-line
-  hint, and a warning caption on the costly tiers (`COSTLY_LEVELS`: xhigh, max). A native `<input
-  type="range">` drives it — drag, click-to-snap, touch and ←/→ for free — and every change applies at
-  once while the popover stays open; the footer offers "reset to ‹default›" while the level differs from a
-  saved default. The handle's position is the one inline style (a `--effort` custom property, the
-  normalized-geometry exception), colour stays in tokens, and `motion-reduce` flattens the spring.
-  Escape, an outside click, or clicking the already-current model closes. `onSelect({model, level?})`
-  is the model callback (level present only
-  when a typed `opus high` chose both at once), `onSelectLevel` the level-only one, and the caller — never
-  the picker — talks to the host (`ChatView` chains `session.setModel` → `session.setThinkingLevel`
-  behind one selection counter that every model *or* effort pick advances, so the chained level is sent
-  — and on failure rolled back — only while that pick is still the newest: A·high then B·low can never
-  land A's level on B, and B·high then a slide to medium can never let B's response re-send high). When a
-  catalog refresh leaves a session on a level its model no longer offers, `ChatView` asks the host's
-  `model.clampThinking` and applies the answer — the reconcile `NewWorkspaceDialog` already runs for its
-  pair, and the same clamp pi applies at request time — so the pill and slider show the level pi will
-  actually use rather than a stop the rail does not have.
-  Rows are **two lines**: the name, then `provider · [kind glyph] what it draws on · price · context`. The list reads **Default
-  row** (pre-session callers only, `defaultOption`: what the host would pick, checked while the caller
-  follows it) → **Pinned** → **Recent** (the host's list minus pinned models) → provider groups, folded behind one
-  "All models" row while a shortlist exists and expanded by search. Each provider group is collapsible: its
-  header is itself a cmdk row (`model-group-toggle`, `aria-expanded`, Enter toggles) carrying the match
-  count, and a picker opens with every group collapsed except the current model's (none when that model
-  is pinned); a search opens every matching group, each still collapsible for that search. The header
-  reads as a section header (emphasis-weight name, vendor glyph), each group after the first is set
-  off by a divider, and its rows are indented under the header and drop their own vendor glyph and
-  provider word (the header carries both) — a flat, unpadded list made headers and models hard to tell
-  apart. Pinned models are never repeated inside groups. Headers, counts and rows are matched by the pickers' own cmdk `filter`
-  (`chat/pickerGroups.ts`, a port of cmdk's default scorer), so a header matches when any of its models
-  does and its count equals the rows it reveals. With no query and no models the list reads "No models to
-  show. Connect a provider, or show hidden models in Settings → Models → Visible models."; "No models
-  found." appears only for a query. Hidden models never reach either picker: callers pass `store`'s
-  `selectPickerModels`, which keeps the current model. Settings' `ModelSelector` shares this grouping,
-  filter, Pinned section, empty states and "Updating…" Refresh, without Recent or the header connection
-  detail. A trailing query word that names a
-  level the highlighted model supports (`opus high`) pre-selects it — pi's `model:level` idiom typed
-  with a space — and `/model [query]` in the composer opens the picker prefilled instead of sending
-  text. The second row line **says what the user actually pays** (`kindLabel` / `costLabel`): the
-  connection glyph — **key** = API key, **∞** = subscription, **{ }** = environment key, a **JCP** tag =
-  JetBrains AI (Central proxy) — then the plan/variable/key word and, only where the provider bills per
-  token (`auth.kind` api-key / env), `$in / $out per M`; group headers add the provider's connection
-  detail. The **vendor glyph** (`ProviderGlyph`) is a monochrome `currentColor` mark from
-  `generated/providerGlyphs.ts`, which `scripts/generate-provider-glyphs.ts` extracts at build time from
-  the dev-only `@lobehub/icons-static-svg` set (`provider-glyphs:check` guards drift, like the colour
-  pipeline); the pi-provider-id → mark mapping lives once in `scripts/providerGlyphs.ts`, vendors reached
-  through several pi providers share a mark, and an unmapped provider renders a monogram. Marks are never
-  tinted with brand colours — the colour system owns colour. Pinned/recents/default come in through
-  **`useModelPreferences(models)`** (the one store+transport seam both callers share: lists re-pointed to
-  the live catalog with vanished models dropped, `toggleFavorite` as a whole-list `settings.update`,
-  `setDefault` writing model + effort together, all gated on `MODEL_PICKER_PROTOCOL_VERSION` so an older
-  host shows neither pin toggles nor sections). The footer holds **Set as default** (reads "Default for new
-  chats" once the pair matches) and the **Refresh** row (`force: true`, spins and reads "Updating…" while
-  the awaited refresh runs; opening fires an unforced read served from the host snapshot). The web still keeps **no
-  enumeration of the level vocabulary**: rows are `WireModel.thinkingLevels` verbatim, the host clamps,
-  and `LEVEL_HINT` is a partial record of qualitative copy a level may simply lack. Rows follow the
-  **live catalog** — `ChatView` resolves the session's model through `store`'s `selectCatalogModel`
-  before passing it down, so a `model.refresh` that changes what a model supports changes the offered
-  levels with it), `SessionStatsBar`, `ChatHeader` (the fixed, single-line **panel-header row** —
-  `h-panel-header-row` (`--panel-header-row-height`, currently 28px), the shared structural geometry with
-  workbench Group Headers and the Changes toolbar, not a value pinned here; it never scrolls,
-  and constrained widths clip/truncate TODO + status/usage text while preserving the trailing Skills
-  action. Its **Skills** button is the presentational **`SkillsButton`**
-  primitive — a `BookOpen` pill, badged when a skill dir changed on disk — also shared with
-  `NewWorkspaceDialog` so the two triggers cannot drift), `ExtUiDialog`, and **`SkillsDialog`** (the **Skills manager**: a catalog
-  grouped by source with **sticky section headers** — the first-party **ThinkRail** and **Pi** groups lead
-  (above the All-plugins master, which governs only the plugin groups), then Personal / **a group per
-  installed Claude plugin** / the repo's Project skills last — each with its admission verdict,
-  project-trust (the same `projectTrust` derivation and copy as the Welcome notice — `useProjectTrustSummary`
-  plus this catalog's untrusted aliases, so a worktree-only alias still shows — so in a chat it is the place
-  to grant pi-level trust, and its `project.setTrust` carries `resources: true` exactly when it named the
-  project's Pi resources), re-confirm-new, a per-group track/thumb **switch** + an **All-plugins** master, and per-skill
-  switches. Switch position plus semantic colour carries state without visible On/Off text; the switch target
-  alone mutates, while unavailable controls keep the existing trust/parent explanation and acknowledgement
-  behavior. It runs in **two modes** via an optional `workspace` prop: chat (`skills.state`, per-workspace
-  skill overrides, + a **Reload** that applies changes to this chat's session via `session.reloadResources`,
-  disabled while streaming) or project (`project.skills`, per-project-baseline toggles, no session) — the
-  latter reused by `panels` pre-session). All props-driven; behavior detail lives in the components' jsdoc.
-- **Live session telemetry follows Pi's finalized boundaries.** `SessionStatsBar` renders only the host's
-  authoritative `session.getStats` snapshot; the web never derives billed totals or context usage from
-  message content. The mounted chat refreshes on mount/reconnect, after each finalized message, compaction,
-  and settlement, and after Pi accepts a model change. A reconnect read may race a restarted host before
-  transcript sync has reattached the persisted session, so that sync edge retriggers the read. Consecutive
-  Pi events batched into one store commit
-  collapse to one read, and a response superseded by a newer session revision, host generation, or unmount
-  is ignored. Text deltas do not trigger reads because Pi itself cannot finalize new usage until the message
-  boundary; transient read failure keeps the last good snapshot rather than replacing it with guessed state.
-- **Adaptive composer geometry** (`Composer`) — an idle draft that fits one visual line renders as a
-  shared two-tier shell: a full-width, one-visual-line message row above a stable action footer. The
-  model · effort pill is the footer's one left-hand trigger; History and Send remain explicit on the right. A wrap, explicit
-  newline, or width change that makes the draft exceed one visual line grows the message row without moving
-  the footer; fitting one line again shrinks only the message row. This is one persistent textarea, never
-  conditional twins — the transition cannot lose focus, caret/selection, recall, draft, or a template-slot
-  session. Streaming deliberately uses the expanded message row even with an empty draft, because Stop +
-  send options join the footer. `ChatView` passes the server-synced
-  `ComposerGrowthLimit` prop: `compact` caps at 6 visual lines, `roomy` at 10, and the default `half-chat`
-  caps the **editor shell** (textarea + footer) at 50% of the mounted chat panel, never the browser viewport;
-  overflow then scrolls inside the textarea. Attachment chips, completion menus, slot hints, and QueueStrip
-  keep their existing separate chrome. The slot-highlight backdrop must follow every dynamic textarea box
-  change with the exact box-model and scroll-sync invariants under Template slots below.
-- **Composer trailing controls** (`Composer`) — the footer's right-hand cluster is **one solid object and
-  ghosts**, no borders: History is a ghost 28px circle (`Button variant="ghost" size="icon"` under an
-  `IconTooltip`), Stop a ghost pill (`■ Stop`, muted text lifting on a hover wash), and the send a single
-  `rounded-full` accent pill (`chat-send-pill`, `data-armed`) whose main segment (`chat-send`) carries the
-  verb plus an `↩` keycap and whose chevron segment (`send-menu`, streaming only) is a second hit area
-  with its own hover — spacing, not a divider, separates them. The earlier cluster was four equal bordered
-  32px squares, which gave a utility (history) the same weight as the primary action and read as
-  form-era chrome. **Inert send**: with nothing to send the pill rests on `control-bg-selected` +
-  `control-disabled-text` rather than the 60% primary pair — a dark accent block pulls the eye to a control
-  that cannot act, and the switch to the accent fill is the "ready" signal (the exception is recorded in
-  `styles/COLOR.md`). **Compact mode**: below the chat column's `@md` container width (phones, narrow
-  splits) labels and keycap hide and the pills collapse to 28px icons, so the model pill keeps its room.
-  Labels use `ui.action`.
-- **Queued messages: the pending strip** (`QueueStrip.tsx`, props-driven: `queue` + `onEdit`/`onRemove`)
-  — the web mirror of pi's interactive-mode pending-messages area. A **streaming send never renders an
-  optimistic transcript bubble** (see the store SPEC's echo contract): `ChatView.onSubmit` skips
-  `appendUserMessage` for `steer`/`followUp`, and the queued texts render between transcript and
-  composer as dim rows — one truncated `Steering:`/`Follow-up:` line per message (`queue-strip` /
-  `queue-item` testids, `data-kind` + `data-index`; full text + delivery meaning in the row `title`),
-  sourced from the runtime's `queue`. **Each row carries its own edit and remove actions**
-  (`queue-item-edit` / `queue-item-remove`) — both call `session.removeQueued { kind, index }` (rows
-  are position-addressed, matching the wire op); edit additionally restores the removed message's text
-  and images to the draft and refocuses. Per-row actions exist because the original all-or-nothing dequeue
-  (click strip → `clearQueue` → every message merged into one draft blob) proved undiscoverable and lossy
-  in use. **Abort atomically restores the complete queue** (`onAbort` →
-  `session.abort { restoreQueue: true }`): the host drains both Pi lanes and signals abort as one operation,
-  waits for idle, then returns each queued message's text + image content; the web prepends the texts and
-  reattaches every image. Stop therefore cannot let a queued continuation run or silently discard an
-  attachment. A **rejected** streaming send likewise restores its text to the draft alongside the
-  `appendErrorTurn`. The ordinary `queue_update` projection still carries only displayable text plus a
-  conservative `hasImages` aggregate — no image bytes — so a queued image shows no chip in the strip; the
-  canonical transcript turn later renders its image blocks with hydrated fallback labels. E2e:
-  `queue.live.spec.ts` (@agent).
-- **Streaming send modes: split send + interrupt** (`Composer`) — steer/queue semantics are pi's loop
-  design (steer = injected at the next turn boundary, after the current assistant message + its tool
-  calls; queue = runs after the agent settles; only abort halts an in-flight response) and proved
-  illegible from key-name hints alone. While streaming the composer therefore self-documents: the
-  primary pill reads **Steer ↩** instead of Send, the placeholder states *when* a steer lands ("Steer the
-  agent at its next step…"), and a **send-options menu** (`send-menu` — the chevron segment of that
-  pill; rows `send-mode-steer` / `send-mode-queue` / `send-mode-interrupt`) names each mode with a one-line
-  meaning + shortcut. The chevron stays enabled with an empty draft so the shortcuts remain discoverable;
-  only the rows disable. Menu rows are **actions** (send the current draft with that mode), never a
-  sticky mode switch — a persistent mode would make the next plain Enter silently obey hidden state.
-  `Composer` yields every keydown to an active IME before slot, menu, recall, or send handling. It uses
-  `KeyboardEvent.isComposing` plus the legacy `keyCode` 229 sentinel because `compositionend` may precede
-  the final keydown, making `isComposing` false while the IME still owns that event. The guard does not
-  cancel the event, so candidate-confirming Enter commits; only a later ordinary Enter invokes send
-  semantics.
-  **Interrupt** (`SubmitBehavior: "interrupt"`, Cmd/Ctrl+Shift+Enter while streaming; plain send when
-  idle; Shift+Enter alone stays newline) is the "take my message NOW" gesture pi lacks: `ChatView`
-  awaits `session.abort` (the ack means idle) then performs an ordinary idle send — the partial reply
-  stays in the transcript marked aborted, and messages still queued keep their lanes (they deliver in
-  the run the interrupt starts). Rejection restores the draft like other streaming sends.
-- **History overlay: zoomed preview pane + scope picker** (`HistoryOverlay.tsx`) — `Tab` grows the
-  compact single-column overlay into a **two-pane** `zoomed` layout: the existing Prompts/Messages
-  sections list stays on the left (~55% width, `data-testid="history-results"` — keyboard nav,
-  `scrollIntoView`, counts, and the save-as-template action are all unchanged), and a preview of the
-  flat-list **keyboard-selected** item renders on the right (~45%, `data-testid="history-preview"`,
-  resolved via the same `resolveHistorySelection` that `Enter`/Cmd/Ctrl+S already use — the preview and
-  the keyboard actions can never disagree on "the selected item"). The `compact` stage is untouched: no
-  preview pane exists in the DOM at all until `Tab` (not merely hidden), so `history-preview`'s bare
-  presence doubles as the zoomed/compact signal. **Preview body:** the hit's full `text` — never the
-  row's truncated first line (`PromptRow`) or snippet (`MessageRow`) — is what makes the preview worth
-  having: a long prompt's tail, cut off in the list, reads in full here. `whitespace-pre-wrap
-  break-words`, scrollable (`overflow-y-auto`), query terms highlighted via `Highlight` reused
-  **verbatim** (the same helper the rows use) so highlighting can never drift between a row and its own
-  preview. **Preview footer** (muted, small): for a prompt hit, chat title (when set) / a workspace chip
-  whenever `workspaceId` is present (unlike `PromptRow`'s chip, never scope-gated — a single detail pane
-  has room a dense list row doesn't) / relative time, `·`-joined; for a message hit,
-  `sessionTitle · role · relative time`. No selection (an empty result set) renders an empty panel —
-  never a crash. **Narrow widths** (below the `md` breakpoint): the preview collapses **below** the
-  list instead of beside it (list first in source order, so a column flex stack already places it
-  there), each pane independently scrollable within its own height budget. The **scope badge**
-  (`data-testid="history-scope"`, unchanged `<scope> ⌃R` label + `data-scope`) is now also a
-  `@thinkrail/ui/dropdown-menu` trigger: its content lists all four scopes in cycle order
-  (`data-testid="history-scope-option"` + `data-scope`, fuller labels than the badge itself — "This
-  chat" / "Workspace" / "Project" / "Everywhere" — with the current one check-marked). Picking one
-  calls `useHistorySearch.ts`'s new `setScope(kind)`, which resets the results selection exactly like
-  `cycleScope` — the `Ctrl+R` keyboard path (see the chord-ownership bullet below), since both just set
-  the same underlying scope
-  state. Radix's default on close is to return focus to the trigger; `onCloseAutoFocus` is overridden
-  (`preventDefault` + focus the query input) so a mouse pick hands focus back to the query input
-  instead — typing resumes immediately, no extra click needed. The menu is a **controlled** Radix menu
-  (`scopeMenuOpen`) for one reason: the overlay's window-level `Escape` stands down while it is open, so
-  Escape dismisses the innermost layer. The menu never
-  fights the overlay's own `ArrowUp`/`ArrowDown`/`Enter` handling: that handler is bound to the query
-  `<input>` element itself, and Radix's portaled dropdown content is a **sibling** subtree — never a
-  descendant of the input — so a keydown while the menu holds focus cannot reach the input's handler by
-  construction, not by a case-by-case guard.
-- **Chord ownership: `Ctrl+R` and `Escape` are not element-local.** Both used to be single-element key
-  handlers — `Ctrl+R` on the composer textarea, `Escape` on the overlay's query `<input>` — and both were
-  wrong for the same reason: they only fired while that one element held focus. Outside it, `Ctrl+R`
-  reached the browser and **reloaded the app**, and an overlay whose input had lost focus (a click back
-  into the composer, a row's icon button) had *no* keyboard dismissal at all. Now:
-  - **`Ctrl+R`** is owned by `shell/useGlobalHotkeys` — a window capture-phase listener that swallows the
-    chord app-wide (`preventDefault` + `stopPropagation`, so it has exactly one handler) and routes it via
-    `store.requestHistoryOpen(sessionId)` to the one mounted `ChatView` (`selectActiveChatSessionId`).
-    `ChatView` translates it: overlay closed → `composerRef.openHistory()` (identical path to the history
-    button — menus dismissed, draft-seeded); overlay open → `cycleScope()`. Neither `Composer` nor
-    `HistoryOverlay` carries a `Ctrl+R` branch any more. Deliberate exclusions: a keydown from inside a
-    terminal (`.xterm`) passes through untouched (reverse-i-search belongs to the PTY), and
-    `Ctrl+Shift+R` / `Cmd+R` are left alone so a keyboard reload stays possible.
-  - **`Escape`** is owned by `HistoryOverlay`'s own window capture-phase listener, registered only while
-    it is open. Capture + `stopPropagation` encodes "the topmost floating panel closes first" (a composer
-    slot session survives the dismissal rather than being cleared by the same keystroke). It stands down
-    while the scope picker is open — see the controlled `scopeMenuOpen` note above — so Radix's own
-    Escape closes just that menu. There is deliberately **no** click-outside dismissal.
-  - **Dismissal returns focus to the prompt field** (`ChatView.onDismissHistory` → the composer's
-    `refocus` handle): opening moved focus into the overlay's query input, and closing unmounts it, so
-    without this every post-Escape keystroke would land on `<body>` and be lost. The caret goes back where
-    it was (`Composer` tracks it on click/keyup/change), or onto the current slot's marker when a slot
-    session is live. Dismissal is the *only* close that routes through `onClose` — insert, jump, and
-    save-as-template each own where focus goes next (the composer, another chat, a dialog).
-- **History overlay: assistant-only messages + jumpable prompts** (`HistoryOverlay.tsx`,
-  `useHistorySearch.ts` — R3) — `MESSAGES` now only ever contains assistant-role hits (the server
-  filters; see `packages/server/src/history/SPEC.md`): a user-role hit is always a textual duplicate of
-  its own `PromptHit` entry, so the location it used to add moved onto the prompt row instead. Every
-  prompt row now renders a go-to-chat icon (`data-testid="history-jump"`, `aria-label="Go to chat"`,
-  an `IconTooltip` reading "⇧⏎ go to chat", next to the existing save-as-template icon) **when jumpable** —
-  `workspaceId` present and `messageIndex != null` (absent for an unmapped-cwd hit, or a host that
-  doesn't populate the prompt's anchor fields). Clicking it, or **`Shift+Enter`** while a prompt row
-  is the keyboard selection, routes through the exact same `onOpenMessage` path a message hit's
-  `Enter`/click already used — both now go through the shared **`jumpTarget(hit)`** helper
-  (`useHistorySearch.ts`, exported pure), which resolves either hit shape to a `ChatLocationRequest` or
-  `null`, so the icon's render gate, the `Shift+Enter` handler, and the message-hit gate can never
-  disagree on "is this jumpable." An unmapped/legacy prompt row shows no icon and `Shift+Enter` is a
-  no-op (overlay stays open) — the same belt-and-suspenders gating the message-hit path already had.
-  The icon itself stays hover-revealed (`group-hover`/`isSelected` opacity, like the save-as-template
-  icon beside it), but its shortcut glyph (`data-testid="history-jump-shortcut"`, literal `⇧⏎`) is a
-  **selected-only**, not hover-only, persistent `<span>` — the same precedent as the scope badge's `⌃R`
-  (always next to its label) — since a keyboard-only user, `Shift+Enter`'s own audience, never triggers
-  `:hover`. The save-as-template icon's own shortcut (`SAVE_SHORTCUT_LABEL`, `⌘S`/`Ctrl+S`) gets the
-  identical selected-only glyph (`data-testid="history-save-shortcut"`) for the same reason, symmetric
-  with the jump icon.
-- **Template slots** (the shared `prompt` module's parser/state machine + `Composer`'s geometry +
-  `ChatView`'s catalog/template-read wiring — the composer's Tab-through placeholder flow, end to end).
-  **Parsing** (`prompt`, pure): `parseTemplateSlots(body, argumentHint)` expands pi's own placeholder grammar (`$1..$n`,
-  `$@`/`$ARGUMENTS`, `${N:-default}`, `${@:N}`, `${@:N:L}` — pi's grammar, single owner; see
-  `packages/server/src/templates/`) into visible text plus `TemplateSlot` ranges;
-  `stripUntouchedSlots`/`shiftSlots` round out the session (strip-on-send, re-track-on-edit) — **parse
-  only**, this module never evaluates the grammar (a typed-through `/name args` prompt already expands via
-  pi's own `PromptOptions.expandPromptTemplates`, with or without this parser). **Observed** (the design's
-  "to verify" #3, resolved by `e2e/templates.live.spec.ts`'s typed-through test): pi's own transcript
-  records the ALREADY-EXPANDED body for a typed-through send, never the raw `/name args` —
-  `AgentSession.prompt()` substitutes args into `expandedText` before persisting the `role: "user"`
-  message, so a `session.getMessages` re-fetch (a reload, or reopening from history) shows the expanded
-  text. The one nuance: the web client's own immediate bubble is an **optimistic echo**
-  (`ChatView.onSubmit` → `appendUserMessage`, store-only, appended *before* the transport call resolves;
-  attached images ride along as content blocks so the bubble shows them — `UserTurn` renders image blocks
-  as compact "attached file" chips above the text (no inline preview; click opens the image in a dialog,
-  the diagram-fullscreen pattern). The chip label is the picked file's name, carried on the echo turn as
-  `attachmentNames` (UI-side only — pi's `ImageContent` has no filename), index-aligned with the image
-  blocks; a hydrated turn has no names and falls back to mime-type labels) —
-  it shows exactly what was typed (the raw command) until a re-fetch replaces it with pi's real persisted
-  record. **The `/` menu merge**
-  (`ChatView`): pi's `commands` snapshot (`session.getCommands`, frozen at session-create time) minus its
-  `source === "prompt"` entries, plus a fresh `template.list { workspaceId }` fetch mapped to
-  `SlashCommandInfo` rows (`source: "prompt"`, `sourceInfo` synthesized to match pi's own prompt-template
-  convention exactly: `{ path: filePath, source: "local", scope: scope === "global" ? "user" : "project",
-  origin: "top-level" }`) — one merged list. The chat prepends its one **browser-native command**,
-  `/compact [instructions]`, as a display-local `builtin` row labelled `Pi/built-in`; contracts' Pi-mirrored
-  command source stays unchanged. Native `compact` is reserved over an exact-name extension/template
-  collision (skill commands remain namespaced), and the exact Pi parser recognizes only `/compact` or
-  `/compact ` plus trimmed instructions — every near-miss remains an ordinary prompt. A compact submit
-  bypasses the optimistic user echo and every streaming send mode: completed draft images **or the queue's
-  host-authored `hasImages` aggregate** reject it in place with an actionable composer chip (draft + queue
-  preserved; pending draft images already hold all submits). Otherwise the command clears, drains
-  `session.clearQueue { requireTextOnly: true }` back into the composer in steering-then-follow-up order,
-  then calls `session.compact`; the host rechecks the image precondition at the destructive operation, so a
-  stale client or cross-client race still cannot drop queued bytes. The host atomically rejects a second
-  manual compaction while one is already in flight for that session; Pi owns abort, summarization,
-  persistence, and lifecycle. The request snapshots
-  existing compaction-turn ids, and a rejected clear/compact asks the store to append a failed compaction row
-  only when no new lifecycle turn appeared, so Pi's emitted failure and a pre-lifecycle wire failure share one
-  surface without duplicating. Existing live/hydrated compaction rendering is unchanged. When a
-  `template.list` response comes back **empty**,
-  `SlashCommandMenu` renders a `footer` nudge (`data-testid="slash-templates-empty"`) that
-  deep-links to Settings → Templates via `ChatView`'s `onManageTemplates` — the discoverability half of
-  the starter-templates offer (`panels/SPEC.md`), since a fresh install has an empty global prompts dir
-  and the manager is otherwise two clicks deep in a dialog. Gated on "no templates exist", never on "the
-  current query matched none", so a query that simply misses doesn't raise it; `footer` is optional, so
-  `NewWorkspaceDialog`'s reuse of the same menu is unaffected. **The gate is `ChatView`'s explicit
-  `templatesEmpty` prop — a resolved, empty listing — never `commands` having no `source === "prompt"`
-  row.** The merged list is equally empty *before* the first fetch resolves and *after* one fails (that
-  `.catch` is silent by design — a failed listing must not break the menu), so reading emptiness off it
-  would flash "you have no templates" on every chat's first `/` and strand that claim permanently after a
-  failed listing — over a row whose click also clears the user's slash draft. The fetch runs on
-  **every** slash-menu-open transition (**`onSlashActive`**, a boolean prop mirroring `onMentionQuery`'s
-  query signal — it stays `true` while the user types the query, so no per-keystroke refires) and is
-  deliberately **uncached**: prompt files change outside the app too (pi CLI, an editor, a git pull),
-  which no in-app invalidation counter can see — an earlier `(workspaceId, templatesVersion)` cache here
-  served exactly those externally-changed files stale for the rest of the chat, and the server re-reads
-  its dirs per call precisely for this freshness (its SPEC calls the readdirs cheap) —
-  this is what makes `packages/server/src/agent/SPEC.md`'s "the
-  composer's `/` menu path is always fresh via `template.list`" claim true, unlike the typed-through
-  `/name args` path's frozen create-time snapshot. **Picking a template** (`ChatView`'s `onPickTemplate`, a
-  `Composer` prop): instead of the plain `/name ` insert, fetches `template.get`, splits
-  frontmatter client-side (the `prompt` module's shared `stripFrontmatter` — pi's own frontmatter parser is
-  server-only, never reaches the browser bundle, but the boundary rule is pinned to match it exactly; see
-  the Save-as-template bullet below), runs `parseTemplateSlots(body, argumentHint)`, and hands
-  the result to `Composer` via **`ComposerHandle.insertTemplate`** (alongside the existing
-  `insertText`) — replaces the whole draft (like `pickSlash`, not `pickMention`: a slash command occupies
-  the entire input) and, if the parse produced any slots, starts a **slot session** selecting slot 0; no
-  slots → a plain insert, caret at the end, no session. The async response is applied only while the pick
-  is still **current** — newest pick wins AND the draft is byte-identical to pick time — so a slow
-  response can never clobber a draft the user typed (or a second template they picked) in the meantime;
-  while that selected-template read is pending, the shared picker disables Composer submission so a fast
-  Enter cannot send the raw slash token. The rule lives in `prompt`'s shared template-pick controller and is unit-tested for delayed and
-  out-of-order responses. **The session** (shared `prompt` state, held locally by `Composer`, with no
-  store/transport): `Tab`/`Shift+Tab` step to the
-  next/previous slot (wrap; `preventDefault`; a no-op while the mention/slash menu is open — checked at
-  the top of `onKeyDown`, before the menu's own key handling, so a real
-  Tab-to-pick-a-menu-item is unaffected, and symmetrically an `Escape` while the menu is also open lets the
-  menu's own dismiss win first). Stepping **out** of a *user-edited* slot (one whose text the
-  user actually changed — not an untouched marker, and crucially not an untouched `${N:-default}` either)
-  splices its current text into every other slot sharing its `group` whose text differs (group
-  mirroring — repeated `$N`/`${...}` occurrences propagate on slot exit, not per keystroke), each splice
-  re-tracked via the shared prompt slot state machine. A slot carries two independent
-  bits: **`filled`** (a parse-time property — has real content: a `${N:-default}`'s default, or a marker
-  typed into — drives strip-on-send + the tint) and **`edited`** (session runtime state — the user
-  changed it — the sole mirror-*source* gate). If the user collapses an untouched marker selection to
-  its end and types there, the visible marker plus typed suffix becomes filled and is preserved on send:
-  this is WYSIWYG, and stripping the grown range would delete the user's text with the marker. They are
-  deliberately distinct: `${1:-foo} … ${1:-bar}` is born `filled` but not `edited`, so its two differing
-  per-occurrence defaults stay independent until the
-  user provides the argument by editing one — matching pi's own expansion, which never rewrites
-  "foo … bar" to "foo … foo". `Escape` ends the session
-  (`setSlots(null)`), leaving the text as-is. A genuine text edit (the textarea's own `onChange` — never a
-  programmatic `onChange(text)` call; those end the session outright instead, since none of
-  `pickMention`/`pickSlash`/arrow-recall/`insertText` participate in slot tracking) diffs the old/new value
-  around the post-edit `selectionStart` (a common-prefix/suffix scan) into `(editStart, removedLen,
-  insertedLen)`, re-tracks every slot via `shiftSlots`, and flags the slot the edit landed in
-  `filled: true` **and** `edited: true`; an edit that consumes the **entire** prior value (a
-  select-all-and-type/delete) ends the session instead of re-tracking a now-meaningless collapsed range
-  set. On send, `submit()` runs the same group-mirroring pass over **every user-edited slot**, not just
-  the one most recently Tab-exited (`mirrorAllGroups` — a direct Send never has to go through Tab first for
-  its mirroring to take effect), propagating each into its same-group siblings; only **then** does it strip whatever markers are
-  still untouched (`stripUntouchedSlots`), and always clears the session — sent **or** queued
-  (steer/followUp), same rule. Switching tabs needs no
-  explicit cleanup: the workbench visibility gate mounts only a group's locally selected body, so leaving a
-  chat tab unmounts `Composer` (and its session) while the store's `draft` text itself persists. **Hint chip**:
-  while a session is active (and the menu is not, so the two absolutely-positioned overlays never share
-  the same anchor rect), a small pill above the textarea — `slot {slotIdx+1}/{n} · ⇥ next · esc done`
-  (`data-testid="slot-hint"`) — clickable, tap steps to the next slot (same mirroring rule as `Tab`), the
-  mobile path with no keyboard needed. **Highlight backdrop**: while a session is active, the composer's
-  gaps are visually tinted in the message field itself — a native `<textarea>` can't style text ranges
-  inside it, so `Composer` renders a **highlight-backdrop** (a styled mirror layer positioned behind a
-  now-`bg-transparent` textarea; the input background moves up to the wrapping container instead, clipped
-  to the same `rounded-md` so nothing changes visually outside a session). That wrapper
-  owns the input border and fill: `bg-clip-padding` keeps the backdrop tint inside the rounded border,
-  while `focus-within:border-control-border-active` is the composer's sole focus indicator rather than a
-  second accent ring on the textarea. The pure `highlightSegments(value, slots, activeIdx)`
-  (from the shared `prompt` module) breaks `value` into ordered
-  plain/unfilled/filled/active runs — a slot range is `"active"` when its `slots` index is `activeIdx`
-  (`Composer`'s own `slotIdx`), else `"unfilled"`/`"filled"` per its own `filled` flag; everything else is
-  `"plain"` — pure offsets/slices, no empty segment for zero-gap-adjacent slots, and the tests pin
-  `segments.map(s => s.text).join("") === value` in every case. The backdrop's inner mirror div matches the
-  textarea's box model **exactly** (`px-12 py-8`, the same `tr-text-ui` typography class, a
-  `border border-transparent` of the same width so the content box lines up,
-  `whitespace-pre-wrap break-words` — spelled out explicitly since a `<div>`, unlike a `<textarea>`,
-  doesn't soft-wrap this way by default) so each `SlotSegment`'s tint span
-  (`data-testid="slot-highlight"` + `data-slot-state`, `rounded-xs` — the text-run radius
-  tier — with `bg-primary-soft`/`-muted`/`-subtle` for
-  unfilled/active/filled, no tint for plain, every span `text-transparent` so only the real textarea text
-  above shows through) lands exactly under its own characters. **Scroll sync**: the textarea's `onScroll`
-  copies its `scrollLeft`/`scrollTop` onto the backdrop's outer `overflow-hidden` layer **imperatively**
-  (a ref — no state, no inline `style`: a programmatic scroll offset needs no styling at all, so the
-  repo's token-utilities-only invariant holds with zero exceptions; an earlier version tracked the
-  offsets in state and applied a `translate(...)` inline style, which both violated the invariant and
-  re-rendered the composer on every scrolled frame). The backdrop's **ref callback** seeds the offsets at
-  mount, so a session starting in an already-scrolled composer never paints even one frame misaligned.
-- **Native `/name`** — the browser-native command catalog gains
-  `/name <title>` beside `/compact`, labelled `Pi/built-in` and reserved over an exact-name extension or
-  prompt-template collision to match pi's own command. The parser reserves both bare `/name` and
-  `/name <title>`; a valid argument bypasses the user-message echo and agent send, calls `session.rename`,
-  then clears the composer. Blank/over-limit input stays in the composer with an actionable validation error;
-  transport rejection keeps the durable title unchanged and surfaces as an in-chat error. The command is
-  hidden against a host older than the session-rename feature constant. It is the keyboard path to the same
-  domain mutation as the shell's tab/history controls—never a separate title source—and automatic generation
-  has no ChatView spinner or transcript row.
-- **Save-as-template + template management** (`TemplateEditorDialog.tsx`; `HistoryOverlay`'s save action;
-  `panels/TemplatesSettings.tsx`) — one shared create/edit surface for prompt-template files, reused by two
-  entry points that never talk to each other: the Settings → Templates panel (list + New/Edit/Delete, see
-  `panels/SPEC.md`) and the history overlay's save-as-template action below. **Why this lives in `chat/`,
-  not `panels/`** (a deliberate boundary exception, alongside `ChatView.tsx`/`useHistorySearch.ts` above):
-  `panels/` is allowed to import from `chat/` (already does, for `ModelEffortPicker`/`ModelSelector`/
-  `ThinkingSelector`/`Markdown`) but never the reverse, and `HistoryOverlay` — which needs this same dialog — lives in
-  `chat/`, so the one shared implementation has to live where both sides can reach it. `TemplateEditorDialog`
-  is therefore promoted to a **third** sanctioned store/transport-touching integration piece (see Boundary
-  below), even though it isn't `ChatView` itself.
-  - The `prompt` module's **template-text API** is the single shared frontmatter splitter/assembler — `stripFrontmatter`
-    (`ChatView.tsx`'s composer-pick path + this dialog's body field), `assembleTemplate` (this dialog's
-    save). It does **no YAML value parsing**: the dialog's description/argument-hint fields are populated
-    from the server-parsed `template.get` response (`Template` — pi's real YAML parser over the **full
-    file**, full scalar-style fidelity, pinned in
-    `packages/server/src/templates/templates.test.ts`), never from a browser-side reimplementation (an
-    earlier `splitTemplate` here handled only bare/double-quoted scalars, so a pi-native
-    `description: 'single-quoted'` loaded into the form with literal quotes and saved back corrupted).
-    Its boundary
-    rule mirrors pi's own `extractFrontmatter` (`@earendil-works/pi-coding-agent`'s
-    `dist/utils/frontmatter.js` + `dist/utils/text.js` of the catalog-pinned pi — the same facts
-    `packages/server/src/templates/SPEC.md` relies on server-side; re-verify both on a pi bump): strip
-    one leading UTF-8 BOM, normalize newlines, then end the frontmatter block at the FIRST later `\n---`
-    line; the body is everything after that fence run through `.trim()` — not a single optional `\n`.
-    A prior version had two independently hand-rolled regex splitters (one per file), each consuming only
-    one *optional* `\n` after the closing fence instead of trimming — a
-    leading blank line leaked into the body on every pick and every edit-reopen, and **compounded** by one
-    more `\n` per edit-save cycle (the leaked line got saved back into the body field and re-wrapped the
-    next save). `templateText.test.ts` pins the round-trip/stability properties this fix depends on.
-  - **Fields**: name (validated client-side against the exact same rule as the server's
-    `isValidTemplateName`, `packages/server/src/templates/templates.ts` — duplicated rather than shared,
-    since it's a 4-line pure predicate and the server module is server-only), a scope radio (Global / This
-    project; "This project" is disabled with no active workspace), description, argument-hint, and a body
-    `Textarea` with a static one-line syntax hint (`$1, $ARGUMENTS, ${1:-default} — pi prompt-template
-    syntax`; the real grammar is parsed by the `prompt` module / expanded by pi — this line is documentation
-    text only, not itself parsed).
-  - **Assembly**: `---\ndescription: …\nargument-hint: …\n---\n\n<body>`, omitting either key when its
-    field is empty, and **no frontmatter block at all** when both are empty **and the body doesn't start
-    with `---`** — a body that does gets an explicit (possibly empty, `---\n---\n\n`) block forced anyway:
-    saved bare, pi's own loader (and our splitter) would go hunting for a *later* `\n---` line inside that
-    body to treat as a closing fence, silently swallowing real content as YAML the moment the body
-    contains one; forcing the wrapper makes our own fence the earliest possible match unconditionally, so
-    the body's own `---`-looking lines are never reinterpreted (see `templateText.test.ts`'s
-    ambiguous-body case). Each value is emitted `JSON.stringify`-quoted rather than bare — YAML's
-    double-quoted scalar escape set is a superset of JSON's, so this is always valid YAML without pulling
-    in a `yaml` package just to serialize two short strings (see the seed fixture's own `argument-hint:
-    "[file] [scope]"`, quoted for the same reason: an unquoted value isn't always valid YAML).
-  - **Editing an existing template locks its name + scope** (both fields disabled): `template.save` is
-    create-or-overwrite keyed by `(scope, name)` with no rename/move primitive, so changing either while
-    editing would silently orphan the old file on disk instead of renaming it. Creating new (including
-    save-as-template) leaves both fully editable. **An edit saves under `template.name` verbatim — never
-    trimmed or normalized**: whitespace-bearing names are server-legal *by design* (pi derives a
-    template's name from its filename verbatim, so a hand-created `report .md` lists as `report `;
-    `packages/server/src/templates/templates.ts`'s gate deliberately accepts every pi-listable name), and
-    trimming on save wrote a NEW `report.md` while leaving the file being edited untouched
-    (reviewer-flagged; `templates-manage.spec.ts` pins the round-trip). The Save button's emptiness gate
-    is new-mode-only for the same reason — a whitespace-only hand-created name is a legal edit identity.
-    Only a **new** template's typed name is trimmed before validation/save: deliberate form
-    normalization, so an accidental trailing space can't mint a file that renders identically to its
-    trimmed twin in every listing (the composer's `/` menu can *use* such hand-created names via click,
-    but a typed `/name` token can't carry a space — the UI shouldn't manufacture second-class names).
-  - **Edit-open fetches the full template** via `template.get`, pinned to the row's exact `(scope,
-    name)` — `template.list` is metadata-only by design (bounded head scans + a size cap, see
-    `packages/server/src/templates/SPEC.md`), so the listing row can't provide the body, and — the part
-    that bit — can't be trusted for metadata either: a file whose frontmatter closing fence sits past the
-    listing's scan window *legitimately* lists with **no** description/argument-hint. The `get` response
-    is therefore **authoritative for every field**: body via `stripFrontmatter(content)`, and
-    description/argument-hint from its full-file parse, replacing the listing-row values that only *seed*
-    the form for instant paint. (Reviewer-flagged data loss otherwise: seeding from the degraded row and
-    writing those fields back on Save meant a body-only edit silently deleted the file's real
-    description — `templates-manage.spec.ts` pins the round-trip.) Until the fetch resolves, the
-    description/argument-hint/body inputs are disabled and Save is gated (`loading`) — an early save
-    would overwrite the file with the degraded seed; a failed fetch keeps Save gated for the same reason
-    (error shown inline, retry by reopening).
-  - **Save** calls `template.save` then the store's `bumpTemplatesVersion()`; a rejected save renders its
-    message inline via `data-testid="template-error"` (never a toast — the dialog stays open so the error
-    is fixable in place). **Delete has no dialog involvement at all** — `panels/TemplatesSettings.tsx`'s
-    row calls `template.delete` + `bumpTemplatesVersion()` directly, behind a `ConfirmPopover` anchored to
-    the row's own Delete button. A **rejected
-    delete** is the one deliberate asymmetry with Save: it surfaces as an error toast, not inline (there's
-    no dialog to render inline into), leaving the row in place — the same pattern `panels/SPEC.md`
-    documents for `ProjectTree`'s own workspace-remove row.
-  - **Save-as-template** (`HistoryOverlay`'s selected-prompt-row action, `data-testid="history-save-template"`,
-    keyboard **Cmd/Ctrl+S** while a prompt row is selected — the overlay's `onKeyDown` always
-    `preventDefault`s the combo, so the browser's own Save dialog never opens regardless of what's
-    selected, but only fires the action when the resolved selection is a prompt hit) opens the dialog with
-    the body prefilled from that prompt's text — a "new template" case (no existing name/scope identity),
-    same as clicking New. **The composer-overflow entry point was dropped as YAGNI** (the plan's own word)
-    — the history path already covers "reuse what I already wrote"; a second entry point for the same
-    "type it, then decide to save it" gesture would be redundant surface, not a distinct use case.
-  - **Edit-as-file** — project-scoped rows only get an `Open as file` action (`panels/TemplatesSettings.tsx`),
-    reusing `openTabs.ts`'s exact `openFileInTab(workspaceId, ".pi/prompts/<name>.md", "keep")` (the same
-    action file-tree clicks use) — at the **`keep`** intent deliberately, since an explicit "open in editor"
-    must not land in the preview slot a later browse click would silently replace (see `panels/SPEC.md`'s
-    Preview tabs bullet) — then `store.closeSettings()`. **Global rows are dialog-only** — a deliberate
-    asymmetry, not an oversight: file layout references are worktree-scoped, but a global template lives
-    under the host's agent dir, outside any worktree, so there is no
-    worktree-relative path to open it at.
-- **Plain `↑` recall + history button** — `Composer`'s `recentPrompts` prop (`ChatView`: this chat's own
-  user-turn texts via `turnAnchorText`, newest first, deduped **keeping the newest occurrence** — the same
-  recency-first ranking rule as the server history index, the atuin/fzf convention) backs a lightweight
-  recall session (`recallIdxRef`) gated so it can never eat a draft: `↑` only steps in when the field is
-  **empty** or a recall is already active (older → higher index), `↓` steps newer (past the newest
-  restores `""`), any diverging edit or a submit exits the session, and the recalled text lands with the
-  caret at its end. The session index is a **ref, never state**: nothing renders from it, and stepping
-  writes the index *here* while the draft goes through `onChange` to the **parent's** store, so as state
-  the two could commit in separate passes. In that window the textarea already showed the recalled text
-  while still carrying the previous render's handlers and their stale index — a second `↑` re-recalled the
-  same entry instead of stepping, and an edit failed to end the session, so the next `↑`/`↓` stepped from
-  the live index and **overwrote what the user had just typed** (the loss `replaceDraft` guards against on
-  the insert paths, arriving through the keyboard path instead). A ref reads at its last written value, so
-  commit ordering cannot enter into it. Handlers take **one snapshot per event** — the ref cannot change
-  inside a synchronous handler, and one read stays narrowable where repeated `.current` reads do not. A `History`-icon ghost button (`data-testid="history-open"`, `aria-label="Search history"`,
-  tooltip of the same name, always rendered next to send) calls the same `openHistory` the global `Ctrl+R` reaches — the tap path
-  on mobile, a discoverability affordance on desktop.
-- **Chat TODO plan** — the chat's `pi-todos` list, surfaced in the TODO rail and the Plan page (engine:
-  [[module-pi-todos]]; host read/write: [[submodule-server-todos]]):
-  `useChatTodos` (the `todo.*` data hook — fetch + live `pi.event` refetch + edits + the add-nudge + the
-  **review-snapshot refetch** (the plan's review
-  decoration is host-derived, so a change to the workspace's review comments, e.g. deleting a finding that
-  clears a step's `changes_requested`, re-reads the plan) + the
-  `openMarkdown` snapshot action; tool completion refreshes immediately and `agent_settled` supplies the
-  final refresh; overlapping list reads are latest-wins and connection-generation stamped, accepted adds
-  fold by item id; `remove` patches the row out optimistically and, when the host rejects it, reloads
-  authority and raises an error toast; plus the agent-review ops `startReview` (`todo.startReview`) and
-  `reviewAll` (`todo.reviewAll`) — both re-read the plan, since the review decoration is host-derived
-  and never patched locally; the manual-verdict ops were removed with the plan page's manual mode —
-  `todo.review`/`todo.requestFix` remain on the wire, host-side), `planView` (pure derivations over the DTO: `groupProgress`,
-  `planSummary`, `planGlance`/`sessionGlance` (memoized on its inputs' identities, so a store selector can
-  return it as a primitive without re-deriving ask states on unrelated updates), `planSections`,
-  `shouldNudgeOnAdd`, and the review-trail
-  set — `itemRevisions` (the commit history, 1 TODO = N commits), `reviewableItems`/`reviewProgress`
-  (host-gated by `TodoItem.review` presence — the reviewable rule has ONE home, server-side; the set
-  spans the plan's items **and** `TodoPlan.adoptedCommits`, so the Review stage/Review All cover
-  committed-outside-the-plan work, while `planSummary`'s build `done/total` counts planned items only),
-  `reviewChangesRequested` + `itemOpenFindings` (the changes_requested warning marking: the flag and
-  the count of the reviewer's open comments — matched by the finding's `origin` provenance
-  (todoId + optional sessionId) when stamped, falling back to the change-set path join only for
-  provenance-less comments, so two steps touching one file don't count each other's findings; the
-  Review tab is the truth), and
-  `planCompletionSummary` (the agent's plan-level note gated on "everything done", so a re-opened plan
-  never leaks a stale all-done note into ungated outputs — it feeds the markdown export; the plan page also
-  shows a derived one-line recap, see `panels/SPEC.md`) and its plan-page-only companion `planStaleSummary`
-  (the same stored note surfaced, marked stale, once an item re-opens after a completion, so the recap
-  persists on the page instead of vanishing until the agent rewrites it) and `planChangeTotals` (the whole-plan distinct-file count
-  behind that recap). `itemChangeSet`'s precedence: live `change` paths win (a fallback redo's
-  latest delta), else the NEWEST resolvable commit. A group's *status* is
-  **not** derived here — the host computes it and ships it on `TodoGroupItem.status`, so the rule has one
-  home; a user edit therefore re-reads the plan rather than patching it locally, see `useChatTodos`), `TodoList` (the
-  **status-ordered, group-first** rendering (`planSections`) — group = task: the **in-progress** task
-  (its whole group) on top with **no section header**, then a **To do** section (the pending groups,
-  then the user's pending loose items), then a **"Done" label** at the very bottom under which **each
-  finished task is its own foldable row** (collapsed — title + `N done`) plus the done loose items (not
-  one collapse over all of Done). Finished *steps* stay inline in their (active/pending)
-  group; only whole done tasks move to Done. Each group is a header row (derived status icon + title +
-  done/total badge), the `active` group emphasized; the user's loose items carry a per-row `user` badge
-  (no separate "Your requests" header — they're placed by status). **The compact list is title-only**
-  (status glyph + title + the change-set chip) — a row's `note`, a done item's agent-authored `summary`,
-  and its `verification` are **not** shown here, so a long plan reads at a glance without overloading;
-  the **full plan page** (`PlanPane`) is where those surface: the `summary` as **Markdown** (a muted
-  structured note — lead + bullets) and the `verification` as the shared **`VerificationBadge`**
-  (`planKit`; a status glyph — check for a named check, warning for an honest "not verified", the split
-  derived by `planView.verificationStatus`, ONE home — beside the verification rendered as **Markdown**,
-  so several checks read as bullet points instead of one run-on line; the badge's title labels it
-  self-reported — never a host-run gate). The plan page has no in-page review list
-  — its header kebab offers **Review All** (host-side queue, `todo.reviewAll`) and a comment chip that
-  focuses the right-panel Review tab (see `panels/SPEC.md`). A row whose review is **settled** (`planView.reviewSettled` — approved and
-  nothing landed since) upgrades its done check to the **circled Verified glyph**
-  (`StatusIcon reviewed`, hover "Verified", `data-reviewed`) — the at-a-glance "this step was
-  reviewed" state, rail and plan page alike; a **changes_requested** verdict flips the glyph to the
-  warning `CircleAlert` instead (`StatusIcon changesRequested`, hover "Changes requested",
-  `data-changes-requested`) — the plan page adds the chip + feedback note (see `panels/SPEC.md`). **A row whose item carries a host
-  change set grows a quiet "N files" chip** (`itemChangeSet` in `planView` — the one derivation shared
-  with the markdown snapshot below, so the two can never disagree): a **committed** item's chip opens the
-  Changes panel at its `commit:{sha}` scope via `useChatTodos.openChanges` (`setDiffScope` + a
-  shell `reveal-tool` intent — the panel lists the commit's files itself; N = the DTO's host-derived
-  `commit.files`); the **path-list fallback** deep-links a single path's live diff directly (pinning the
-  scope back to `branch` first, so it can't inherit a commit scope a previous click left behind) or
-  expands an inline path list. A commit artifact whose sha no longer resolves ships **no `files`** → no
-  chip, never a broken diff tab (the degrade contract). Plus the add-row + an **"Open the plan page"**
-  button (`todo-open-plan`) — `useChatTodos.openPlan` opens (or focuses) the chat's **live plan page**,
-  a center `plan` tab rendered by `panels/PlanPane` (see `panels/SPEC.md`); its heading resolves the
-  chat's name through the store's `selectChatTitle` (one home, shared with the pane). **Status ordering is UI-only** — the agent's `formatPlan` stays plan-order so its
-  "work in order" discipline is unaffected), `planMarkdown` (a pure `plan →
-  markdown` compiler, `## <group> — n/m` sections — the plan page's **export** (copy / save-as-.md),
-  never an interactive surface: a done item's change set renders as its short sha + `N files · +A −R`
-  and status-lettered per-file rows, **plain text, no links** — an export leaves the app, where a link
-  scheme would be dead; interactive navigation is the plan page's job. It also emits a
-  **`## Committed outside the plan`** section for `TodoPlan.adoptedCommits` (mirroring `## Outside the
-  plan` for `unattributed`), so the export covers branch commits no step owns; the `No items yet`
-  placeholder is suppressed when either section is present). The compact TODO list is a side-rail
-  tool (`panels/PlanRailPane.tsx`, see [[submodule-web-panels]]) and the Plan page is a center tab
-  opened via `openPlan`; the chat view itself renders no plan surface. The **auto-summary trigger**
-  (a fully-done plan with no agent `summary` fires one best-effort `todo.generateSummary` that folds a
-  host-drafted note in — re-armed if the plan re-opens or its summary clears, never overwriting an
-  existing note) is the side-effect-only hook `useAutoPlanSummary(workspaceId, sessionId)`, mounted by
-  `shell/WorkspaceWorkbench` through one `PlanSummaryAutoDraft` anchor per unique sessionId of any open
-  session-backed tab (chat, the live Plan page, the markdown plan `doc` export) via
-  `editorSessionId(tab)`, so it fires regardless of which tab is selected or which plan surface is
-  open. Plan writes signal other mounted `useChatTodos` instances for the same chat to refetch.
-  Frontend-local workspace view state
-  persists the Plan page as a registered `todo-plan` reference (resolver kind + session identity,
-  never plan content); another
-  client may explicitly reopen the same live page from the host-owned TODO plan without inheriting placement. (An earlier design compiled the plan to a
-  static markdown `doc` tab with a custom `thinkrail-diff:` link scheme — replaced: a snapshot lies the
-  moment the agent flips a status, and markdown can't carry the Changes-panel affordances; the page is live
-  and markdown is demoted to its export.)
-  **The glance state** keeps the plan honest as the user's status window: the memoized `sessionGlance(runtime)`
-  selector (which runs `planGlance` over the session's streaming flag + ask-state), read by the TODO rail
-  and layered over the host `SessionState` via `hostSessionGlance`, **never stored**, so the agent can't make it
-  lie — renders the `in_progress` step as working (dot), **waiting for your answer**
-  (`MessageCircleQuestion` — the same glyph as the `ask_user_question` card, while a live tool blocks or a
-  restart-repaired session awaits), or **paused** (`CirclePause`, any other stop: turn ended, error). A stop with no
-  pending question never claims the user owes an answer. The glance's working/waiting lifecycle comes
-  from the normalized host `SessionState` — in the TODO rail and, through `sessionGlance`, in the Plan
-  and Review panels — so a chat idle on its background commands or subagents reads as working (`isSessionWorking`); the transcript-derived glance is only the older-host
-  fallback. `askStates` remains only to identify and render the exact questionnaire/recap. **Unread results clear when seen** (no read gesture): `ChatTranscript`
-  acknowledges the exact unread completion while the window has focus and is visible, the chat is
-  attended (`selectChatAttended`: selected in the last-focused center group of the active workspace, no
-  history overlay open or requested for it), neither the Resources inspector nor an open modal dialog covers the transcript
-  (`useModalLayerOpen` from `@thinkrail/ui/dialog`, which marks every modal overlay), and the
-  transcript follows the latest edge (`followState`), once that exact result row has
-  rendered (`selectReadyCompletionAck`). A result landing while the user follows never stays lit; one that
-  lands while they read history, sit in another group, or are away clears when they return to the latest
-  edge of that chat; opening a chat that lands at the latest edge clears it immediately. A passively
-  visible neighbour pane or an unfocused second client never clears another reader's marker. Transient
-  acknowledgement failure retries with a bounded capped-backoff budget; re-entering the seen state rearms
-  that exact id.
-  `TodoList` stays props-driven — it receives the resolved glance, never reads the transport.
-  Its section label + pending/active/done status glyphs live in **`planKit.tsx`** — shared
-  presentational atoms the Review panel (`panels/ReviewPanel`) reuses so both "work items in
-  sections" surfaces read identically.
-  **The add-nudge respects that waiting state.** A user add always stores the item (loose, at the end).
-  On protocol v73+, `session.nudge` makes the host-authoritative blocker/execution decision atomically:
-  needs-input no-ops, running queues, and idle prompts. Independently shipped clients retain the prior
-  glance-based prompt/follow-up plus hydration fallback only for older hosts; the compatibility path skips
-  an awaiting question rather than waking the agent past its blocker.
+- **对话记录/外壳拆分** —— `ChatView`（导出的集成组件）拆成一个隔离频繁变动的 `ChatTranscript` 子组件，
+  它拥有每次增量的对话记录渲染——（通过 `useShallow`）订阅它所渲染的流式运行时字段（turns、
+  toolResults、currentAssistantId、askAnswers、turnIdByMessageIndex、isStreaming、settlementTick、
+  hostState、syncedConnectionGeneration、eventRevision）——并拥有滚动容器与行——外加一个外壳，只读
+  细粒度的、很少变化的字段，因此文本/思考/工具的增量不再重渲染头部/输入框/队列/对话框；完成 ack、
+  位置揭示以及提问焦点 scope 住在子组件里（一次内部重构；`ChatActions`/`AskStatesContext` 由
+  `ChatTranscript` 提供）。外壳仍然读取 `turns`/`askAnswers`/`toolResults`，但只通过浅比较的派生选择器
+  （最近的提示词、计划一瞥），这些选择器在流式增量之间保持稳定，因此它不会因它们而重渲染。
+- **结构化工具文件导航** —— `ChatView` 接受外壳传来的可选 `onOpenFile(path)`，并把它透传给每条
+  `ToolRenderProps` 路径（常规、主要、卡片或 bare）。共享的工具文件原语只为非空相对路径，或被
+  `workspaceRoot` 包含的绝对路径提供该动作；URL、逃逸出工作区的相对路径与外来绝对路径保持为可选中文本。
+  渲染器只从明确的工具参数/详情取候选——绝不用正则去猜 Bash 输出、代码或散文。独立渲染器没有回调，因此
+  保持惰性。该回调的预览槽语义属于 [[submodule-web-panels]]。
+- **`ChatActions`** —— 一个 React context（由 `ChatTranscript` 提供，独立时 `null`）：渲染器如何**回话**给
+  agent——或请求集成层打开某个东西——而不导入 store/transport。今天有：`answerQuestion(toolCallId,
+  result)`——当宿主拒绝（未知/已作答/已被取代的调用）时它会拒绝，失败 UX 归调用方所有——外加
+  `focusComposer()`，供一个*自己*就把自己解析掉的渲染器使用：它卸载了用户当时站着的那个控件，否则焦点
+  会落到 `<body>` 上、吞掉随后的每一次按键（正是历史浮层的解除后重新聚焦所避免的那种错位）。只有卡片
+  自己的回复路径调用它，且只在卡片仍持有焦点时。外加 `openSubagentTranscript(childSessionId)`——子代理
+  卡片的对话记录链接（没有 provider → 卡片隐藏该动作）。
+  可选的 MCP 动作——`readMcpOutput(toolCallId)`（本聊天的 `mcp.readOutput`）、`openMcpSettings()`
+  （Settings › MCP servers）与 `openProviderSettings()`（provider 支持的认证用 Settings › Providers）
+  ——由 `ChatView`（经由 `ChatTranscript` 的 provider）只在支持 MCP 的宿主上提供；没有它们时（更旧的宿主、
+  计划页面的 provider，或 `null`）MCP 卡片会隐藏 Full output 与 Sign in
+  （[tools/mcp/SPEC.md](tools/mcp/SPEC.md)）。
+- **子代理对话记录视图**（`SubagentTranscriptDialog.tsx`——一个集成文件，像 `SkillsDialog` 那样）：
+  `SubagentTranscriptPane` 用同一套原语（`messagesToRuntime` → `deriveRows` → `ChatTurnView`）渲染一个
+  隐藏子代理的**只读**对话记录，经由以 `(workspaceId, parentSessionId = this chat, childSessionId)` 为键
+  的 `subagent.getTranscript` 抓取；同一文件里的对话框把该面板包成浮层，供子代理卡片的
+  `ChatActions.openSubagentTranscript` 使用，而 Resources 检查器把该面板嵌为它的子代理详情。两者都渲染在
+  一个 `null` 的 `ChatActions` provider 之下，因此里面的任何东西都无法回话（也不可能存在嵌套的对话记录
+  链接）。活性随每个响应来自**宿主**：`subagent.getTranscript` 携带该运行当前的注册表 `status`（宿主不再
+  知道该运行之后——重启、dispose——则为缺省）。挂载的面板保持恰好一次在途读取，只在状态为 queued/running
+  且收到响应之后才调度下一次约 2.5s 的轮询——绝不来自本聊天自己的运行时（它冻结的后台 ack 无法区分一个
+  活跃运行与一个丢失于重启的运行）。终态/缺省状态，或线上协议永久的 `SUBAGENT_TRANSCRIPT_NOT_FOUND`
+  会停止；普通传输失败在面板保持挂载时以封顶退避重试。轮询快照以子作用域 id 水合，这些 id 由每条持久化
+  消息的 role/timestamp/index 派生，因此只追加的刷新能保住行身份与手动折叠，而不是重新挂载对话记录。
+  它在该运行期间、完成之后，以及宿主重启之后都能工作（对话记录持久化在磁盘上；只有内存注册表会丢失——
+  而它的缺失恰恰是让轮询停止的东西）。
+- **`askState`** —— 问卷生命周期接缝：纯函数
+  `deriveAskStates(turns, askAnswers, toolResults)` + `AskStatesContext`/`useAskState`（由 `ChatTranscript`
+  提供，也由计划页面的 `PlanAskQuestion` 提供，以便同一张 `AskUserQuestionCard` 可以从计划里作答——见
+  `panels/SPEC.md`；独立时 `null`）。一次活跃的阻塞提问通过它的原生工具结果解析；一个重启后被修复的合格
+  ack 稍后通过 `ask-user-answers` 解析；一次用户直接打字越过的活跃提问会原生返回同一个 ack，因此
+  “已被取代”（ack + 之后的用户轮次）无论会话是实时的还是恢复的，读起来都一样；stopped/error/length
+  结果则是终态，因为 Pi 从不执行来自被 length 截断的 assistant 响应的工具。“已作答 / 已被取代 / 已停止 /
+  等待中”因此从全部三个对话记录投影中派生一次，并被卡片与计划一瞥消费，使两者在其他地方都保持 props
+  驱动。同一条接缝还提供一个不透明的**按挂载的 ChatView 焦点作用域**：一张等待中的卡片在该作用域内只
+  认领一次注意（因此 Virtuoso 的重新挂载无法偷走焦点），而全新的挂载会创建新作用域、并可能再次聚焦那个
+  仍然待答的问题。“全新挂载”比关闭/重开聊天更宽：`CenterTabs` 只渲染活跃标签页的主体，因此**每一次切回
+  聊天标签页**——从文件、从 diff、从另一个聊天——都是一个新作用域，并会为仍在等待的问题重新认领注意。
+  这正是预期的读法（你回到了需要你的那个聊天），而不只是一个副作用。它不携带任何 store 或 transport 状态。
+- **水合**（`hydrate.ts`）—— 纯函数
+  `messagesToRuntime(TranscriptMessage[], lastSettlement?, { idScope? })` 转换器（事件 reducer 的读取侧
+  对应物）：从持久化的对话记录重建 `{ turns, toolResults, askAnswers, turnIdByMessageIndex }`（一个
+  `HydratedRuntime`），使重连/第二个客户端渲染得与实时路径完全一致（相同的 `raw` 结果形状）。一次性消费方
+  保留新铸的 id；重复快照的消费方提供它的会话作用域，为持久化的轮次派生稳定的 role/timestamp/index id。
+  当提供了 `lastSettlement` 时，以实时摘要的它为准；否则只有最后的对话式 assistant 能合成一个
+  error/length 轮次。被压缩掉的历史 length 尝试后面跟着更晚的消息时仍是历史，而不是一条陈旧的当前警告。
+  两条路径上同一条重试呈现规则：pi 会持久化一个被取代的自动重试尝试（“keep in session for history”），
+  而实时 reducer 在 `auto_retry_start` 时已丢弃它，因此水合会隐藏一条后面紧跟着另一条 assistant 消息的
+  出错 assistant 消息——正是 `_prepareRetry` 产生的相邻形状（`isRetriedAttempt`）；一个终态失败——出错的
+  assistant 后面跟着一条用户消息或什么都没有——保持可见，它的失败由尾随的、由落定派生的错误轮次报告。
+  它还返回 `turnIdByMessageIndex`（消息位置 → 铸造的轮次 id）——历史搜索的“跳到消息”深链
+  （`chatLocationRequest`，见 `store/SPEC.md`）所解析的跳转锚点映射；对 `toolResult` 或非轮次的 `custom`
+  消息，条目为 `null`（一条 `subagent-completion` 消息映射到它自己的完成轮次的 id；即使没有文本，它也
+  永远不是锚点匹配），而对 `compactionSummary` 同样如此（它自成一轮，但绝不是搜索命中——宿主的索引
+  消耗同一个槽位，因此两者保持对齐）；而以 `stopReason: "error"` 结束的消息映射到它自己的 assistant 轮次
+  的 id，绝不是合成的错误轮次的 id。`custom` 消息：`ask-user-answers` 索引进 `askAnswers`（绝不是轮次——
+  问卷卡片是它的渲染）；`subagent-completion` **变成它自己的 `subagentCompletion` 轮次**（完成卡片是按
+  对话记录位置放置的，因此它同样映射自己的消息索引）；`todo-review-fix` **变成它自己的 `reviewFix`
+  轮次**（同样的定位）；未知的 customType 被忽略。不碰 store/transport/shiki。
+- **跳到消息**（`chatLocationRequest`——在一条已映射的消息命中上按 Enter 时由 `useHistorySearch.ts` 的
+  `openMessage` 设置；store 层的请求/清除契约与工作台外壳集成的打开/重开/水合半边见 `store/SPEC.md`）
+  —— `ChatTranscript` 是唯一的消费方。一旦 `rows.length > 0`，它就通过 `runtime.turnIdByMessageIndex`
+  解析请求的 `messageIndex`（该映射只存在于*已水合*的运行时——实时/已打开会话的运行时由事件 reducer 构建，
+  从不携带它），回退方案是扇描 `turns` 找出自身文本包含 `anchorText` 前缀的最新一条——同样的回退也覆盖
+  一个已水合映射条目其轮次已不再包含该锚点的情况（例如对话记录在它下面变了）。解析出的轮次通过纯函数
+  **`rowIndexForTurn(rows, turnId)`**（`rows.ts`）映射到行，调用时传入投影后的行——`user`/`system`/
+  `error`/`retry` 用轮次自己的行，`assistant` 则用它的第一个 `:text:` 行（后者的轮次会消解成
+  `markdown`/`tool`/`activity` 行，绝不自成一行）——随后一次可取消、无动画的实体化从 Virtuoso 的测量
+  尺寸快照派生目标（只对从未测量过的行用保守估算），再由控制器拥有的居中像素修正完成。实体化会一直挂起，
+  直到该确切行在稳定帧之间保持挂载、且在该对齐处保持已测量；Virtuoso 估算修正期间的一次短暂挂载不算成功。
+  它绝不启动 Virtuoso 内部会重试的 `scrollToIndex`，因此读者接管能取消每一个未完成的写入。它的生命周期
+  以请求身份为键，而不是随流式行数组的频繁变动；它的实时行索引解析器会跟随请求挂起期间发生变化的投影。
+  一个短暂的 `flashRowId`（渲染为 `data-flash` + 行包装器上的 `bg-primary-subtle` 过渡，1600ms 后清除）
+  只在行挂载之后吸引视线。解析到一行、读者显式取消，或耗尽有界的实体化等待（以“couldn't locate the
+  message”弹出 toast）都会清除那个确切的、仍然当前的请求；更早的 effect 不得清除更新的跳转。取消是
+  用户优先的失败路径，有意做成静默的，而不是顶着读者重新开始。effect 的拆除会把它的身份校验式清除推迟
+  一个微任务：紧接着的 StrictMode 或替换挂载会先认领同一个请求，而真正的卸载会终结它。`ChatTranscript`
+  是它唯一的终态消费方，因此一个未解决的当前请求绝不能滞留。
+- **在当前对齐目标处打开** —— `ChatMessageOrder` 选择物理的 latest 边缘：oldest-first 为底部，
+  newest-first 为顶部。阅读带是唯一的挂载放置拥有者。它在第一行挂载之后、依据那一刻的工作状态
+  放置一次：一个空闲的 oldest-first 对话记录会无动画地跳到最终行，并在测量帧之间把它保持住（运动种类
+  `mount`）；一个空闲的 newest-first 对话记录留在原生的零滚动原点；一个工作中的对话记录直接在 Settle 处
+  重建，只留出其活跃响应所需的空间，并在同样的测量帧之间保持 Settle，无动画地重新应用且绝不后退，因此
+  行测量无法把 latest 边缘推出屏幕。挂载目标跳过跟随步进的上限，因此短视口仍能把边缘落在 Settle。
+  Virtuoso 不获得 `initialTopMostItemIndex`：它会隐藏列表直到滚动到那一行时看到尺寸不再变化，而流式的
+  最终行永远不会允许这一点，因此一个返回的或刚打开的工作中聊天曾一直空白。放置会在原生输入挂起期间、
+  以及工作中对话记录还没有流边缘时保持挂起。空闲保持期间开始的流会取消该保持，并在 Settle 重新放置。
+  读者接管、新轮次，或任何控制器揭示/锚点稳定化（跳到消息、卡片自动展开、折叠）都会取消待处理的放置；
+  那股运动随后拥有位置。切换顺序会重新武装放置，因为跨越整体反转去保留像素位置没有稳定含义。不存在
+  中间的错边缘绘制，也没有跨顺序的动画。初始虚拟几何是**感知行的**：每个投影行获得一个保守估算，它由
+  散文折行、块间断与物理的围栏代码行派生，且不切开一个规范化 Markdown 块。这些估算镜像渲染后的行外壳
+  （行与气泡内边距、段落间隙、散文行高、高度下限）并随之移动：曾经一次密度处理让它们变陈旧，从而把
+  Virtuoso 的测量修正从增长翻成收缩，并让一个 newest-first 的 return-to-latest 卡成脱离状态
+  （`chat-scroll.spec.ts`）。有界的像素与条目 overscan 让附近的离群值在粗粒度输入耗尽虚假范围之前替代
+  估算。原生滚轮物理保持不动。`chat-history.spec.ts` 钉住默认的 latest 边缘与高历史几何；
+  `chat-order.spec.ts` 钉住两种投影。
+- **对齐是显式的，而非根据邻近推测** —— `useChatScroll` 拥有两个正交事实：实际工作（`agent_start` 到
+  `agent_settled`）与对齐（`following` 或手动 `detached`）。工作中跟随意指配置的响应窗口；空闲时跟随意指
+  物理的 latest 边缘。工作中处于 detached 时显示感知顺序的 **Follow response** 按钮；空闲时处于 detached
+  时显示 **Latest**。自动聚焦、行测量、内容增长、程序化揭示，以及 Virtuoso 的便利边缘阈值，永远不能创建
+  或清除 detachment，因此该按钮永远意味着有人接管了。
+- **读者意图与精确边缘重新武装** —— 滚轮、触控板、触摸、滚动条与导航键输入，只在它能导致或已经导致真实
+  视口移动时才解除跟随；对一个正在跟随的读者，朝当前物理边缘向外推是空操作，而一个已经恰好停在该边缘的
+  detached 读者（保护读者的空间可能让那里无可滚动）会在同一次推动上重新武装。潜在的原生输入会暂停与之
+  竞争的控制器运动，并阻止新的自动运动直到它解析为止，而不改变对齐（连续跟随几乎每一帧都写入，因此
+  落在读者手势与其滚动之间的一次写入否则会被它吞掉）。一次被中断的返回在等待滚轮或导航键默认动作时，
+  逻辑上仍在运动；显式的指针按住则是静止的。如果之后没有移动，对齐会在有界的输入意图窗口之后恢复，而不是
+  在下一帧，因为内嵌的 webview 可能在该帧之后应用默认的滚轮滚动。向历史中的移动会解除一次；打断活跃对齐
+  的原生移动也会解除，即使它朝着 latest 方向，除非那次移动本身就到达了精确边缘。显式的文本选择，以及用户
+  发起的消息/历史、面包屑或工具页面导航，也会解除。指针来源在释放后仍存活足够久，以覆盖原生滚动条轨道
+  动画；键盘来源覆盖来自可交互对话记录控件的焦点诱发滚动；两者都在滚动结束或有界超时后失效，因此之后的
+  几何无法继承它们。一次返回手势只有当它在共享的 1px 几何容差内到达物理 latest 边缘时才重新武装一次；
+  方向随顺序反转，而触摸/触控板意图能穿过惯性存活。没有 50px 的近边缘阈值，仅几何变化也不得重新武装。
+  展开或折叠一个 Activity、Thinking、工具或消息展开块是几何变化而非导航：它保持对齐，在跟随时重新指定
+  当前 latest/响应目的地，并让 detached 读者的可见锚点保持固定。自己的 Send 会有意重新接上，并把它的
+  用户行放在对话记录高度的 10% 处、夹在 48–80px；一次排队/后台的延续在启动时保留 detached 读者。
+- **流式响应移动只存在于工作期间，且以窗口步进移动** —— 跟随时，当活跃响应填满其提示词下方的窗口时，
+  视图保持静止。每当响应边缘越过 Trigger（默认 100%），唯一的运动拥有者就做一次缓动的约 220 ms 步进，
+  把边缘放到 Settle（默认 75%），然后再次静止，直到边缘又一次越过 Trigger。正在阅读的文本保持静止正是
+  重点：连续跟随（把边缘保持在 Settle 并逐帧平滑）曾被尝试并否决，因为正在读的那一行从未停止缓慢漂移。
+  步进的目的地在步进的每一帧都从实时几何重新计算，因此步进期间的增长被计入，且步进绝不越界。步进
+  绝不后退。合成空间是**派生出来的，绝不累积**：在步进期间它恰好是 Settle 目的地中超自然滚动范围的
+  那部分；步进之间它是保护读者的余量，在每次内容变化时于绘制前重新计算，因此响应增长一对一地消耗它，而
+  可见内容与滚动范围都不移动。旧的步进实现在晚一帧才消耗空间，导致滚动范围抖动、每次步进都摇晃；正是
+  那个缺陷（而不是步进模型）让它感觉跳。因此 oldest-first 最多需要下方 `100% - Settle` 的带；
+  newest-first 在可用时使用更旧的投影内容，并把任何合成余量留在最旧的组之后。合成空间绝不切开一个被
+  反转的请求/回答组。**Follow response** 与一次精确边缘返回会做一次到 Settle 的步进并重新武装循环。
+  读者接管绝不移动读者：空间只收缩到读者当前位置所允许的程度（文档可能恰好结束在其视口底部），之后
+  增长或向上阅读会消耗剩余部分。一次释放空间的揭示（工具注意、跳到消息、面包屑）在其目标仍是最新行时
+  暂停步进，因为它即将自己放置视口；它之后的第一个新的 latest 行（例如解析完一个问题之后的回答）会结束
+  暂停。为响应的剩余部分一直暂停会让每一次问题卡片之后的跟随被冻结，然后在落定时飞出 2–2.6k px。一次在
+  原生输入仍挂起时到来的落定，会把它的返回推迟到该输入解析，并在该输入已解除时丢弃这次返回。
+- **高个子到达会显示它的起点** —— 在 oldest-first 里，控制器记住读者真正在屏幕上拥有过的最后一个响应边缘。
+  当跟随目的地会把该边缘带到轮次内缩之上时——高于阅读空间（Settle 线减去轮次内缩）的内容到达了它下面，
+  通常是一张立即渲染的图或卡片，可能分几个快速的布局步骤——目的地会被封顶，使那个点落在轮次内缩处，即
+  自己的提示词落到的同一位置。封顶生效后 300 ms 内的增长属于这次到达；之后每一次增长都会按自身高度的两倍
+  释放封顶，直到达到 Settle，而视图仍然只按窗口步进移动：一旦封顶后的目的地至少超前一个窗口
+  （`Trigger − Settle`），就发生一步，因此该块以两倍阅读速度前进，而不是一拭而过（一张 mermaid 卡片被
+  测到在不到一秒内滑行 1.5k px，而单独判断每个布局步骤会漏掉那些分两步落地的卡片）。第二次高个子到达
+  绝不把生效的封顶再往前推。封顶在跟随目的地所在的任何位置都被评估，因此它也给一个已在途的步进设了界。
+  位置相对于最上方的可见行而不是文档坐标保存，而每次评估都会把它们相对当前那次重新表达，因此视口上方的
+  高度变化（Virtuoso 替换估算、一个代码块高亮）既不会触发也不会错放封顶，行可以卸载，而一个在已经跟随
+  它的行上方增长的块（WebKit 在下一轮的行已存在之后才渲染图）仍然被计入。改为锚定最后一行恰好漏掉了那种
+  情况。一次宽度重排、读者自己的展开块切换，以及一次全新挂载会重新取用已见边缘，而不是算作一次到达；自动
+  展开（卡片完成时打开）仍然可以算。一个 Markdown mermaid 围栏就地替换自己的源码，因此它渲染后的顶部
+  位于旧边缘上方恰好一个源码高度处，而封顶从那个点开始显示图。Newest-first 在最前面插入它的最新行，因此
+  那里的边缘增长不是追加内容，封顶不适用。**Follow response**、一次精确边缘返回、新轮次、读者接管，以及
+  一次释放空间的揭示会清除它。落定像任何其他跟随式落定那样结束封顶：下方仍未看到的内容得到那一次向前的
+  移动直到末尾。在那里把读者解除反而会让 **Latest** 在无人接管的情况下出现，并把增量成大批到达的纯文本
+  回答卡住。
+- **跟随会让屏幕上已有的内容保持静止** —— 当一位跟随的读者观看 oldest-first 的流时，最上方的可见行就是
+  视图的锚点：只有控制器自己的写入与读者输入可以移动它。在每一次改变条目列表的布局之后（绘制前），以及在
+  hook 未引发的任何滚动上，移动了的锚点都会在同一帧被恢复，并在滚动范围收缩时补上合成空间。一次恰好落在
+  收缩后范围末尾的滚动是一次 clamp，会被留给绘制前路径处理，该路径跑在 Virtuoso 自己的尺寸补偿之后；若从
+  滚动事件里恢复它，Virtuoso 会把该 clamp 读成向上阅读并把恢复补偿掉（Chromium 里 844 px 的跳动）。有
+  两个被测量到的原因促成了这点，而两者在无虚拟化时也同样出现：一张已作答的问题卡片折叠 400–800 px
+  （浏览器 clamp 该范围，然后 Virtuoso 的尺寸补偿再滚动剩下的部分），以及 WebKit 在一条工具行出现在一条
+  被重渲染的文本行旁边时重置 `scrollTop`（627 → 0），其间没有任何脚本写入、焦点或滚动锚定参与。该守卫在
+  读者处于 detached 时、原生输入挂起时、揭示/折叠锚点/落定运动期间，以及一次轮次锚点把放置交给 Virtuoso
+  之后的 1.3 s 内处于空闲（它的 `scrollToIndex` 在尺寸不断变化时会重试；之后的重试瞄准同一轮次位置），
+  因此它绝不与某人要求的放置相争。合成空间始终挂载（不用时高度为零），以便守卫能同步地增长它；留下的空间
+  是保护读者的，之后的增长会消耗它。会自报其到来的变化完全绕开 clamp：当一位跟随的读者观看流时，折叠接缝
+  （展开块，以及问题卡片自己的提交——它把卡片换成一个小的“Answer sent”状态）在 DOM 变化之前为变化行的
+  整体高度预留空间，然后把它修剪到读者位置所需。该修剪会把比视口短的内容也算进去，因为此时真正的自然
+  滚动范围是负的；把它 clamp 在零会少预留那个差额，并让一段很短的对话记录在一个回答之后下滑 280 px。
+- **落定绝不移动已经接管的读者，也绝不把内容往回移** —— 每一次 `agent_settled`（而不是 `agent_end`）
+  结束响应移动。在 oldest-first 里，一位内容已经结束在视口内的跟随读者会精确留在原处：剩余的合成空间变成
+  保护读者的空间，随着读者向上滚动或下一轮开始而消失，绝不通过滑动屏幕上的内容来消失。在落定时移除它会把
+  每个已完成的回答向下滑最多 `100% − Settle` 的带（实测约 100 px），并且在一次被吸收的卡片折叠之后会滑
+  几百 px。只有当下方仍有未看到的内容时，跟随读者才会做一次平滑的向前移动到物理 latest 边缘；newest-first
+  保持它那一次平滑返回其顶部 latest 边缘。detached 读者的可见内容精确留在原处，只有入口从
+  **Follow response** 变成 **Latest**。在落定时把 detached 读者带回是实测到的最大拉扯（几万 px），并且
+  与 reader-wins 相矛盾。store 在 `isStreaming` 之外还暴露一个单调的每会话落定 tick，因此被合并进一次
+  React 渲染的开始与落定不会让一个乐观的轮次内缩或跑道滞留。延迟的虚拟测量会重新指定同一个有界返回，
+  而不是造成硬钉循环。如果读者输入与落定相交，任一条空闲重接路径都会把部分的空间归零段向前带，而不是
+  泄漏隐藏的跑道。一次被拒绝的立即提示词同样会取消它本地武装的轮次状态。
+- **稳定的工作状态几何** —— 一个固定尺寸的槽位始终占据逻辑上的 latest 对话记录边缘：oldest-first 时在行
+  之后，newest-first 时在行之前。工作活跃时它始终容纳一个礼貌的实时阶段——**Working…**、**Thinking…**、
+  **Running `<tool>`…**、**Writing…** 或 **Compacting context…**；重试/provider 间隔回退到 Working 而
+  不是卸载它。空闲时保留一个不可访问、视觉上为空的槽位，几何完全相同。可见阶段是单行的，并在窄窗格里被
+  裁在槽位内，而它的完整 live-region 文本保持可访问。因此开始、切换或结束一个阶段既不移动对话记录对齐，
+  也不移动输入框。
+- **工具注意保持对齐来源** —— 一张等待中的 `ask_user_question` 可以清除临时空间并执行它既定的有界起始
+  揭示/聚焦，但那条自动路径会按原样保留 following 或 detached，且无法暴露该按钮。原本就已 detached 的
+  读者因为那次先前的动作而保有该入口；随后一次用户驱动的工具页面导航则可能解除。所有注意、历史、面包屑与
+  行揭示都路由到同一个控制器。虚拟 DOM 之外的历史行会获得一次有界的、由 hook 拥有的实体化，来自 Virtuoso
+  的测量尺寸快照；一旦挂载，它的居中修正使用该控制器，因此没有独立的重新尝试能比读者取消活得更久，也无法
+  与落定竞争。尺寸感知的 `nearest` 会让一个高目标的有用前沿保持可见。
+- **单一的、可取消可重定向的运动拥有者** —— 渲染器与投影绝不自己滚动。新轮次放置、窗口步进、上下文按钮
+  返回、落定与显式揭示共享同一条不重叠的通道，其目的地可以随 Virtuoso 测量、状态几何或跑道的变化而重新
+  指定。修正会延续当前运动，而不是发起重叠的缓动或交替的硬写入。读者的第一次真实移动会同步取消它，原生
+  物理获胜。Newest-first 的头部增量保留一个 detached 的历史锚点；视口尺寸变化会重新评估实时百分比，而不
+  移动一个低于 Trigger 的响应。初始/顺序放置是直接的，而 reduced motion 让每个程序化目的地立即生效，同时
+  保持完全相同的状态与最终几何。
+- **没有隐藏的运动拥有者** —— 除了控制器与读者，任何东西都不能移动视口。对话记录滚动器退出浏览器的滚动
+  锚定（`overflow-anchor: none`）：Virtuoso 会排除它的条目，但 Chromium 否则会锚定到头部/尾部，并在响应
+  在其下方增长时对读者做反向滚动。oldest-first 的顶部内缩是常量，而不是随合成空间切换；切换会在解除时
+  把读者的内容移动那个 48–80px 的内缩，而在那里没有锚定补偿（WebKit）。合成空间在条目列表尺寸变化的同一
+  帧里于绘制前完成对账，因此滚动范围与滚动条绝不逐帧抖动。Virtuoso 的尺寸变化处理不带它自己的动画帧推迟，
+  因此视口上方的测量修正会在绘制前落地。滚轮监听器保持非 passive：passive 的那个会让 Chromium 在滚轮事件
+  到达 hook 之前就应用滚动，于是移动在无读者意图的情况下到来，解除与精确边缘重新武装都不会触发。滚动仍
+  保持响应，因为流式的增量只重渲染内容变化了的行，让主线程空闲。
+- **输入框与外壳** —— `Composer`（提示词输入 + send/steer/followUp/abort、`@` 提及、`/` 命令 + 模板
+  **槽位会话**（Tab 穿插的占位符——见下面的模板槽位（Template slots）条目）、图像粘贴/拖放——经由
+  **`imageAttachment.ts`** 路由：`fileToAttachedImage` 在浏览器里解码，并把超过**长边 1568px** 的任何东西
+  缩小（`fitWithin`；Claude 标准档的边缘——一旦 provider 那个 >20 张图 2000px 的上限生效，历史里一张
+  超大图会让此后每一轮都 400，而 pi 自己的缩放器在服务端被有意关闭）。一张图像只有在像素边界之内**且**
+  类型被 provider 接受（png/jpeg/gif/webp）**且**低于 provider 的 **4.5MB 编码后 base64 上限**
+  （`IMAGE_MAX_BASE64_BYTES`，经 `contracts` 共享——pi 在 Anthropic 5MB API 限制下的自有余量；线上协议
+  携带 base64，因此上限是按 `data.length` 衡量，`base64EncodedLength` 则在编码前给原始 File 估算大小）
+  时才会字节不变地通过；其他任何情况都经 canvas 重新编码，在编码超出上限时走一条 **JPEG 质量梯**
+  （一张在边界内但好几 MB 的 GIF，或一张很小的 BMP，会像超大尺寸一样让请求 400）。一个无法解码的文件
+  **只在其媒体类型被 provider 接受时**（`ACCEPTED_IMAGE_TYPES`，经 `contracts` 共享）才回退到原样；
+  无法解码 + 不支持（HEIC…）会被**拒绝**（`fileToAttachedImage` → `null`）——原样透传会让此后每一轮
+  都 400——并作为附件条里一个可关闭的错误 chip 露出（`composer-image-error` testid），发送时清除。一条
+  消息的批次还受请求级 **`REQUEST_IMAGE_BASE64_BUDGET`** 限制（24MB base64，Anthropic 每请求 32MB
+  上限下的余量）：会让批次超出它的文件会被拒绝，并走同一个错误 chip 表面。服务端的 `imageGuard` 扩展是
+  历史的第二道防线。当文件仍在解码时，会渲染一个占位 chip（`composer-image-pending` testid）并扣住发送
+  （`canSubmit` 是唯一的读法——`submitText` 会拒绝，发送按钮会禁用）——否则一次解码中途的发送会漏掉
+  这张图，并把它滞留到下一条消息。被扣住的发送会保留它的文本：输入框自己的手势会让草稿留在原处，而
+  `insertAndSubmit`（浮层的 ⌘/Ctrl+Enter，其文本还不在草稿里）会把它停在那里而不是丢弃。待处理的 chip
+  显示 `filename · W×H`（所选文件的名字；只有在没有名字存活的已水合轮次回退里才会出现 mime 文本）
+  （`composer-image` testid + `data-width`/`data-height`/`data-mime`——`e2e/composer-images.spec.ts` 的
+  钩子；两种 chip 皮肤共享 `FileChip.tsx`）。**chip 是有界的，而标签是唯一让步的部分**：一个 chip 是
+  `max-w-full` 的并截断它的 `label`，而图标、`meta` 后缀与尾随动作不收缩——文件名是用户控制的，一个无界
+  chip 会把它自己的 Remove 按钮挤出手机视口（并被对话记录滚动器的 `overflow-x-hidden` 裁掉）。因此在
+  任何宽度下都必须可读的东西放进 `meta`，而不是 `label`：`· W×H` 尺寸，以及一个附件错误的原因（它的
+  文件名会被截断——原因才是用户能据以行动的东西，而手机没有 tooltip 可依靠）——以及其命令式句柄上的
+  `openHistory` → `onHistoryOpen`）加上共享 `prompt` 模块的**斜杠补全原语**（过滤/菜单/光标 + Up/Down、
+  Enter/Tab、Escape）；`HistoryOverlay`（`Composer` 打开的历史召回/搜索浮层——纯呈现，完全由
+  `useHistorySearch.ts` 的状态 + 回调驱动，外加在映射命中上的 **Save as template** 与一键
+  **Trash chat** 动作（`ChatView` 拥有 `session.delete` + 幂等的 store 删除折叠；成功则关闭浮层，失败
+  弹 toast；`session.deleted` 也在每个已连接客户端驱动那个折叠），以及一个 **zoomed-stage 预览窗格** +
+  **scope 选择器**——见下一条）、
+  **`ModelEffortPicker`**（那唯一一个 **model · effort 胶囊**，在会话前模式下也由 `NewWorkspaceDialog`
+  挂载；`ModelsSettings` 仍挂载更旧的 `ModelSelector` + `ThinkingSelector` 这一对——在它们迁移之前是
+  有名字的幸存者）。决策：聊天的模型与 effort 是**一件事的两部分**，由一个无边框触发器展示
+  （`[vendor glyph] name ▂▄▆ level [connection glyph] ▾`——effort 条点亮该档位在模型推理档位中的排名，
+  `litBars`，用该档位的**色调**——off/minimal/low 用冷蓝，medium/high 用强调色，昂贵的档位用警告琥珀
+  色，因此成本先于文字被读到）并在一个 popover 里选择，其中**effort 控件位于模型列表之下并跟随所选
+  模型**——因此可提供的档位始终是*那个模型的* `thinkingLevels`，而禁用的 effort 状态不可能存在。流程
+  是**点模型 → 滑动 effort**：挑一个模型会立即应用它并保持 popover 打开（hover 从不改变任何东西——
+  更早的 hover 预览会让 effort 行随着指针移动而跳动）；effort 控件是一个**滑块**：一根粗轨道藏着一道
+  冷→暖渐变（`feedback-info` → `primary` → `feedback-warning`），手柄移动时揭开它，档位词与它的字形
+  骑在手柄上，下方每个档位一个可点击的标签（用户保存的 `defaultEffort` 加点——web 绝不猜测宿主的回退
+  档位），一行提示，以及昂贵档位（`COSTLY_LEVELS`：xhigh、max）上的一条警告说明。一个原生
+  `<input type="range">` 驱动它——拖拽、点击跳转、触摸与 ←/→ 全都免费得到——并且每次变更都立即应用
+  而 popover 保持打开；当档位与保存的默认值不同时，页脚提供 "reset to ‹default›"。手柄的位置是那唯一
+  一处行内样式（一个 `--effort` 自定义属性，归一化几何的例外），颜色留在 token 里，`motion-reduce`
+  会压平弹簧。Escape、一次外部点击，或点击已经当前的模型会关闭。`onSelect({model, level?})` 是模型
+  回调（只有键入的 `opus high` 一次性选了两者时 level 才存在），`onSelectLevel` 是只含档位的那个，
+  而调用方——绝不是选择器——与宿主对话（`ChatView` 在一次选择背后串起 `session.setModel` →
+  `session.setThinkingLevel`，每一次模型*或* effort 挑选都会推进同一个选择计数器，因此串起来的档位
+  只在那次挑选仍是最新时才发送——失败时也只在那时回滚：先 A·high 再 B·low 绝不会把 A 的档位落到 B
+  上，而先 B·high 再滑到 medium 也绝不会让 B 的响应重发 high）。当一次目录刷新让会话停在一个它的模型
+  已不再提供的档位上时，`ChatView` 询问宿主的 `model.clampThinking` 并应用答案——即
+  `NewWorkspaceDialog` 已经为它那一对跑过的同一套对账，也是 pi 在请求时施加的同一个钳制——因此胶囊与
+  滑块显示 pi 实际会用的档位，而不是轨道上并不存在的档位。
+  行是**两行**：名称，然后是 `provider · [kind glyph] what it draws on · price · context`。列表读作
+  **Default row**（仅限会话前的调用方，`defaultOption`：宿主会选的那个，当调用方跟随时打勾）→
+  **Pinned** → **Recent**（宿主列表中除去已固定模型）→ 各提供商分组，在存在候选清单时折在单独一行
+  "All models" 之后，并在搜索时展开。每个提供商分组都可折叠：它的头部本身就是一行 cmdk
+  （`model-group-toggle`、`aria-expanded`，Enter 切换）并携带匹配数，而打开选择器时除当前模型所在的分组
+  外全部折叠（当前模型已被固定时则没有展开的分组）；一次搜索会展开每个匹配的分组，每个分组在那次搜索
+  中仍可折叠。头部读起来像一个分区标题（强调字重的名称、厂商字形），第一个之后的分组由一条分隔线隔开，
+  其行缩进在头部之下并丢掉自己的厂商字形与提供商字样（头部两者都带了）——扁平的、无内边距的列表会让
+  标题与模型难以区分。已固定的模型绝不在分组内重复。标题、计数与行由各选择器自己的 cmdk `filter`
+  （`chat/pickerGroups.ts`，cmdk 默认评分器的移植版）匹配，因此一个标题在其任一模型匹配时匹配，且其
+  计数等于它展开的行数。在没有查询也没有模型时，列表显示 "No models to show. Connect a provider, or
+  show hidden models in Settings → Models → Visible models."；"No models found." 只在有查询时出现。
+  隐藏的模型绝不进入任一选择器：调用方传入 `store` 的 `selectPickerModels`，它会保留当前模型。设置里的
+  `ModelSelector` 共享这套分组、过滤、Pinned 分区、空状态与 "Updating…" Refresh，但没有 Recent 与
+  头部的连接详情。一个末尾的查询词若点名了高亮模型支持的某个档位（`opus high`）会预选它——pi 的
+  `model:level` 惯用法改用空格输入——而输入框里的 `/model [query]` 会打开预填好的选择器而不是发送
+  文本。第二行**说的是用户实际付什么**（`kindLabel` / `costLabel`）：连接字形——**key** = API key，
+  **∞** = 订阅，**{ }** = 环境变量 key，一个 **JCP** 标签 = JetBrains AI（Central proxy）——然后是
+  套餐/变量/key 词，并且只在提供商按 token 计费时（`auth.kind` api-key / env）才加上
+  `$in / $out per M`；分组头部再加上该提供商的连接详情。**厂商字形**（`ProviderGlyph`）是来自
+  `generated/providerGlyphs.ts` 的单色 `currentColor` 标记，`scripts/generate-provider-glyphs.ts` 在
+  构建时从仅开发用的 `@lobehub/icons-static-svg` 集合里抽取它（`provider-glyphs:check` 守卫漂移，像
+  颜色流水线那样）；pi-provider-id → 标记的映射只存在 `scripts/providerGlyphs.ts` 一处，通过多个 pi
+  提供商可达的厂商共享一个标记，而未映射的提供商渲染一个字母组合。标记绝不用品牌色着色——颜色系统
+  拥有颜色。Pinned/recents/default 经 **`useModelPreferences(models)`** 进来（两个调用方共享的那唯一
+  一个 store+transport 接缝：列表重新指向实时目录并丢弃消失的模型，`toggleFavorite` 作为整份列表的
+  `settings.update`，`setDefault` 一起写入模型 + effort，全都以 `MODEL_PICKER_PROTOCOL_VERSION` 为
+  门禁，因此更旧的宿主既不显示固定开关也不显示分区）。页脚持有 **Set as default**（一旦这一对匹配就
+  读作 "Default for new chats"）与 **Refresh** 行（`force: true`，在等待中的刷新运行时转圈并读作
+  "Updating…"；打开时触发一次由宿主快照服务的非强制读取）。web 仍然**不枚举档位词汇**：行就是
+  `WireModel.thinkingLevels` 逐字，由宿主钳制，而 `LEVEL_HINT` 是一份定性文案的部分记录，某个档位可能
+  干脆没有。行跟随**实时目录**——`ChatView` 在向下传之前经 `store` 的 `selectCatalogModel` 解析会话
+  的模型，因此一个改变了某模型支持什么的 `model.refresh` 会随之改变所提供的档位）、
+  `SessionStatsBar`、`ChatHeader`（固定的、单行的**面板头部行**——`h-panel-header-row`
+  （`--panel-header-row-height`，当前 28px），与工作台 Group Headers 和 Changes 工具栏共享的结构
+  几何，而不是在这里钉住的一个值；它绝不滚动，而受约束的宽度会裁剪/截断 TODO + 状态/用量文本，同时
+  保留尾部的 Skills 动作。它的 **Skills** 按钮是那个呈现型 **`SkillsButton`** 原语——一个 `BookOpen`
+  胶囊，当磁盘上某个技能目录变化时带徽标——同样与 `NewWorkspaceDialog` 共享，因此两个触发器无法漂移）、
+  `ExtUiDialog`，以及 **`SkillsDialog`**（那个 **Skills 管理器**：一个按来源分组的目录，带**粘性分区
+  标题**——第一方的 **ThinkRail** 与 **Pi** 分组领先（在 All-plugins 总开关之上，它只管插件分组），
+  然后是 Personal / **每个已安装的 Claude 插件一个分组** / 仓库的 Project 技能最后——每个都带它的准入
+  裁定、项目信任（与 Welcome 通知同一套 `projectTrust` 派生与文案——`useProjectTrustSummary` 加上这个
+  目录的未信任别名，因此只在工作树里的别名仍会显示——因此在聊天里它就是授予 pi 级信任的地方，而它的
+  `project.setTrust` 恰在它点名了项目的 Pi 资源时才携带 `resources: true`）、re-confirm-new、一个
+  逐分组的 track/thumb **开关** + 一个 **All-plugins** 总开关，以及逐技能的开关。开关位置加上语义颜色
+  就能承载状态，而不用可见的 On/Off 文本；只有开关目标会变更，而不可用的控件保持既有的信任/父级说明与
+  确认行为。它经一个可选的 `workspace` prop 以**两种模式**运行：聊天（`skills.state`，逐工作区的技能
+  覆盖，+ 一个经 `session.reloadResources` 把变更应用到本聊天会话的 **Reload**，流式时禁用）或项目
+  （`project.skills`，逐项目基线的开关，没有会话）——后者被 `panels` 在会话前复用）。全部 props
+  驱动；行为细节住在各组件的 jsdoc 里。
+- **实时会话遥测遵循 Pi 的落定边界。** `SessionStatsBar` 只渲染宿主权威的 `session.getStats` 快照；
+  web 绝不从消息内容派生计费总额或上下文用量。已挂载的聊天在挂载/重连时、在每条落定消息、压缩与落定
+  之后，以及在 Pi 接受一次模型变更之后刷新。一次重连读取可能与一个重启中的宿主竞速，此时对话记录同步
+  尚未重新接上持久化的会话，因此那个同步边缘会重新触发这次读取。连续多个 Pi 事件批进一次 store 提交
+  时会折叠成一次读取，而被更新的会话修订、宿主世代或卸载所取代的响应会被忽略。文本增量不触发读取，
+  因为 Pi 自己在消息边界之前无法落定新的用量；瞬时的读取失败保留最后一份好的快照，而不是用猜测的
+  状态替换它。
+- **自适应输入框几何**（`Composer`）——一份只占一行视觉行的空闲草稿渲染为共享的两层外壳：上方是全宽、
+  一行视觉行的消息行，下方是稳定的动作页脚。model · effort 胶囊是页脚唯一的左手触发器；History 与
+  Send 在右侧保持显式。一次折行、显式换行或宽度变化使草稿超出一行视觉行时，消息行增长而不移动页脚；
+  重新塞回一行时只有消息行收缩。这是一个持久的文本域，绝不是两个条件渲染的孪生体——这个转换不能丢失
+  焦点、光标/选区、召回、草稿或一个模板槽位会话。流式时即使草稿为空也故意使用展开的消息行，因为
+  Stop + 发送选项会加入页脚。`ChatView` 传入服务端同步的 `ComposerGrowthLimit` prop：`compact` 封顶
+  为 6 行视觉行，`roomy` 为 10，而默认的 `half-chat` 把**编辑器外壳**（文本域 + 页脚）封顶在已挂载
+  聊天面板的 50%，绝不是浏览器视口；随后溢出在文本域内部滚动。附件 chip、补全菜单、槽位提示与
+  QueueStrip 保持它们既有的独立外壳。槽位高亮底板必须跟随每一次动态文本域盒变化，并遵守下面
+  Template slots（模板槽位）条目里确切的盒模型与滚动同步不变量。
+- **输入框的尾随控件**（`Composer`）——页脚右侧那一簇是**一个实心物体加几个 ghost**，没有边框：
+  History 是一个 ghost 的 28px 圆形（`IconTooltip` 下的 `Button variant="ghost" size="icon"`），Stop
+  是一个 ghost 胶囊（`■ Stop`，低饱和文本在 hover 洗色上抬起），而发送是单个 `rounded-full` 的强调
+  胶囊（`chat-send-pill`、`data-armed`），其主段（`chat-send`）携带动词加一个 `↩` 键帽，其 chevron
+  段（`send-menu`，仅流式时）是第二个可点击区域并带有自己的 hover——分隔它们的是间距，不是分隔线。
+  更早的那一簇是四个等宽、带边框的 32px 方块，它给一个实用功能（历史）与主操作同样的权重，读起来像
+  表单时代的界面。**惰性发送**：没有东西可发送时胶囊停在 `control-bg-selected` +
+  `control-disabled-text` 上，而不是 60% 的主色对——一块深色强调块会把视线拉向一个无法动作的控件，
+  而切换到强调填充才是 "ready" 信号（该例外记录在 `styles/COLOR.md` 里）。**紧凑模式**：低于聊天列
+  的 `@md` 容器宽度（手机、窄分屏）时标签与键帽隐藏，胶囊收缩成 28px 图标，好让模型胶囊保住自己的
+  空间。标签使用 `ui.action`。
+- **排队消息：待处理条**（`QueueStrip.tsx`，props 驱动：`queue` + `onEdit`/`onRemove`）——pi 交互模式
+  待处理消息区域的 web 镜像。一次**流式发送绝不渲染乐观的对话记录气泡**（见 store SPEC 的回声契约）：
+  `ChatView.onSubmit` 对 `steer`/`followUp` 跳过 `appendUserMessage`，排队文本在对话记录与输入框之间
+  渲染为暗淡的行——每条消息一行被截断的 `Steering:`/`Follow-up:`（`queue-strip` / `queue-item`
+  testid，`data-kind` + `data-index`；完整文本 + 投递含义在该行的 `title` 里），来源是运行时的
+  `queue`。**每一行携带自己的编辑与移除动作**（`queue-item-edit` / `queue-item-remove`）——两者都调用
+  `session.removeQueued { kind, index }`（行是按位置寻址的，与线上协议操作一致）；编辑还会把被移除消息
+  的文本与图像恢复到草稿并重新聚焦。逐行动作之所以存在，是因为原来的全有或全无出队（点击条 →
+  `clearQueue` → 每条消息合并进一坨草稿）用起来被证明不可发现且有损。**Abort 原子地恢复完整队列**
+  （`onAbort` → `session.abort { restoreQueue: true }`）：宿主把两条 Pi 车道都抽干，并把 abort 作为
+  一个操作发出信号，等待空闲，然后返回每条排队消息的文本 + 图像内容；web 把这些文本前置，并重新附上
+  每一张图像。因此 Stop 既不能让一个排队的续跑跑起来，也不能悄悄丢弃一个附件。一次**被拒绝的**流式
+  发送同样把它的文本连同 `appendErrorTurn` 一起恢复到草稿。普通的 `queue_update` 投影仍然只携带可显示
+  的文本加一个保守的 `hasImages` 聚合——没有图像字节——因此排队的图像在条里不显示 chip；规范化对话
+  记录轮次稍后会用带回退标签的水合渲染它的图像块。E2e：`queue.live.spec.ts`（@agent）。
+- **流式发送模式：拆分发送 + 打断**（`Composer`）——steer/queue 语义是 pi 的循环设计（steer = 在下一个
+  轮次边界注入，即在当前 assistant 消息 + 它的工具调用之后；queue = 在 agent 落定后运行；只有 abort 会
+  中止在途响应），并且事实证明单靠键名提示无法读懂。因此流式期间输入框会自我说明：主胶囊读作
+  **Steer ↩** 而不是 Send，占位符说明一次 steer *何时*落地（"Steer the agent at its next step…"），
+  以及一个**发送选项菜单**（`send-menu`——该胶囊的 chevron 段；行 `send-mode-steer` /
+  `send-mode-queue` / `send-mode-interrupt`）为每种模式点名一行含义 + 快捷键。草稿为空时 chevron 仍
+  启用，好让快捷键保持可发现；只有那些行禁用。菜单行是**动作**（用该模式发送当前草稿），绝不是粘滞的
+  模式开关——一个持久模式会让下一次朴素的 Enter 悄悄服从隐藏状态。`Composer` 在槽位、菜单、召回或
+  发送处理之前，把每一次 keydown 让给活跃的 IME。它使用 `KeyboardEvent.isComposing` 加上遗留的
+  `keyCode` 229 哨兵，因为 `compositionend` 可能先于最终的 keydown，使 `isComposing` 为 false 而
+  IME 仍拥有那个事件。该守卫不取消事件，因此确认候选词的 Enter 会提交；只有随后一次普通的 Enter 才
+  调用发送语义。
+  **打断**（`SubmitBehavior: "interrupt"`，流式期间 Cmd/Ctrl+Shift+Enter；空闲时是普通发送；单独
+  Shift+Enter 仍是换行）是 pi 缺失的那个 "take my message NOW" 手势：`ChatView` 等待 `session.abort`
+  （ack 意味着空闲）然后执行一次普通的空闲发送——部分回复带着已中止的标记留在对话记录里，而仍在排队
+  的消息保持它们的车道（它们会在这次打断所启动的运行里投递）。被拒绝时像其他流式发送一样恢复草稿。
+- **历史浮层：放大预览窗格 + scope 选择器**（`HistoryOverlay.tsx`）——`Tab` 把紧凑的单列浮层长成一个
+  **双窗格**的 `zoomed` 布局：既有的 Prompts/Messages 分区列表留在左侧（约 55% 宽，
+  `data-testid="history-results"`——键盘导航、`scrollIntoView`、计数与另存为模板动作全都不变），而
+  扁平列表中**键盘选中的**条目的预览渲染在右侧（约 45%，`data-testid="history-preview"`，经
+  `Enter`/Cmd/Ctrl+S 早已使用的同一个 `resolveHistorySelection` 解析——预览与键盘动作在 "选中的条目"
+  上绝不可能不一致）。`compact` 阶段不受影响：在 `Tab` 之前 DOM 里根本没有预览窗格（不只是隐藏），
+  因此 `history-preview` 的单纯存在就兼任放大/紧凑的信号。**预览正文：** 命中的完整 `text`——绝不是
+  该行被截断的首行（`PromptRow`）或片段（`MessageRow`）——才是让预览值得有的东西：一条长提示词在
+  列表里被切掉的尾巴，在这里能读全。`whitespace-pre-wrap break-words`、可滚动
+  （`overflow-y-auto`）、查询词经**逐字**复用的 `Highlight` 高亮（与各行所用的同一个助手），因此高亮
+  绝不会在行与它自己的预览之间漂移。**预览页脚**（低饱和、小字号）：对提示词命中，聊天标题（若已
+  设置）/ 只要 `workspaceId` 存在就给一个工作区 chip（与 `PromptRow` 的 chip 不同，绝不受 scope 门禁
+  ——单个详情窗格有密集列表行所没有的空间）/ 相对时间，以 `·` 连接；对消息命中，
+  `sessionTitle · role · relative time`。没有选中（结果集为空）渲染一个空面板——绝不是崩溃。
+  **窄宽度**（低于 `md` 断点）：预览折到列表**下方**而不是旁边（列表在源码顺序里在前，因此一个列向
+  flex 堆叠本来就会把它放在那里），每个窗格在各自的高度预算内独立滚动。**scope 徽章**
+  （`data-testid="history-scope"`，不变的 `<scope> ⌃R` 标签 + `data-scope`）现在也是一个
+  `@thinkrail/ui/dropdown-menu` 触发器：它的内容按循环顺序列出全部四个 scope
+  （`data-testid="history-scope-option"` + `data-scope`，标签比徽章本身更完整——"This chat" /
+  "Workspace" / "Project" / "Everywhere"——当前那个带勾选标记）。挑一个会调用 `useHistorySearch.ts`
+  新的 `setScope(kind)`，它重置结果选中的方式与 `cycleScope` 完全一样——`Ctrl+R` 键盘路径（见下面
+  快捷键归属那条），因为两者只是设置同一个底层 scope 状态。Radix 关闭时的默认行为是把焦点还给触发
+  器；`onCloseAutoFocus` 被覆写（`preventDefault` + 聚焦查询输入），因此一次鼠标挑选反而把焦点交回
+  查询输入——键入立即恢复，不需要额外点击。菜单是一个**受控**的 Radix 菜单（`scopeMenuOpen`），原因
+  只有一个：浮层窗口级的 `Escape` 在它打开时让位，因此 Escape 遣散的是最内层。菜单绝不与浮层自己的
+  `ArrowUp`/`ArrowDown`/`Enter` 处理冲突：那个处理器绑定在查询 `<input>` 元素本身上，而 Radix 的
+  传送门下拉内容是**兄弟**子树——绝不是该输入的后代——因此菜单持有焦点时的一次 keydown 按构造就无法
+  到达输入的处理逻辑，而不是靠逐例的守卫。
+- **快捷键归属：`Ctrl+R` 与 `Escape` 不是元素本地的。** 两者过去都是单元素按键处理器——`Ctrl+R` 在
+  输入框文本域上，`Escape` 在浮层的查询 `<input>` 上——两者都因同样的原因出错：它们只在那一个元素持有
+  焦点时才触发。在它之外，`Ctrl+R` 会到达浏览器并**重载应用**，而一个输入已失焦的浮层（点回输入框、
+  某一行的图标按钮）**完全没有任何**键盘遣散方式。现在：
+  - **`Ctrl+R`** 由 `shell/useGlobalHotkeys` 拥有——一个窗口捕获阶段监听器，在全应用范围吞掉该组合
+    （`preventDefault` + `stopPropagation`，因此它恰好只有一个处理器）并经
+    `store.requestHistoryOpen(sessionId)` 把它路由到那唯一挂载的 `ChatView`
+    （`selectActiveChatSessionId`）。`ChatView` 翻译它：浮层关闭 → `composerRef.openHistory()`（与
+    历史按钮完全相同的路径——菜单被遣散、草稿已播种）；浮层打开 → `cycleScope()`。`Composer` 与
+    `HistoryOverlay` 都不再携带 `Ctrl+R` 分支。故意的例外：来自终端（`.xterm`）内部的 keydown 原样
+    通过（反向搜索属于 PTY），而 `Ctrl+Shift+R` / `Cmd+R` 保持不管，好让键盘重载仍然可行。
+  - **`Escape`** 由 `HistoryOverlay` 自己的窗口捕获阶段监听器拥有，只在它打开时注册。捕获 +
+    `stopPropagation` 编码了 "最上层的浮动面板先关闭"（一个输入框槽位会话能在这次遣散中存活，而不是被
+    同一次按键清掉）。它在 scope 选择器打开时让位——见上面关于受控 `scopeMenuOpen` 的说明——因此
+    Radix 自己的 Escape 只关闭那个菜单。故意**没有**点击外部的遣散。
+  - **遣散把焦点还给提示词场域**（`ChatView.onDismissHistory` → 输入框的 `refocus` 句柄）：打开把
+    焦点移进了浮层的查询输入，而关闭会卸载它，因此没有这一步，每一次 Escape 之后的按键都会落在
+    `<body>` 上并丢失。光标回到它原来的位置（`Composer` 在 click/keyup/change 时追踪它），或在槽位
+    会话激活时回到当前槽位的标记上。遣散是*唯一*经由 `onClose` 的关闭——插入、跳转与另存为模板各自
+    决定焦点接下来去哪（输入框、另一个聊天、一个对话框）。
+- **历史浮层：只有 assistant 消息 + 可跳转的提示词**（`HistoryOverlay.tsx`、`useHistorySearch.ts`——
+  R3）——`MESSAGES` 现在只包含 assistant 角色的命中（服务端过滤；见
+  `packages/server/src/history/SPEC.md`）：一个用户角色的命中永远是与它自己 `PromptHit` 条目在文本上
+  重复，因此它过去要添加的位置改放到了提示词行上。现在每个提示词行**在可跳转时**渲染一个去聊天的图标
+  （`data-testid="history-jump"`、`aria-label="Go to chat"`，一个读作 "⇧⏎ go to chat" 的
+  `IconTooltip`，在既有另存为模板图标旁边）——`workspaceId` 存在且 `messageIndex != null`（对于 cwd
+  未映射的命中，或不填充提示词锚点字段的宿主，则缺席）。点击它，或在一个提示词行是键盘选中项时按
+  **`Shift+Enter`**，都走与消息命中的 `Enter`/点击此前所用完全相同的 `onOpenMessage` 路径——两者现在
+  都经共享的 **`jumpTarget(hit)`** 助手（`useHistorySearch.ts`，导出的纯函数），它把任一种命中形状
+  解析成 `ChatLocationRequest` 或 `null`，因此图标的渲染门禁、`Shift+Enter` 处理器与消息命中的门禁在
+  "这是否可跳转" 上绝不会不一致。一个未映射/遗留的提示词行不显示图标，且 `Shift+Enter` 是空操作
+  （浮层保持打开）——消息命中路径早已有的同一套双保险门禁。图标本身保持悬停才露出
+  （`group-hover`/`isSelected` 透明度，像它旁边的另存为模板图标），但它的快捷键字形
+  （`data-testid="history-jump-shortcut"`，字面的 `⇧⏎`）是一个**只在选中时**、而非只在悬停时出现的
+  持久 `<span>`——与 scope 徽章的 `⌃R` 同一个先例（始终在它的标签旁边）——因为纯键盘用户，也就是
+  `Shift+Enter` 自己的受众，从不触发 `:hover`。另存为模板图标自己的快捷键
+  （`SAVE_SHORTCUT_LABEL`、`⌘S`/`Ctrl+S`）出于同样原因得到一模一样的只在选中时的字形
+  （`data-testid="history-save-shortcut"`），与跳转图标对称。
+- **模板槽位**（共享 `prompt` 模块的解析器/状态机 + `Composer` 的几何 + `ChatView` 的目录/模板读取
+  接线——输入框的 Tab 穿插占位符流程，端到端）。
+  **解析**（`prompt`，纯）：`parseTemplateSlots(body, argumentHint)` 把 pi 自己的占位符文法
+  （`$1..$n`、`$@`/`$ARGUMENTS`、`${N:-default}`、`${@:N}`、`${@:N:L}`——pi 的文法，单一所有者；见
+  `packages/server/src/templates/`）展开成可见文本加 `TemplateSlot` 区间；
+  `stripUntouchedSlots`/`shiftSlots` 补全会话（发送时剥离、编辑时重追踪）——**只解析**，这个模块永不
+  求值该文法（一个逐字键入的 `/name args` 提示词已经由 pi 自己的
+  `PromptOptions.expandPromptTemplates` 展开，无论有没有这个解析器）。**观察结果**（设计里
+  "to verify" #3，由 `e2e/templates.live.spec.ts` 的逐字键入测试解决）：pi 自己的对话记录为逐字键入的
+  发送记录的是**已经展开**的正文，绝不是原始的 `/name args`——`AgentSession.prompt()` 在持久化
+  `role: "user"` 消息之前把参数代入 `expandedText`，因此一次 `session.getMessages` 重取（一次重载，
+  或从历史重开）显示的是展开后的文本。唯一的细节差异：web 客户端自己那个即时气泡是一次**乐观回声**
+  （`ChatView.onSubmit` → `appendUserMessage`，只走 store，附加在传输层调用落定*之前*；附带的图像作为
+  内容块随行，好让气泡显示它们——`UserTurn` 把图像块渲染为文本上方的紧凑 "attached file" chip（没有
+  内联预览；点击在对话框里打开图像，即图表全屏的模式）。chip 标签是所选文件的名字，作为
+  `attachmentNames` 承载在回声轮次上（仅 UI 侧——pi 的 `ImageContent` 没有文件名），与图像块按索引
+  对齐；一个水合过的轮次没有名字，回退到 mime 类型标签）——它显示的正是键入的内容（原始命令），直到
+  一次重取把它换成 pi 真正持久化的记录。**`/` 菜单的合并**
+  （`ChatView`）：pi 的 `commands` 快照（`session.getCommands`，在会话创建时冻结）减去其
+  `source === "prompt"` 条目，加上一次新的 `template.list { workspaceId }` 抓取映射成的
+  `SlashCommandInfo` 行（`source: "prompt"`，`sourceInfo` 合成得与 pi 自己的提示词模板约定完全一致：
+  `{ path: filePath, source: "local", scope: scope === "global" ? "user" : "project",
+  origin: "top-level" }`）——一份合并列表。聊天把它唯一那条**浏览器原生命令** `/compact
+  [instructions]` 前置，作为一个显示本地的 `builtin` 行，标为 `Pi/built-in`；contracts 里镜像 Pi 的
+  命令来源保持不变。原生 `compact` 对同名扩展/模板碰撞保留（技能命令保持命名空间），而那套确切的 Pi
+  解析器只识别 `/compact` 或 `/compact ` 加上 trim 后的说明——每一个近似拼写都仍是普通提示词。一次
+  compact 提交绕过乐观用户回声与每一种流式发送模式：已完成的草稿图像**或队列中宿主撰写的 `hasImages`
+  聚合**会就地拒绝它，并给一个可据以行动的输入框 chip（草稿 + 队列都保留；待处理的草稿图像本来就会
+  扣住所有提交）。否则该命令会清空，把 `session.clearQueue { requireTextOnly: true }` 按 steering
+  然后 follow-up 的顺序排回输入框，然后调用 `session.compact`；宿主在那个破坏性操作处重新检查图像
+  前置条件，因此一个陈旧的客户端或跨客户端竞态仍无法丢掉排队字节。宿主原子地拒绝该会话已有一个压缩
+  在飞时的第二次手动压缩；中止、摘要、持久化与生命周期由 Pi 拥有。请求会快照既有的压缩轮次 id，
+  而被拒绝的 clear/compact 只在没有新生命周期轮次出现时才请 store 追加一条失败的压缩行，因此 Pi
+  发出的失败与生命周期之前的线上协议失败共享一个表面而不重复。既有的实时/水合压缩渲染不变。当一个
+  `template.list` 响应回来是**空的**时，`SlashCommandMenu` 渲染一个 `footer` 提示
+  （`data-testid="slash-templates-empty"`），经 `ChatView` 的 `onManageTemplates` 深链到
+  Settings → Templates——starter-templates 提供的可发现性那一半（`panels/SPEC.md`），因为全新安装
+  有一个空的全局提示词目录，而那个管理器否则要在对话框里点两层。门禁条件是 "没有模板存在"，绝不是
+  "当前查询一个都没匹配上"，因此一个只是没命中的查询不会把它抬起来；`footer` 是可选的，因此
+  `NewWorkspaceDialog` 对同一菜单的复用不受影响。**门禁是 `ChatView` 显式的 `templatesEmpty` prop
+  ——一个已解析的、空的列表——绝不是 `commands` 没有 `source === "prompt"` 行。** 合并列表在第一次
+  抓取落定*之前*和某次抓取失败*之后*同样为空（那个 `.catch` 按设计是静默的——一次失败的列表绝不能
+  弄坏菜单），因此从它读出空会在每个聊天的第一次 `/` 上闪过 "you have no templates"，并在一次失败
+  的列表之后把那个断言永久搁浅——而且还压在一个点击会同时清掉用户斜杠草稿的行上。抓取在**每一次**
+  斜杠菜单打开转换时运行（**`onSlashActive`**，一个镜像 `onMentionQuery` 查询信号的布尔 prop——用户
+  键入查询期间它保持 `true`，因此没有逐键重发）并且是故意**不缓存**的：提示词文件在应用之外也会变
+  （pi CLI、编辑器、一次 git pull），任何应用内失效计数器都看不到——这里更早的一个
+  `(workspaceId, templatesVersion)` 缓存，恰恰让那些被外部改动的文件在聊天的剩余时间里保持陈旧，而
+  服务端每次调用都重读它的目录正是为了这份新鲜度（它的 SPEC 称那些 readdir 很便宜）——正是这一点让
+  `packages/server/src/agent/SPEC.md` 的 "the composer's `/` menu path is always fresh via
+  `template.list`" 断言为真，而不像逐字键入的 `/name args` 路径那份冻结的创建时快照。**挑选一个模板**
+  （`ChatView` 的 `onPickTemplate`，一个 `Composer` prop）：不再做朴素的 `/name ` 插入，而是抓
+  `template.get`，在客户端侧切分 frontmatter（`prompt` 模块共享的 `stripFrontmatter`——pi 自己的
+  frontmatter 解析器是服务端专属，永不进入浏览器 bundle，但那条边界规则被钉成与它完全一致；见下面
+  另存为模板那条），运行 `parseTemplateSlots(body, argumentHint)`，并把结果经
+  **`ComposerHandle.insertTemplate`**（与既有的 `insertText` 并列）交给 `Composer`——替换整份草稿
+  （像 `pickSlash`，不像 `pickMention`：一条斜杠命令占据整个输入）并且，如果解析产生了任何槽位，就
+  启动一个选中槽位 0 的**槽位会话**；没有槽位 → 一次朴素插入，光标在末尾，没有会话。异步响应只在
+  挑选仍然**当前**时才被应用——最新的挑选获胜**且**草稿与挑选时字节相同——因此一个慢响应绝不可能
+  清掉用户在此期间键入的草稿（或他们挑的第二个模板）；在那次选中模板读取挂起期间，共享选择器禁用
+  Composer 提交，好让一次快速的 Enter 无法发出原始的斜杠 token。该规则住在 `prompt` 的共享模板挑选
+  控制器里，并针对延迟与乱序响应做了单元测试。
+  **会话**（共享的 `prompt` state，由 `Composer` 本地持有，不涉及
+  store/transport）：`Tab`/`Shift+Tab` 步进到下一个/上一个槽位（环绕；`preventDefault`；在提及/斜杠
+  菜单打开时是空操作——在 `onKeyDown` 顶部、菜单自己的按键处理之前检查，因此一次真正的 Tab 挑选菜单项
+  不受影响，对称地，当菜单也打开时一次 `Escape` 会让菜单自己的关闭先赢）。**步出**一个*用户编辑过*的
+  槽位（其文本确实被用户改过的槽位——不是未触碰的标记，关键地也不是未触碰的 `${N:-default}`）会把它
+  的当前文本拼接到共享同一 `group` 且文本不同的其他每一个槽位里（分组镜像——重复的 `$N`/`${...}`
+  出现是在槽位退出时传播，而不是逐键传播），每次拼接都经共享的提示词槽位状态机重新追踪。一个槽位
+  携带两个独立的位：**`filled`**（解析期属性——有真实内容：一个 `${N:-default}` 的默认值，或被键入
+  过的标记——驱动发送时剥离 + 着色）与 **`edited`**（会话运行期状态——用户改过它——唯一的镜像*来源*
+  门禁）。如果用户把一个未触碰的标记选区折叠到它的末尾并在那里键入，可见的标记加上键入的后缀就成了
+  filled 并在发送时被保留：这就是 WYSIWYG，而剥离那个长大的区间会把用户的文本连同标记一起删掉。
+  两者故意不同：`${1:-foo} … ${1:-bar}` 生来是 `filled` 但不是 `edited`，因此它两个不同的逐出现
+  默认值保持独立，直到用户通过编辑其中一个来提供那个参数——与 pi 自己的展开一致，它绝不把
+  "foo … bar" 重写成 "foo … foo"。`Escape` 结束会话（`setSlots(null)`），文本保持原样。一次真正的
+  文本编辑（文本域自己的 `onChange`——绝不是程序化的 `onChange(text)` 调用；那些反而会直接结束会话，
+  因为 `pickMention`/`pickSlash`/箭头召回/`insertText` 都不参与槽位追踪）把编辑后的
+  `selectionStart` 周围的旧/新值（一次公共前缀/后缀扫描）差分进 `(editStart, removedLen,
+  insertedLen)`，经 `shiftSlots` 重新追踪每一个槽位，并给编辑落到的那个槽位打上 `filled: true`
+  **且** `edited: true`；一次消费了**整个**先前值的编辑（全选再键入/删除）会结束会话，而不是重新
+  追踪一组此刻已无意义的折叠区间。发送时，`submit()` 对**每一个用户编辑过的槽位**跑同一趟分组镜像，
+  而不只是最近一次 Tab 退出的那个（`mirrorAllGroups`——一次直接的 Send 从不需要先过一遍 Tab 才能让
+  它的镜像生效），把每个传播进同组的兄弟槽位；只有**然后**它才剥离仍然未触碰的那些标记
+  （`stripUntouchedSlots`），并且总是清空会话——已发送**或**已排队（steer/followUp），同一条规则。
+  切换标签页不需要显式清理：工作台的可见性门禁只挂载一个分组本地选中的主体，因此离开一个聊天标签页
+  会卸载 `Composer`（及其会话），而 store 的 `draft` 文本本身会留存。**提示 chip**：当会话激活时
+  （且菜单未打开，好让两个绝对定位的浮层绝不共享同一个锚点矩形），文本域上方的一个小胶囊——
+  `slot {slotIdx+1}/{n} · ⇥ next · esc done`（`data-testid="slot-hint"`）——可点击，点按步进到下一个
+  槽位（与 `Tab` 相同的镜像规则），是无需键盘的移动端路径。**高亮底板**：当会话激活时，输入框的间隙
+  在消息场域本身里被视觉着色——原生 `<textarea>` 无法为它内部的文本区间设置样式，因此 `Composer`
+  渲染一块**高亮底板**（一个带样式的镜像层，定位在现在已 `bg-transparent` 的文本域之后；输入背景
+  改为上移到包裹容器，裁剪到同一个 `rounded-md`，因此在会话之外视觉上什么都没变）。那个包裹器拥有
+  输入边框与填充：`bg-clip-padding` 让底板着色留在圆角边框之内，而
+  `focus-within:border-control-border-active` 是输入框唯一的焦点指示器，而不是文本域上再加一圈强调
+  环。纯的 `highlightSegments(value, slots, activeIdx)`（来自共享的 `prompt` 模块）把 `value` 拆成
+  有序的 plain/unfilled/filled/active 段——一个槽位区间在其 `slots` 索引等于 `activeIdx`（`Composer`
+  自己的 `slotIdx`）时是 `"active"`，否则按其自己的 `filled` 标志是 `"unfilled"`/`"filled"`；其余
+  一切都是 `"plain"`——纯偏移/切片，零间隙相邻的槽位不产生空段，且测试在每种情况下都钉住
+  `segments.map(s => s.text).join("") === value`。底板的内层镜像 div **精确**匹配文本域的盒模型
+  （`px-12 py-8`，同一个 `tr-text-ui` 排版类，一个同宽度的 `border border-transparent` 好让内容盒
+  对齐，`whitespace-pre-wrap break-words`——明确写出来，因为 `<div>` 不像 `<textarea>` 那样默认软
+  折行），因此每个 `SlotSegment` 的着色 span（`data-testid="slot-highlight"` + `data-slot-state`，
+  `rounded-xs`——文本连续段的圆角层级——配 unfilled/active/filled 的
+  `bg-primary-soft`/`-muted`/`-subtle`，plain 不著色，每个 span 都是 `text-transparent`，因此只有
+  上层真正的文本域文字透出来）正好落在它自己的字符之下。**滚动同步**：文本域的 `onScroll` **命令式**
+  地把它的 `scrollLeft`/`scrollTop` 复制到底板外层的 `overflow-hidden` 层上（一个 ref——没有 state，
+  没有行内 `style`：程序化的滚动偏移根本不需要样式，因此仓库那条只用 token 工具类的不变量零例外地
+  成立；更早的版本把偏移追踪在 state 里并施加 `translate(...)` 行内样式，既违反了该不变量，又在每
+  一个滚动的帧上重渲染输入框）。底板的 **ref 回调**在挂载时播种偏移，因此一个在已经滚动过的输入框里
+  启动的会话绝不会画出哪怕一帧错位。
+- **原生 `/name`** —— 浏览器原生命令目录在 `/compact` 旁边新增 `/name <title>`，标为 `Pi/built-in`，
+  并对同名扩展或提示词模板碰撞保留，以匹配 pi 自己的命令。解析器同时保留裸 `/name` 与
+  `/name <title>`；一个合法参数会绕过用户消息回声与 agent 发送，调用 `session.rename`，然后清空输入
+  框。空白/超限输入留在输入框里并带一个可据以行动的校验错误；传输层拒绝让持久标题保持不变，并作为
+  聊天内错误露出。这个命令对早于会话改名特性常量的宿主要隐藏。它与外壳的标签页/历史控件是同一次领域
+  变更的键盘路径——绝不是另一个标题来源——而自动生成没有 ChatView spinner，也没有对话记录行。
+- **另存为模板 + 模板管理**（`TemplateEditorDialog.tsx`；`HistoryOverlay` 的保存动作；
+  `panels/TemplatesSettings.tsx`）——一个共享的提示词模板文件创建/编辑表面，被两个彼此从不交谈的入口
+  复用：Settings → Templates 面板（列表 + New/Edit/Delete，见 `panels/SPEC.md`）与下面历史浮层的
+  另存为模板动作。**为什么它住在 `chat/` 而不是 `panels/`**（一处故意的边界例外，与上面的
+  `ChatView.tsx`/`useHistorySearch.ts` 并列）：`panels/` 允许从 `chat/` 导入（已经这么做，为了
+  `ModelEffortPicker`/`ModelSelector`/`ThinkingSelector`/`Markdown`），但反方向绝不，而
+  `HistoryOverlay`——它需要这同一个对话框——住在 `chat/`，因此这一份共享实现只能住在双方都能到达的
+  地方。于是 `TemplateEditorDialog` 被提升为**第三个**获准触碰 store/transport 的集成件（见下面的
+  边界），尽管它本身不是 `ChatView`。
+  - `prompt` 模块的**模板文本 API** 是唯一的共享 frontmatter 切分器/组装器——`stripFrontmatter`
+    （`ChatView.tsx` 的输入框挑选路径 + 本对话框的 body 字段）、`assembleTemplate`（本对话框的保存）。
+    它**不做 YAML 值解析**：对话框的 description/argument-hint 字段由服务端解析的 `template.get`
+    响应填充（`Template`——pi 真正的 YAML 解析器跑在**整份文件**上，完整的标量风格保真，钉在
+    `packages/server/src/templates/templates.test.ts` 里），绝不来自浏览器侧的重实现（这里更早的
+    `splitTemplate` 只处理裸/双引号标量，于是 pi 原生的 `description: 'single-quoted'` 带着字面引号
+    载入表单，保存回去时就损坏了）。它的边界规则镜像 pi 自己的 `extractFrontmatter`
+    （`@earendil-works/pi-coding-agent` 的 `dist/utils/frontmatter.js` + 目录中钉住的那个 pi 的
+    `dist/utils/text.js`——即 `packages/server/src/templates/SPEC.md` 在服务端依赖的同一批事实；pi
+    升级时两者都要重新核对）：剥掉一个前导 UTF-8 BOM、归一化换行，然后在之后**第一个** `\n---` 行处
+    结束 frontmatter 块；正文是该围栏之后的一切，再经 `.trim()`——而不是消费单个可选的 `\n`。更早的
+    版本有两个各写的手搓正则切分器（每个文件一个），各自只在闭合围栏之后消费一个*可选的* `\n` 而不是
+    trim——于是每次挑选、每次重开编辑都会有一行前导空行漏进正文，并且每个编辑-保存周期还会**叠加**
+    多一个 `\n`（漏出的那行被存回 body 字段并在下一次保存时重新被包裹）。`templateText.test.ts` 钉住
+    了这次修复所依赖的往返/稳定性性质。
+  - **字段**：name（客户端侧按与服务端 `isValidTemplateName`
+    （`packages/server/src/templates/templates.ts`）完全相同的规则校验——是复制而不是共享，因为它是
+    一个 4 行的纯谓词，而那个服务端模块是服务端专属的）、一个 scope 单选（Global / This project；
+    没有活跃工作区时 "This project" 被禁用）、description、argument-hint，以及一个 body
+    `Textarea`，带一行静态语法提示（`$1, $ARGUMENTS, ${1:-default} — pi prompt-template syntax`；
+    真正的语法由 `prompt` 模块解析 / 由 pi 展开——这一行只是文档文本，本身不被解析）。
+  - **组装**：`---\ndescription: …\nargument-hint: …\n---\n\n<body>`，某个键的字段为空时省略它，而当
+    两者都为空**且正文不以 `---` 开头**时**完全不带 frontmatter 块**——这样的正文无论如何都会被强制
+    加一个显式（可能是空的，`---\n---\n\n`）块：若裸着保存，pi 自己的加载器（以及我们的
+    切分器）会去该正文内部搜寻*更后面的* `\n---` 行当作闭合围栏，一旦正文里含有一个就悄悄把真实内容
+    当作 YAML 吞掉；强制包一层让我们的围栏无条件成为最早可能的匹配，因此正文自己那些看起来像 `---`
+    的行绝不会被重新解释（见 `templateText.test.ts` 的 ambiguous-body 用例）。每个值都以
+    `JSON.stringify` 引号形式输出，而不是裸值——YAML 的双引号标量转义集是 JSON 的超集，因此这永远是
+    合法 YAML，而不必仅为序列化两个短字符串就引入 `yaml` 包（见种子夹具自己的 `argument-hint:
+    "[file] [scope]"`，出于同样原因加了引号：裸值并不总是合法 YAML）。
+  - **编辑既有模板会锁住它的 name + scope**（两个字段禁用）：`template.save` 是按 `(scope, name)`
+    键控的创建或覆盖，没有改名/移动原语，因此在编辑时改动任一个都会悄悄在磁盘上把旧文件变成孤儿，
+    而不是给它改名。新建（包括另存为模板）让两者完全可编辑。**一次编辑按 `template.name` 逐字保存
+    ——绝不 trim 或归一化**：带空白的名字*按设计*在服务端合法（pi 从文件名逐字派生模板名，因此手工
+    创建的 `report .md` 会列为 `report `；`packages/server/src/templates/templates.ts` 的门禁故意
+    接受每一个 pi 可列出的名字），而在保存时 trim 曾写出一个**新的** `report.md`，同时让正在编辑的
+    那个文件原封不动（评审者标出；`templates-manage.spec.ts` 钉住了往返）。Save 按钮的空值门禁出于
+    同样原因只在新模式下启用——一个只有空白的、手工创建的名字是合法的编辑身份。只有**新**模板键入的
+    名字在校验/保存前被 trim：故意的表单归一化，这样一个意外的尾随空格无法铸出一个在每个列表里都与
+    它 trim 后的孪生渲染完全相同的文件（输入框的 `/` 菜单可以经点击*使用*这类手工创建的名字，但键入
+    的 `/name` token 无法携带空格——UI 不该制造二等名字）。
+  - **打开编辑会经 `template.get` 取回完整模板**，钉到该行确切的 `(scope, name)`——`template.list`
+    按设计只有元数据（有界的头部扫描 + 尺寸上限，见 `packages/server/src/templates/SPEC.md`），因此
+    列表行给不出正文，而且——真正踩坑的那部分——它的元数据也不可信：一个其 frontmatter 结束围栏落在
+    列表扫描窗口之外的文件，*合法地*列出来时**没有** description/argument-hint。因此 `get` 响应
+    **对每个字段都是权威**：正文经 `stripFrontmatter(content)`，而 description/argument-hint 来自它
+    的整文件解析，替换掉那些只是为即时绘制而*播种*表单的列表行值。（否则就是评审者标出的数据丢失：
+    从降级的行播种，并在 Save 时把这些字段写回，意味着一次只改正文的编辑会悄悄删掉文件真实的
+    description——`templates-manage.spec.ts` 钉住了这个往返。）在抓取落定之前，
+    description/argument-hint/body 三个输入被禁用且 Save 被门禁（`loading`）——过早保存会用降级的
+    种子覆盖文件；抓取失败时 Save 出于同样原因保持门禁（错误内联显示，重开即可重试）。
+  - **Save** 调用 `template.save`，然后调用 store 的 `bumpTemplatesVersion()`；被拒绝的保存经
+    `data-testid="template-error"` 内联渲染其消息（绝不是 toast——对话框保持打开，好让错误能就地修
+    好）。**Delete 完全不涉及对话框**——`panels/TemplatesSettings.tsx` 的行直接调用 `template.delete`
+    + `bumpTemplatesVersion()`，位于锚定到该行自己 Delete 按钮的 `ConfirmPopover` 之后。**被拒绝的
+    删除**是与 Save 唯一一处故意的不对称：它以错误 toast 露出，而不是内联（没有对话框可供内联渲染），
+    并让该行原地不动——正是 `panels/SPEC.md` 为 `ProjectTree` 自己的工作区移除行记录的那套模式。
+  - **另存为模板**（`HistoryOverlay` 的选中提示词行动作，`data-testid="history-save-template"`，当
+    选中提示词行时键盘 **Cmd/Ctrl+S**——浮层的 `onKeyDown` 总是 `preventDefault` 这个组合，因此无论
+    选中什么，浏览器自己的 Save 对话框都不会打开，但只有解析出的选中项是提示词命中时才会触发该动作）
+    打开对话框，正文从那条提示词的文本预填——一个 "new template" 情形（没有既有的名称/scope 身份），
+    与点击 New 相同。**输入框溢出处的入口点作为 YAGNI 被砍掉**（计划自己的用词）——历史路径已经覆盖
+    "复用我已写过的东西"；为同一个 "先打出来，再决定保存它" 的手势再开第二个入口，只会是冗余表面，
+    而不是一个不同的用例。
+  - **作为文件编辑** —— 只有项目范围的行会得到 `Open as file` 动作（`panels/TemplatesSettings.tsx`），
+    复用 `openTabs.ts` 里确切的 `openFileInTab(workspaceId, ".pi/prompts/<name>.md", "keep")`（与
+    文件树点击所用的同一动作）——故意取 **`keep`** 意图，因为一次显式的 "open in editor" 绝不能落进
+    后续浏览点击会悄悄替换掉的预览槽（见 `panels/SPEC.md` 的 Preview tabs 条目）——然后调用
+    `store.closeSettings()`。**全局行只能在对话框里改**——这是故意的不对称，不是疏忽：文件布局引用是
+    工作树范围的，但全局模板住在宿主的 agent 目录下，在任何工作树之外，因此没有工作树相对路径可用来
+    打开它。
+- **纯 `↑` 召回 + 历史按钮** —— `Composer` 的 `recentPrompts` prop（`ChatView`：本聊天自己的用户轮次
+  文本，经 `turnAnchorText`，最新在前，去重时**保留最新那次出现**——与服务端历史索引同一条最近优先的
+  排序规则，即 atuin/fzf 约定）支撑一个轻量的召回会话（`recallIdxRef`），其门禁使它绝不吃掉草稿：`↑`
+  只在场域**为空**或召回已激活时才进入（更旧 → 更高的索引），`↓` 走向更新的（越过最新则恢复 `""`），
+  任何有分歧的编辑或一次提交都会退出该会话，而被召回的文本落地时光标在其末尾。会话索引是一个
+  **ref，绝不是 state**：没有任何东西从它渲染，而步进把索引写在*这里*，同时草稿经 `onChange` 走进
+  **父级**的 store，因此若作为 state，两者可能在不同的批次里提交。在那个窗口里，文本域已经显示了召回
+  的文本，却还带着上一次渲染的处理器及其过期的索引——第二次 `↑` 重新召回同一条目而不是步进，而一次
+  编辑未能结束会话，于是下一次 `↑`/`↓` 从实时索引步进，并**覆盖用户刚敲进去的内容**（`replaceDraft`
+  在插入路径上防的正是这种丢失，只是改从键盘路径到达）。ref 按其最后写入的值读取，因此提交顺序无法
+  介入。处理器**每个事件只取一次快照**——ref 在同步处理器内部无法改变，且一次读取保持可收窄，而重复
+  读 `.current` 则不行。一个 `History` 图标的 ghost 按钮（`data-testid="history-open"`、
+  `aria-label="Search history"`，同名 tooltip，始终渲染在发送旁边）调用全局 `Ctrl+R` 所到达的同一个
+  `openHistory`——移动端的点按路径，桌面端的可发现性便利。
+- **聊天 TODO 计划** —— 聊天的 `pi-todos` 列表，在 TODO 栏与 Plan 页露出（引擎：
+  [[module-pi-todos]]；宿主读写：[[submodule-server-todos]]）：
+  `useChatTodos`（`todo.*` 数据 hook——抓取 + 实时 `pi.event` 重取 + 编辑 + 添加提示 + 那次
+  **复查快照重取**（计划的复查装饰是宿主派生的，因此工作区复查评论的变动——例如删除一条清除了某个
+  步骤 `changes_requested` 的发现——都会重读计划）+ `openMarkdown` 快照动作；工具完成会立即刷新，
+  而 `agent_settled` 提供最终刷新；重叠的列表读取是最新者胜且带连接世代戳，被接受的添加按条目 id
+  折叠；`remove` 乐观地把行补掉，并在宿主拒绝时重载权威并弹出错误 toast；外加 agent 复查操作
+  `startReview`（`todo.startReview`）与 `reviewAll`（`todo.reviewAll`）——两者都重读计划，因为
+  复查装饰是宿主派生的、绝不本地补写；手动裁定的操作随计划页的手动模式一起移除——`todo.review`/
+  `todo.requestFix` 仍留在线上协议上，宿主侧）、`planView`（对 DTO 的纯派生：`groupProgress`、
+  `planSummary`、`planGlance`/`sessionGlance`（按其输入的身份 memo，因此 store 选择器可以把它当
+  原始值返回，而不在无关更新上重新派生 ask 状态）、`planSections`、`shouldNudgeOnAdd`，以及复查
+  踪迹那一组——`itemRevisions`（提交历史，1 个 TODO = N 个提交）、`reviewableItems`/`reviewProgress`
+  （由 `TodoItem.review` 的存在与否在宿主侧把关——可复查规则只有一个家，在服务端；该集合覆盖计划里
+  的条目**以及** `TodoPlan.adoptedCommits`，因此 Review 阶段/Review All 覆盖在计划之外提交的工作，
+  而 `planSummary` 的构建 `done/total` 只计计划内的条目）、`reviewChangesRequested` +
+  `itemOpenFindings`（changes_requested 警告的标记：该标志加上复查者未关闭评论的条数——在被盖上时按
+  发现的 `origin` 溯源（todoId + 可选的 sessionId）匹配，只对无溯源的评论回退到变更集路径 join，
+  因此两个步骤碰到同一个文件时不会互相计入对方的发现；Review 标签页才是真相），以及
+  `planCompletionSummary`（agent 的计划级备注，以 "everything done" 为门禁，因此重开的计划绝不会把
+  过期的全部完成备注泄漏进无门禁的输出——它供给 markdown 导出；计划页还会显示一段派生的一行回顾，
+  见 `panels/SPEC.md`）与它只在计划页用的伙伴 `planStaleSummary`（同一条存储备注在某个条目于完成
+  之后重新打开时被标为陈旧地露出，因此回顾留在页面上，而不是消失到 agent 重写它为止）以及
+  `planChangeTotals`（那段回顾背后的整份计划的去重文件数）。`itemChangeSet` 的优先级：实时的
+  `change` 路径优先（一次回退重做的最新增量），否则取最新的可解析提交。分组的*状态*在这里**不**派生
+  ——宿主计算它并通过 `TodoGroupItem.status` 下发，因此该规则只有一个家；用户的编辑因此重读
+  计划而不是本地补写它，见 `useChatTodos`）、`TodoList`（**按状态排序、分组优先**的渲染
+  （`planSections`）——分组 = 任务：**进行中**的任务（它的整个分组）在最上面，**没有分区标题**，
+  然后是一个 **To do** 分区（先是待处理的分组，再是用户待处理的零散条目），最后是最底部的一个
+  **"Done" 标签**，其下**每个完成的任务都是它自己可折叠的行**（折叠——标题 + `N done`）外加已完成
+  的零散条目（不是对全部 Done 做一次折叠）。已完成的*步骤*留在它们（活跃/待处理）的分组里内联；
+  只有整个完成的任务移进 Done。每个分组是一行头部（派生的状态图标 + 标题 + done/total 徽章），
+  `active` 分组被强调；用户的零散条目带一个逐行的 `user` 徽章（没有单独的 "Your requests" 标题——
+  它们按状态摆放）。**紧凑列表只有标题**（状态字形 + 标题 + 变更集 chip）——一行的 `note`、已完成
+  条目由 agent 撰写的 `summary`，以及它的 `verification` 在这里**不**显示，因此一份长计划能一眼读完
+  而不过载；**完整计划页**（`PlanPane`）才是这些东西露出的地方：`summary` 作为 **Markdown**（一条
+  低调的结构化备注——引导句 + 项目符号），`verification` 作为共享的 **`VerificationBadge`**
+  （`planKit`；一个状态字形——具名检查用对勾，诚实的 "not verified" 用警告，该切分由
+  `planView.verificationStatus` 派生，只有一处——旁边是作为 **Markdown** 渲染的验证内容，因此多项
+  检查读作项目符号，而不是挤成一行；徽章的 title 把它标为自述——绝不是宿主运行的门禁）。计划页没有
+  页内复查列表——它的头部 kebab 提供 **Review All**（宿主侧队列，`todo.reviewAll`）和一个把焦点移到
+  右面板 Review 标签页的评论 chip（见 `panels/SPEC.md`）。一行若其复查是**已落定**的
+  （`planView.reviewSettled`——已批准且此后没有任何东西落地）会把它的完成对勾升级为**圈住的 Verified
+  字形**（`StatusIcon reviewed`，hover "Verified"，`data-reviewed`）——那一眼可见的 "this step was
+  reviewed" 状态，栏里与计划页一致；一个 **changes_requested** 裁定则把字形翻成警告的 `CircleAlert`
+  代替（`StatusIcon changesRequested`，hover "Changes requested"，`data-changes-requested`）——计划页
+  再加上 chip + 反馈备注（见 `panels/SPEC.md`）。**一行若其条目带有宿主变更集，会长出一个安静的
+  "N files" chip**（`planView` 里的 `itemChangeSet`——与下面 markdown 快照共享的那唯一一处派生，
+  因此两者绝不会不一致）：**已提交**条目的 chip 通过 `useChatTodos.openChanges`（`setDiffScope` +
+  一个外壳的 `reveal-tool` 意图——面板自己列出该提交的文件；N = DTO 里宿主派生的 `commit.files`）
+  在它的 `commit:{sha}` scope 上打开 Changes 面板；**路径列表回退**则直接深链单个路径的实时 diff
+  （先把 scope 钉回 `branch`，这样它不会继承上一次点击留下的提交 scope）或展开一个内联路径列表。
+  一个 sha 已无法解析的提交产物**不带 `files`** 下发 → 没有 chip，绝不是坏掉的 diff 标签页（降级
+  契约）。外加添加行 + 一个 **"Open the plan page"** 按钮（`todo-open-plan`）——`useChatTodos.openPlan`
+  打开（或聚焦）聊天的**实时计划页**，一个由 `panels/PlanPane` 渲染的中心 `plan` 标签页（见
+  `panels/SPEC.md`）；它的标题经 store 的 `selectChatTitle` 解析聊天名（只有一处，与该窗格共享）。
+  **状态排序只属于 UI**——agent 的 `formatPlan` 保持计划顺序，因此它 "work in order" 的纪律不受
+  影响）、`planMarkdown`（一个纯的 `plan → markdown` 编译器，`## <group> — n/m` 分区——计划页的
+  **导出**（复制 / 另存为 .md），绝不是交互表面：已完成条目的变更集渲染为它的短 sha +
+  `N files · +A −R`，以及按状态字母排列的逐文件行，**纯文本，没有链接**——导出会离开应用，在那里
+  链接方案是死的；交互式导航是计划页的职责。它还会为 `TodoPlan.adoptedCommits` 输出一个
+  **`## Committed outside the plan`** 分区（镜像 `unattributed` 的 `## Outside the plan`），因此
+  导出覆盖没有任何步骤拥有的分支提交；`No items yet` 占位符在任一分区存在时被抑制）。紧凑 TODO
+  列表是一个侧栏工具（`panels/PlanRailPane.tsx`，见 [[submodule-web-panels]]），而 Plan 页是一个经
+  `openPlan` 打开的中心标签页；聊天视图本身不渲染任何计划表面。**自动摘要触发器**（一份完全完成、
+  且没有 agent `summary` 的计划会触发一次尽力而为的 `todo.generateSummary`，把一条宿主起草的备注折
+  进去——计划重开或其摘要被清空时会重新武装，绝不覆盖已有备注）是那个只有副作用的 hook
+  `useAutoPlanSummary(workspaceId, sessionId)`，由 `shell/WorkspaceWorkbench` 通过每个唯一 sessionId
+  一个的 `PlanSummaryAutoDraft` 锚点挂载，覆盖任何打开的会话支撑标签页（聊天、实时 Plan 页、
+  markdown 计划 `doc` 导出），经 `editorSessionId(tab)` 解析，因此无论选中哪个标签页、打开的是哪个
+  计划表面，它都会触发。计划写入会通知同一聊天其他已挂载的 `useChatTodos` 实例去重取。
+  前端本地的工作区视图状态把 Plan 页持久化为一个注册的 `todo-plan` 引用（解析器种类 + 会话身份，
+  绝不是计划内容）；另一个客户端可以从宿主拥有的 TODO 计划显式重开同一个实时页，而不继承放置。
+  （更早的设计把计划编译成一个静态 markdown `doc` 标签页，配一套自定义的 `thinkrail-diff:` 链接
+  方案——已替换：快照在 agent 翻转状态的那一刻就开始撒谎，而 markdown 无法承载 Changes 面板的便利；
+  页面是实时的，markdown 被降级为它的导出。）
+  **一瞥状态**让计划作为用户的状态窗口保持诚实：那个 memo 的 `sessionGlance(runtime)` 选择器
+  （它在会话的流式标志 + ask 状态上运行 `planGlance`），由 TODO 栏读取，并经 `hostSessionGlance`
+  叠加在宿主 `SessionState` 之上，**从不存储**，因此 agent 无法让它撒谎——它把 `in_progress` 步骤
+  渲染为进行中（圆点）、**等待你的回答**（`MessageCircleQuestion`——与 `ask_user_question` 卡片同一个
+  字形，在实时工具阻塞或重启修复中的会话等待时），或**已暂停**（`CirclePause`，任何其他停止：轮次
+  结束、错误）。没有待答问题的停止绝不会声称用户欠一个回答。这一瞥的进行中/等待生命周期来自规范化
+  的宿主 `SessionState`——在 TODO 栏里，以及经 `sessionGlance` 在 Plan 与 Review 面板里——因此一个
+  闲置在其后台命令或子代理上的聊天读作进行中（`isSessionWorking`）；从对话记录派生的那一瞥只是
+  旧宿主的回退。`askStates` 只保留用来识别并渲染确切的问卷/回顾。**未读结果被看到即清除**（没有
+  读取手势）：`ChatTranscript` 在窗口有焦点且可见、聊天被注视（`selectChatAttended`：在活跃工作区
+  最后聚焦的中心分组中被选中，没有打开或请求它的历史浮层）、Resources 检查器与任何打开的模态对话框
+  都没有盖住对话记录（来自 `@thinkrail/ui/dialog` 的 `useModalLayerOpen`，它标记每一个模态浮层），
+  并且对话记录跟随最新边缘（`followState`），且那一行确切结果已渲染（`selectReadyCompletionAck`）
+  时，确认那条确切的未读完成。用户跟随时落地的结果绝不会一直亮着；在他们阅读历史、坐在另一个分组里
+  或离开时落地的结果，会在他们回到该聊天的最新边缘时清除；打开一个落在最新边缘的聊天会立即清除它。
+  一个被动可见的邻接窗格，或一个未聚焦的第二个客户端，绝不会清除另一个读者的标记。瞬时的确认失败
+  以有界封顶退避预算重试；重新进入已见状态会重新武装那个确切的 id。
+  `TodoList` 保持 props 驱动——它接收已解析好的一瞥，绝不读传输层。
+  它的分区标签 + 待处理/活跃/完成状态字形住在 **`planKit.tsx`** 里——Review 面板
+  （`panels/ReviewPanel`）复用的共享呈现型原子，因此两个 "work items in sections" 表面读起来一致。
+  **添加提示尊重那个等待状态。** 用户的添加总是存下该条目（零散，放在末尾）。
+  在协议 v73+ 上，`session.nudge` 原子地做出宿主权威的阻塞/执行决定：需要输入则空操作、运行中则
+  排队、空闲则提示。独立发布的客户端仅为更旧的宿主保留先前的基于一瞥的提示/追加消息加水合回退；
+  兼容路径跳过等待中的问题，而不是越过它的阻塞去唤醒 agent。
 
 ## Chat Resources
 
-[[submodule-web-chat-resources]] owns the three presentation surfaces — header trigger, composer
-dock, transcript-region inspector — and their shared row grammar. `ChatView` composes its barrel with
-the `useChatResources` integration hook: it mounts the trigger in the header, the dock between the queue
-strip and the composer (only while the inspector is closed), and the inspector inside the transcript
-region so the header and composer stay usable; it owns the open/selected state and fills the inspector's
-detail slot — `CommandLogView` fed by `useCommandLog` for a command, `SubagentTranscriptPane` for a
-subagent. No new shell pane, workbench resource kind or terminal attachment is involved. Tool/command
-completion rendering remains in the conversation primitives, joined through tool/custom-message
-names rather than imports of the capability packages; the latest turn divider carries the "still
-running" chip as a parent-supplied deep link into the inspector. The resources view has a third list,
-the session's MCP servers (`SessionResources.mcpServers`): `useChatResources` passes it only on an
-MCP-capable protocol (older hosts omit the field; either way there is no list) and
-extends the shared controls with `mcp.setSessionOverride` (Disable / Enable in this chat, applied at the
-next idle reload) and `mcp.reconnect`, keyed `mcp:<name>` beside the stop actions. `ChatView` adds the
-connected/starting servers to the trigger's count without making it breathe, mounts `ResourcesAttention`
-beside the trigger while a server needs sign-in, failed or awaits approval, and deep-links that marker and
-the rows' Sign in / Review / Edit to `openSettings(SettingsSection.Mcp)`. While the inspector is open on a
-chat with servers it runs `watchMcpWorkspace`, restarted on every connected generation so a reconnect
-gets a fresh bounded read: the host publishes no edge when a server finishes
-connecting, and the `mcp.list` re-read is what makes it refresh status and push `session.resourcesChanged`.
-The divider's "still running" chip and the dock keep counting work only. No PID is shown — pi exposes
-none — and there is no immediate per-server stop.
+[[submodule-web-chat-resources]] 拥有三个呈现表面——头部触发器、输入框停靠区、对话记录区检查器
+——以及它们共享的行语法。`ChatView` 用它自己的 barrel 组合
+`useChatResources` 集成 hook：它在头部挂载触发器，在队列条与输入框之间挂载停靠区（仅在检查器关闭时），
+并在对话记录区域内部挂载检查器，好让头部与输入框保持可用；它拥有打开/选中状态，并填充检查器的详情
+槽——命令用 `useCommandLog` 供给的 `CommandLogView`，子代理用
+`SubagentTranscriptPane`。不涉及新的外壳窗格、工作台资源种类或终端附加物。工具/命令
+完成渲染仍留在会话原语里，通过工具/自定义消息的名字接合，而不是导入能力包；最新的轮次分隔线
+携带 "still running" chip，作为父级提供的指向检查器的深链。资源视图有第三个列表，
+即会话的 MCP 服务器（`SessionResources.mcpServers`）：`useChatResources` 只在 MCP 能力协议上传递它
+（更旧的宿主省略该字段；两种情况下都没有列表），并用
+`mcp.setSessionOverride`（在此聊天中 Disable / Enable，在下次空闲重载时生效）与 `mcp.reconnect`
+扩展共享控件，键为 `mcp:<name>`，挨着各个停止动作。`ChatView` 把已连接/正在启动的服务器加进
+触发器的计数而不让它呼吸，在服务器需要登录、失败或等待批准时把 `ResourcesAttention` 挂在该触发器
+旁边，并把那个标记与行上的 Sign in / Review / Edit 深链到 `openSettings(SettingsSection.Mcp)`。
+当检查器在一个带服务器的聊天上打开时，它会运行 `watchMcpWorkspace`，并在每个已连接世代重启，
+好让一次重连得到新鲜的有限读取：宿主在服务器完成连接时不发布边缘事件，而正是 `mcp.list` 的
+重新读取让它刷新状态并推送 `session.resourcesChanged`。
+分隔线的 "still running" chip 与停靠区只统计工作。不显示 PID——pi 不暴露它——也没有立即的按服务器
+停止。
 
-The dependency edges are `ChatView`/`useChatResources` → `resources`, `store`, `transport`, and
-`ChatView` → the transcript pane. The `resources` child stays props-only and imports no sibling tool
-implementation; it receives the shared 30 s clock as a `now` prop. Command logs are fetched by the
-integration hook and passed into its read-only view; the module never loads xterm.
+依赖边是 `ChatView`/`useChatResources` → `resources`、`store`、`transport`，以及
+`ChatView` → 对话记录窗格。`resources` 子模块保持只用 props，不导入任何同级工具实现；它把共享的
+30 s 时钟作为 `now` prop 接收。命令日志由集成 hook 抓取再传进它的只读视图；该模块从不加载
+xterm。
 
-The hook hydrates on mount/current welcome, subscribes to `session.resourcesChanged`, and coalesces
-invalidations behind one in-flight read. An invalidation during a read requires a fresh pass;
-[[submodule-web-store]] owns generation/revision-fenced snapshot installation and failure handling.
-Metadata remains current while the inspector is closed; the header count is numeric only for an
-authoritative snapshot and explicitly unknown otherwise. A welcome that proves the host predates the
-capability closes the inspector and its Stop-all confirmation, while an unknown protocol during
-reconnect merely makes them stale. Command output and subagent transcripts refresh only while that row
-is the inspector's selection. The shared `detailPolling` loop handles command output and subagent transcript reads:
-single-flight replacement snapshots, stopping on terminal/permanently unavailable results, and capped
-transient backoff with visibly retryable failures. Resource controls keep pending/error state scoped
-to their action and current connection; acknowledgement and detail-close focus semantics belong to
-[[submodule-web-chat-resources]]. No per-token subagent progress or tool-result rewriting is needed
-for the header count.
+该 hook 在挂载/当前欢迎时水合，订阅 `session.resourcesChanged`，并把失效合并到一次在途读取之后。
+读取期间的失效需要再跑一趟；[[submodule-web-store]] 拥有带世代/修订栅栏的快照安装与失败处理。
+检查器关闭时元数据保持最新；头部计数只在权威快照时是数字，否则明确为未知。一个证明宿主早于该
+能力的欢迎会关闭检查器及其 Stop-all 确认，而重连期间未知的协议只是让它们变陈旧。命令输出与
+子代理对话记录只在那一行是检查器的选中项时才刷新。共享的 `detailPolling` 循环处理命令输出与
+子代理对话记录的读取：单飞替换快照、在终态/永久不可用的结果上停止，以及带可见可重试失败的有上限
+瞬时退避。资源控件把 pending/error 状态限定在它们自己的动作与当前连接之内；回执与详情关闭的焦点
+语义属于 [[submodule-web-chat-resources]]。头部计数不需要按 token 的子代理进度或工具结果改写。
 
-`backgroundCommandCompletion` is a fold-breaking historical row, recognized by the contracts guard
-in both live reduction and hydration. `BackgroundCommandCompletion` is props-only and renders the
-terminal summary and bounded output as escaped monospaced plain text, never Markdown or live authority.
-Unknown custom messages retain their existing behavior.
+`backgroundCommandCompletion` 是一条打破折叠的历史行，由 contracts 守卫在实时归约与水合两条路径上
+识别。`BackgroundCommandCompletion` 只用 props，并把终端摘要与有界输出渲染为转义后的等宽纯文本，
+绝不是 Markdown 或实时权威。未知的自定义消息保持既有行为。
 
-## Boundary
+## 边界
 
-- **Public surface:** the registry API (`toolRegistry`), the shared workspace-file target canonicalizer
-  (`fileTargets`), and the renderers (incl. the presentational
-  `Markdown` — GFM + shiki, no store/transport; the rendering is fixed but the **prose skin** is the
-  caller's via an optional `className` — chat uses the compact bubble skin (`tr-prose-chat`),
-  `panels/MarkdownPreview` the document skin (`tr-prose-doc`). A skin names exactly one generated
-  `tr-prose-*` system and then carries only spacing/measure/chrome — no size, weight, leading or
-  tracking (see `styles/TYPOGRAPHY.md`); a caller may
-  also **extend** the render with an optional `urlTransform`, extra `remarkPlugins`, and `components`, e.g.
-  the file view's GitHub alert callouts), the view types
-  (`types.ts`,
-  incl. `ToolResultState` + `ExtUiDialogRequest`), and `ChatView` (lazy-mounted by the shell workbench
-  resource renderer;
-  it wires `SkillsDialog` + the header Skills trigger, resolving the owning `projectId` from the store and
-  reading the reload badge from the store selector `selectSkillsStale(state, workspaceId, sessionId)` —
-  per-session and store-derived, so it survives the tab-switch remount; a successful reload calls
-  `markSkillsSynced` to clear only this chat).
-  **No `index.ts` barrel** — chat pulls **shiki**, so per the code-splitting exception imports stay
-  **per-file**; the registry is importable from `chat/toolRegistry` **without** pulling shiki.
-- **Allowed deps:** `contracts` (pi message/content-block types, **type-only**); `ui` (shared
-  `i18n` runtime plus primitives); the lifecycle-neutral
-  `prompt` module; `store` + `transport`
-  (**app-integration files only** — a renderer that takes props must never reach for either. Today that
-  is `ChatView.tsx`, **`ChatTranscript.tsx`** (the churn-isolated transcript child — the Virtuoso list, scroll
-  control, transcript sync, completion-ack, and the `ChatActions`/`AskStatesContext` providers),
-  `chatPreferences.ts` (the client-local persistence adapter), plus the hooks and dialogs
-  it composes: `useChatTodos.ts`, `useHistorySearch.ts`,
-  `useModelCatalog.ts`, **`useChatResources.ts`** (the Resources hydration/control/log-read seam),
-  **`useSessionStats.ts`** (generation/revision-fenced authoritative telemetry reads),
-  **`useTranscriptSync.ts`** (successful-compaction + connection-generation canonical transcript
-  reconciliation), `SkillsDialog.tsx`, **`useProjectTrustSummary.ts`** (the trust-summary read the Skills
-  dialog shares with `panels/ProjectTrustNotice` and New Workspace; its pure derivation and copy live in the
-  store-free `projectTrust.ts`), `TemplateEditorDialog.tsx`,
-  `SubagentTranscriptDialog.tsx`, **`useModelPreferences.ts`** (pinned / recents / default pair:
-  the store read plus the `settings.update` writes every picker mount shares), and **`modelVisibility.ts`**
-  (the hidden-models persistence seam `main.tsx` starts once: hydrates `store.hiddenModels` and writes it
-  back through the stable client-preference adapter or host-qualified localStorage — the store itself
-  touches no storage). `useModelCatalog` is the shared
-  models-catalog seam `panels/NewWorkspaceDialog` also imports per-file, so the two pickers cannot
-  drift; on activation it **drops catalog authority synchronously** (a flag an earlier consumer set says
-  nothing about the list this one inherited) and reads `model.list` only when the shared list is **empty** —
-  a read per activation would hang a full host `runtime.refresh()` off every chat-tab switch, and the picker's
-  Refresh row is the currency path. It reports **`fresh`** — read straight off the store's `modelsFresh`,
-  because catalog authority belongs to the **shared list**, not to a consumer: true only for the installed
-  result of an awaited forced refresh **the host reported `complete`** (its wait is capped, so an unsettled
-  pass still answers — with a list to render, not a verdict), and dropped by the next `model.list` install
-  from *any* consumer. `model.list` answers from *before* the
-  detached refresh it triggers, so it is never a basis for concluding a model is gone);
-  `react-markdown` / `remark-gfm` / `shiki` (via `lib/highlighter` / `lib/highlightCode`; a streaming fence
-  shows its last highlight plus the newer text as plain until the worker catches up); `marked` (block lexer
-  for `markdownBlocks` splitting only, never for rendering); `@thinkrail/ext-visualize/web`
-  (`Markdown` consumes `MermaidView`; `mermaid` stays lazy inside the extension);
-  `@thinkrail/extension-api/web`; `react-virtuoso`; `@remixicon/react`; `@thinkrail/ui/*`;
-  `components/useNow`; `lib`.
-- **Forbidden:** value-importing any `pi` package; a **presentational** renderer importing
-  `store`/`transport` (only the app-integration files enumerated above may — keep the renderers reusable).
-- **`ChatView`** is the primary app-integration file: wires the transport calls and this session's
-  shell-facing store reads (granular per-field selectors off `store.sessions[sessionId]`, plus
-  `recentPrompts` and the plan glance derived through shallow-compared selectors) — together with
-  **`useHistorySearch.ts`** (the Ctrl+R history-recall overlay's store/transport edge),
-  **`useSessionStats.ts`** (the guarded read that keeps telemetry live), and
-  **`TemplateEditorDialog.tsx`** (the shared template save form), the other shell integration points. Its
-  churn-isolated child **`ChatTranscript`** is the second integration file: it owns the streaming runtime
-  subscription (`store.sessions[sessionId]`), provides the `ChatActions` + `AskStates` contexts, builds the
-  divider's deep links (`onOpenChange` → `requestChangesView`, `onOpenSpec` → `requestSpecView`; each
-  receives the single path the user picked) plus its view switch (`onReveal` → the tool-reveal intent), the
-  `isSpec` classifier from the store's `specsByWorkspace` snapshot (subscribed as the stored array — a
-  stable ref — and memoized into a matcher, never a fresh Set inside the selector), and the guarded
-  **`useTranscriptSync.ts`** authoritative read that converges an existing runtime. A
-  **rejected** send (`prompt`/`steer`/`followUp`) lands in the chat via the store's `appendErrorTurn` —
-  never swallowed and never given the settlement-only Try again affordance; *streaming* faults arrive as pi
-  events instead.
+- **Public surface（公开接口）：** 注册表 API（`toolRegistry`）、共享的工作区文件目标规范化器
+  （`fileTargets`），以及各渲染器（含呈现型的
+  `Markdown`——GFM + shiki，不碰 store/transport；渲染是固定的，但**散文皮肤**由调用方经可选的
+  `className` 给出——chat 使用紧凑气泡皮肤（`tr-prose-chat`），
+  `panels/MarkdownPreview` 使用文档皮肤（`tr-prose-doc`）。一个皮肤只点名一套生成的
+  `tr-prose-*` 体系，然后只携带间距/度量/外壳——不带字号、字重、行距或
+  字距（见 `styles/TYPOGRAPHY.md`）；调用方还可以用可选的 `urlTransform`、额外的 `remarkPlugins`
+  和 `components` 来**扩展**渲染，例如文件视图的 GitHub alert callouts），视图类型
+  （`types.ts`，含 `ToolResultState` + `ExtUiDialogRequest`），以及 `ChatView`（由外壳工作台的资源
+  渲染器惰性挂载；它接线 `SkillsDialog` + 头部 Skills 触发器，从 store 解析所属的 `projectId`，并从
+  store 选择器 `selectSkillsStale(state, workspaceId, sessionId)` 读取重载徽章——
+  按会话且从 store 派生，因此能在标签页切换重挂载后存活；一次成功的重载会调用
+  `markSkillsSynced` 只清除这个聊天）。
+  **没有 `index.ts` barrel**——chat 会拉入 **shiki**，因此按代码分割例外，导入保持
+  **按文件**；注册表可以从 `chat/toolRegistry` 导入，而**不**拉入 shiki。
+- **允许的依赖：** `contracts`（pi 消息/内容块类型，**仅类型**）；`ui`（共享的
+  `i18n` 运行时加原语）；与生命周期无关的
+  `prompt` 模块；`store` + `transport`
+  （**仅限应用集成文件**——接收 props 的渲染器绝不可去碰其中任何一个。今天那指的是
+  `ChatView.tsx`、**`ChatTranscript.tsx`**（那个隔离高频重渲染的对话记录子组件——Virtuoso 列表、滚动
+  控制、对话记录同步、完成回执，以及 `ChatActions`/`AskStatesContext` 两个 provider）、
+  `chatPreferences.ts`（客户端本地持久化适配器），外加它组合的各个 hook 与对话框：
+  `useChatTodos.ts`、`useHistorySearch.ts`、
+  `useModelCatalog.ts`、**`useChatResources.ts`**（Resources 的水合/控制/日志读取接缝）、
+  **`useSessionStats.ts`**（带世代/修订栅栏的权威遥测读取）、
+  **`useTranscriptSync.ts`**（成功的 compaction + 连接世代下的规范化对话记录
+  对账）、`SkillsDialog.tsx`、**`useProjectTrustSummary.ts`**（Skills 对话框与
+  `panels/ProjectTrustNotice`、New Workspace 共享的那次信任摘要读取；它的纯派生与文案住在不碰 store
+  的 `projectTrust.ts` 里）、`TemplateEditorDialog.tsx`、
+  `SubagentTranscriptDialog.tsx`、**`useModelPreferences.ts`**（固定 / 最近 / 默认这一对：
+  那次 store 读取加上每个选择器挂载都共享的 `settings.update` 写入），以及 **`modelVisibility.ts`**
+  （`main.tsx` 只启动一次的隐藏模型持久化接缝：水合 `store.hiddenModels`，并通过稳定的客户端偏好
+  适配器或带宿主限定的 localStorage 写回——store 自身不碰
+  任何存储）。`useModelCatalog` 是共享的模型目录接缝，`panels/NewWorkspaceDialog` 也按文件导入它，
+  因此两个选择器不会漂移；激活时它**同步丢弃目录权威**（更早的消费者设下的标志，对这一个继承来的
+  列表什么都说明不了），且只在共享列表**为空**时才读 `model.list`——
+  每次激活都读一次会让每次聊天标签页切换都挂上一次完整的宿主 `runtime.refresh()`，而选择器的
+  Refresh 行才是获取最新状态的路径。它报告的 **`fresh`**——直接从 store 的 `modelsFresh` 读出，
+  因为目录权威属于**共享列表**，而不属于某个消费者：仅当一次等待中的强制刷新**宿主报告了 `complete`**
+  且其结果已安装时才为真（它的等待有上限，因此一次未落定的过程仍会作答——给出的是可渲染的列表，
+  而不是结论），并会被**任何**消费者接下来的 `model.list` 安装所丢弃。`model.list` 从它触发的那次
+  分离刷新*之前*作答，因此它绝不是断定某个模型已消失的依据）；
+  `react-markdown` / `remark-gfm` / `shiki`（经 `lib/highlighter` / `lib/highlightCode`；流式中的围栏
+  会显示它上一次的高亮，加上更新的文本作为纯文本，直到 worker 追上）；`marked`（仅用于
+  `markdownBlocks` 切分的块词法分析器，绝不用于渲染）；`@thinkrail/ext-visualize/web`
+  （`Markdown` 消费 `MermaidView`；`mermaid` 在扩展里保持惰性）；
+  `@thinkrail/extension-api/web`；`react-virtuoso`；`@remixicon/react`；`@thinkrail/ui/*`；
+  `components/useNow`；`lib`。
+- **禁止：** value-import 任何 `pi` 包；**呈现型**渲染器导入
+  `store`/`transport`（只有上面列举的应用集成文件可以——保持渲染器可复用）。
+- **`ChatView`** 是主要的应用集成文件：接线传输层调用与本次会话面向外壳的
+  store 读取（从 `store.sessions[sessionId]` 取细粒度的逐字段选择器，外加
+  `recentPrompts` 与通过浅比较选择器派生的计划一瞥）——与
+  **`useHistorySearch.ts`**（Ctrl+R 历史召回浮层的 store/transport 边缘）、
+  **`useSessionStats.ts`**（让遥测保持实时的受保护读取）以及
+  **`TemplateEditorDialog.tsx`**（共享的模板保存表单）一起，构成另外几个外壳集成点。它那个隔离
+  高频重渲染的子组件 **`ChatTranscript`** 是第二个集成文件：它拥有流式运行时的
+  订阅（`store.sessions[sessionId]`），提供 `ChatActions` + `AskStates` context，构建
+  分隔线的深链（`onOpenChange` → `requestChangesView`，`onOpenSpec` → `requestSpecView`；每个
+  都接收用户选中的那一个路径）加上它的视图切换（`onReveal` → 工具揭示意图），以及
+  来自 store `specsByWorkspace` 快照的 `isSpec` 分类器（以存储的那个数组——一个稳定 ref——订阅，
+  再 memo 成一个匹配器，绝不在选择器里新建 Set），还有那一次受保护的
+  **`useTranscriptSync.ts`** 权威读取，用来收敛已有的运行时。一次
+  **被拒绝的**发送（`prompt`/`steer`/`followUp`）经 store 的 `appendErrorTurn` 落进聊天——
+  绝不被吞掉，也绝不给只有落定才有的 Try again 便利；*流式*故障则以 pi
+  事件的形式到达。
 
-## Streaming model
+## 流式模型
 
-The `store` folds pi events into pi-canonical turns **per session**: the in-flight assistant turn **is**
-the latest `assistantMessageEvent.partial` snapshot (replaced each update — not hand-accumulated). A
-message's true terminal is **`message_end`**: the reducer adopts the final message (it carries
-`stopReason`, how renderers spot dead tool calls) and clears that message's `streaming` flag **there**.
-`agent_end` is only an attempt boundary (for a tool-calling message it arrives after its tools ran, but
-it can still precede auto-compaction/retry); `agent_settled` alone closes the automatic run, clears the
-session loader, and appends one success/error marker. A successful overflow `compaction_end` with
-`willRetry: true` removes the superseded errored/truncated attempt, matching Pi's rebuilt context. Tool results are
-indexed by `toolCallId` in `toolResults`; `ask-user-answers` custom messages index into `askAnswers`
-(never the turn list — the questionnaire card is their rendering); `subagent-completion` custom messages
-append a `subagentCompletion` turn (the shared contracts guard narrows both, on the live and read paths). The view re-derives rows each render
-(`deriveRows` is pure; `ChatTranscript` memoizes it, then reuses unchanged row objects via `stabilizeRows`
-kept in state) — stable row/step ids keep fold state across snapshots.
+`store` 把 pi 事件折算成 pi 规范化的轮次，**按会话**：在途的 assistant 轮次**就是**最新的
+`assistantMessageEvent.partial` 快照（每次更新都替换，而不是手工累积）。一条消息真正的终结点是
+**`message_end`**：reducer 在那里采纳最终消息（它携带 `stopReason`，渲染器据此识别死掉的工具调用），
+并在**那里**清除该消息的 `streaming` 标志。`agent_end` 只是一个尝试边界（对于带工具调用的消息，它在
+其工具跑完之后到达，但仍可能先于自动压缩/重试）；只有 `agent_settled` 才会关闭自动运行、清除会话
+加载器，并追加一个成功/错误标记。一次成功的溢出 `compaction_end` 带 `willRetry: true` 会移除被取代的
+出错/截断尝试，与 Pi 重建后的上下文一致。工具结果在 `toolResults` 里按 `toolCallId` 索引；
+`ask-user-answers` 自定义消息索引进 `askAnswers`（绝不是轮次列表——问卷卡片就是它们的渲染）；
+`subagent-completion` 自定义消息追加一个 `subagentCompletion` 轮次（共享的 contracts 守卫在实时路径与
+读取路径上都会收窄两者）。视图每次渲染都重新派生行（`deriveRows` 是纯函数；`ChatTranscript` 对它做
+memo，然后通过保存在 state 里的 `stabilizeRows` 复用未变的行对象）——稳定的行/步骤 id 让折叠状态在
+快照之间存活。
 
-**One live indicator, always.** pi splits a run into several assistant messages, so the reducer sweeps
-the per-message `streaming` flag on new-message start and the final `agent_settled` (at most one turn is
-ever flagged). The session remains live across attempt-level `agent_end` events. The loader
-is a **single footer** (`StreamIndicator`: the shared `RunningIcon` brand badge, decorative here, + a phase
-label from the pure `streamStatus` deriver — `working` → `thinking` → `running-tool` → `writing`, plus `compacting` while the transcript's
-trailing turn is a running compaction) — not a per-turn cursor — so it can't
-duplicate and it fills the post-send gap. Outside the streaming window (a manual compact, or the
-pre-prompt compaction pi runs inside `prompt()` before `agent_start`) the footer is absent by design —
-the running `CompactionNotice` row itself carries the spinner, so the beat is never dead air. The trailing Activity fold's live ticker is a *status* line (spinner,
-like a running card header), not a second loader. `data-testid="stream-indicator"` + `data-phase` make
-the lifecycle assertable.
+**始终只有一个实时指示器。** pi 会把一次运行拆成好几条 assistant 消息，因此 reducer 在新消息开始时
+以及最终的 `agent_settled` 时清扫每消息的 `streaming` 标志（任何时候最多只有一个轮次被标记）。会话在
+尝试级的 `agent_end` 事件之间保持活着。加载器是一个**单一页脚**（`StreamIndicator`：共享的
+`RunningIcon` 品牌徽章，在这里是装饰性的，加上来自纯 `streamStatus` 派生器的阶段标签——`working` →
+`thinking` → `running-tool` → `writing`，外加对话记录尾部轮次是运行中压缩时的 `compacting`）——不是
+每轮次一个游标——因此它无法重复，并填补发送之后的空隙。在流式窗口之外（一次手动压缩，或 pi 在
+`prompt()` 里、`agent_start` 之前跑的前置压缩），页脚按设计缺席——那条运行中的 `CompactionNotice` 行
+自己带 spinner，所以那个节拍绝不是死空气。尾部 Activity 折叠的实时行情是一条*状态*行（spinner，像
+运行中卡片的头部），不是第二个加载器。`data-testid="stream-indicator"` + `data-phase` 让生命周期可断言。
 
-## Get right
+## 必须做对的事
 
-- Renderers are **theme-only via CSS-var token utilities** (no raw hex / inline `style`) — that's what
-  lets the primitives wear any token theme, the key to reuse.
-- Keep presentational components **props-driven** (not store-bound); only `ChatView`/`ChatTranscript` wire the app. This
-  is the seam for extracting a standalone `packages/chat-ui` later.
-- Keep this spec at **intent + boundary + invariants**; per-component behavior belongs in the
-  components' jsdoc, per-tool detail in [tools/SPEC.md](tools/SPEC.md).
+- 渲染器**只通过 CSS 变量 token 工具类取主题**（不用原始 hex / 行内 `style`）——正是这一点让这些原语能穿上
+  任何 token 主题，也是复用的关键。
+- 让呈现型组件保持**props 驱动**（不绑定 store）；只有 `ChatView`/`ChatTranscript` 接线应用。这就是日后抽出
+  独立的 `packages/chat-ui` 的接缝。
+- 让本规范停留在**意图 + 边界 + 不变量**；每个组件的行为属于该组件的 jsdoc，每个工具的细节属于
+  [tools/SPEC.md](tools/SPEC.md)。

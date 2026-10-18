@@ -2,64 +2,59 @@
 id: submodule-web-auth
 type: submodule-design
 status: active
-title: auth — in-app provider login UI
+title: auth — 应用内提供商登录 UI
 parent: module-web
 depends-on: []
 references: [submodule-web-store, submodule-web-chat]
 tags: [ui, auth]
 ---
 
-## Responsibility
+## 职责
 
-The client half of in-app provider login: the accumulating client-side **login-state types** and the
-**presentational** OAuth dialog that renders them. The dialog is the exact analogue of `chat/ExtUiDialog` —
-pi's flow, bridged over the wire, rendered as a modal — but **session-less**: a login runs on the Welcome
-screen before any session exists. (Mirroring the `chat`/ExtUi split, the **frame reducer lives in `store`**,
-not here — `auth` stays presentational + types, so nothing here imports `store`.)
+应用内提供商登录的客户端半边：累积式的客户端**登录状态类型**，以及渲染它们的**展示型** OAuth 对话框。该对话框
+与 `chat/ExtUiDialog` 完全类比——pi 的流程，经线上协议桥接，渲染为模态框——但**无会话**：登录在任何会话存在
+之前就在 Welcome 屏幕上运行。（镜像 `chat`/ExtUi 的切分，**帧 reducer 位于 `store`**，不在这里——`auth` 保持
+展示型 + 类型，因此这里没有任何东西导入 `store`。）
 
-## Boundary
+## 边界
 
-- **Owns:**
-  - `loginState` — the **types** `LoginState` (+ `LoginInput`/`LoginInputSelect`/`LoginInputPrompt`): the
-    client-accumulated state of one login. Its doc pins the accumulation contract the store's reducer
-    implements — frames **add**, they don't replace (`url` can be live alongside a paste `prompt`, the
-    browser-vs-paste race), `status` goes `active → success/error`. An optional `target` names the MCP
-    server of an MCP sign-in or connection test (`LoginPush.target`). **Types only** (like `chat/types`).
-  - `LoginDialog` — **props-driven, no store/transport** (like the chat renderers): renders a `LoginState`
-    (open-URL button + selectable URL; a device code with a **clickable verification link** that also
-    **auto-opens** in a new tab best-effort on arrival; a `select`/`prompt` input — a `secret`-flagged
-    prompt renders **masked** (API keys, issue #97); progress/working spinner;
-    terminal success/error) and calls back `onReply(value)` / `onCancel()` / `onClose()`. Copy says
-    **"Connect"**, not "Sign in" — one dialog serves OAuth and API-key entry alike. Themed with token
-    utilities only; `@remixicon/react` icons; shadcn `Dialog`/`Button`.
-- **Public surface (barrel `index.ts`):** `LoginDialog`; `LoginState`/`LoginInput*` (types).
-- **Allowed deps:** `@thinkrail/ui/dialog` and `@thinkrail/ui/button`. (The state types need no imports.)
-- **Forbidden:** importing `store`/`transport` (the dialog stays presentational — the **panel** is the
-  integration piece, exactly as `chat/ChatView` is for the chat renderers); any `pi`/`server` import.
+- **拥有：**
+  - `loginState` — **类型** `LoginState`（+ `LoginInput`/`LoginInputSelect`/`LoginInputPrompt`）：一次登录的
+    客户端累积状态。它的文档钉住了 store 的 reducer 所实现的累积契约——帧是**追加**，而不是替换（`url` 可以
+    与粘贴的 `prompt` 同时存在，即浏览器 vs 粘贴的竞态），`status` 走 `active → success/error`。可选的
+    `target` 命名某次 MCP 登录或连接测试所属的 MCP 服务器（`LoginPush.target`）。**仅类型**（像
+    `chat/types`）。
+  - `LoginDialog` — **props 驱动、无 store/transport**（像 chat 的渲染器）：渲染一个 `LoginState`（打开 URL
+    的按钮 + 可选中的 URL；带**可点击验证链接**的设备码，该链接还会在到达时尽力在新标签页**自动打开**；
+    `select`/`prompt` 输入——被标为 `secret` 的提示词渲染为**遮蔽**（API key，issue #97）；进度/处理中的
+    spinner；终态的成功/错误），并回调 `onReply(value)` / `onCancel()` / `onClose()`。文案写的是
+    **“Connect”**，而不是 “Sign in”——同一个对话框同时服务于 OAuth 与 API-key 录入。只用 token 工具类
+    着色；图标来自 `@remixicon/react`；shadcn `Dialog`/`Button`。
+- **Public surface（公开接口，barrel `index.ts`）：** `LoginDialog`；`LoginState`/`LoginInput*`（类型）。
+- **允许的依赖：** `@thinkrail/ui/dialog` 和 `@thinkrail/ui/button`。（状态类型不需要任何导入。）
+- **绝不触碰：** 导入 `store`/`transport`（对话框保持展示型——**面板**才是集成件，正如 `chat/ChatView` 之于
+  chat 的渲染器）；任何 `pi`/`server` 导入。
 
-## Integration (owned by the caller, not here)
+## 集成（由调用方拥有，不在这里）
 
-- The **store** holds the single `activeLogin: LoginState | null` (flat, session-less), reserves login
-  startup synchronously across Providers and MCP before either sends a request, and owns the frame
-  reducer (`foldLoginFrame`) — never under a session runtime (that path drops frames pre-session).
-  A failed start releases the reservation; a frame may still create the matching dialog before the
-  start response. A late response never replaces a different active login.
-- The **`provider.login` channel** is routed to `store.applyLoginFrame` in `transport/wireTransport`.
-- `panels/ProvidersSettings` (the Providers section of the Settings dialog) is the integration piece: it
-  starts a login (`provider.loginStart` with `type` `"oauth"` or `"api_key"` — both auth routes ride the
-  same channel, issue #97 — → `store.beginLogin`), mounts `LoginDialog` from `store.activeLogin`,
-  wires `onReply`/`onCancel` to `provider.loginReply`/`loginCancel`, and re-fetches `provider.status` when a
-  login (or logout) settles; it ignores a login that carries a `target`. (The Welcome screen only carries
-  `panels/ProviderWarningBanner`, which opens Settings → Providers when no provider is connected.)
-- `panels/McpSettings` is the second integration piece: `mcp.login` / `mcp.testConnection` return a login id
-  whose `provider.login` frames reach only the starting connection; it begins the login with the server as
-  `target`, mounts the same `LoginDialog` only for a targeted login, and answers through the same
-  `provider.loginReply` / `loginCancel`. The sign-in page still opens only from the dialog's button (the
-  desktop shell routes `window.open` to the system browser); the paste field takes the full redirected URL.
+- **store** 持有唯一的 `activeLogin: LoginState | null`（扁平的、无会话的），在 Providers 与 MCP 任一方发送
+  请求之前同步预留登录启动，并拥有帧 reducer（`foldLoginFrame`）——绝不在会话运行时之下（那条路径会在会话
+  之前丢弃帧）。启动失败会释放该预留；某个帧仍可能在启动响应之前就创建出匹配的对话框。迟到的响应绝不替换
+  另一次活跃的登录。
+- **`provider.login` 频道**在 `transport/wireTransport` 中被路由到 `store.applyLoginFrame`。
+- `panels/ProvidersSettings`（Settings 对话框的 Providers 小节）是集成件：它启动登录（`provider.loginStart`，
+  `type` 为 `"oauth"` 或 `"api_key"`——两条认证路径走同一个频道，issue #97 ——`store.beginLogin`），从
+  `store.activeLogin` 挂载 `LoginDialog`，把 `onReply`/`onCancel` 接到 `provider.loginReply`/`loginCancel`，
+  并在某次登录（或登出）落定时重新抓取 `provider.status`；它会忽略携带 `target` 的登录。（Welcome 屏幕只
+  承载 `panels/ProviderWarningBanner`，在没有提供商连接时它会打开 Settings → Providers。）
+- `panels/McpSettings` 是第二个集成件：`mcp.login` / `mcp.testConnection` 返回一个登录 id，其
+  `provider.login` 帧只到达发起它的那个连接；它把服务器作为 `target` 启动登录，只对带 target 的登录挂载
+  同一个 `LoginDialog`，并通过同样的 `provider.loginReply` / `loginCancel` 作答。登录页面仍然只从对话框的
+  按钮打开（桌面外壳把 `window.open` 路由到系统浏览器）；粘贴字段接受完整的重定向后 URL。
 
-## Get right
+## 必须做对的事
 
-- **Frames accumulate** — the reducer must not clobber `url` when a paste `prompt` arrives, or vice-versa.
-- The dialog is mounted with `key={state.loginId}` so a new login gets fresh local (text/busy) state.
-- Device-code **auto-open** is best-effort (a popup blocker may stop the async `window.open`); the clickable
-  verification link is the guaranteed fallback, so the flow never dead-ends on a blocked popup.
+- **帧会累积**——reducer 在粘贴的 `prompt` 到达时绝不能覆盖 `url`，反之亦然。
+- 对话框以 `key={state.loginId}` 挂载，因此新的登录会得到全新的本地（文本/忙碌）状态。
+- 设备码的**自动打开**是尽力而为（弹窗拦截器可能阻止异步 `window.open`）；可点击的验证链接是保底回退，因此
+  流程绝不会因为弹窗被阻止而走不下去。

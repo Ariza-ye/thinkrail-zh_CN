@@ -2,122 +2,108 @@
 id: submodule-web-notifications
 type: submodule-design
 status: active
-title: notifications — out-of-app attention notifications
+title: notifications — 应用外注意通知
 parent: module-web
 depends-on: [submodule-web-store, module-contracts]
 ---
 
-## Responsibility
+## 职责
 
-Raise out-of-app notifications when a worktree needs the user while ThinkRail is not focused — an agent
-asks a question, finishes, or fails. The module is a **derived consumer** of session-state transitions:
-it introduces no new source of truth, only the client-side pieces the store cannot know — window focus,
-a collection window, browser permission, format, and the master toggle.
+当 ThinkRail 未获焦点而某个工作树需要用户时，发出应用外通知——agent 提问、完成或失败。本模块是会话状态迁移的
+**派生使用方**：它不引入新的真相来源，只引入 store 无法知道的那些客户端侧部件——窗口焦点、收集窗口、浏览器
+权限、格式，以及总开关。
 
-The trigger is a single signal: the **green attention dot lighting up**
-(`needsInput !== null || completionUnread` rising from false to true, the same predicate
-[[submodule-web-store]] uses). Every reason is covered uniformly — `ask_user_question`, ext-UI dialogs,
-and an unread completion (`succeeded` / `failed` / `interrupted`). A user-cancelled run never sets
-`completionUnread` on the host, so it never lights the dot and never notifies. Likewise the host holds
-`completionUnread` false while an idle chat still runs background commands or subagents, so the edge fires
-only once that work ends (the session shows as running meanwhile). The host already
-collapses `agent_end` vs `agent_settled` into `completion`, so this module never listens to raw agent
-events.
+触发条件是单一信号：**绿色注意点亮起**（`needsInput !== null || completionUnread` 从 false 升到 true，
+正是 [[submodule-web-store]] 使用的同一个判定）。每个原因都被统一覆盖——`ask_user_question`、ext-UI
+对话框，以及未读的完成（`succeeded` / `failed` / `interrupted`）。用户取消的运行绝不在宿主上设置
+`completionUnread`，因此它绝不点亮那个点，也绝不通知。同理，空闲聊天仍在运行后台命令或子代理时，宿主保持
+`completionUnread` 为 false，因此这条边只在那些工作结束后才触发（其间会话显示为运行中）。宿主已经把
+`agent_end` 与 `agent_settled` 折叠成 `completion`，因此本模块绝不监听原始的 agent 事件。
 
-## Pipeline
+## 流程
 
-Producer → queue → consumer, so the decision to notify is deferred to the moment it matters:
+生产者 → 队列 → 使用方，因此是否通知的决定被推迟到真正重要的那一刻：
 
-- **Observer** (`useAttentionNotifications`, mounted once by [[submodule-web-shell]]): subscribes to the
-  store and feeds each rising edge to the engine. The store notifies on every mutation, so the hook
-  gates on `sessionStateClock` before rebuilding candidates — streaming deltas never touch attention.
-  The rising-edge decision itself is the pure `attentionObserver` (over `detectAttention`): it primes
-  silently on the first installed snapshot and on every reconnect (`connectionGeneration` change) so a
-  fresh `installSessionStateSnapshot` never storms.
-- **Engine** (`attentionNotificationEngine`): a DOM-free queue with one global collection window
-  (`ATTENTION_WINDOW_MS`, 1s). Accumulated edges flush as one batch; the latest event per session wins.
-- **Consumer** (flush): emits only when every gate passes — master toggle on, channel permission granted,
-  window **not** focused, and the session's dot **still lit** (already-answered edges are dropped). One
-  surviving session opens its chat (`activateWorkspaceFromRoute`, landing at the latest message); several
-  open the cross-workspace `SessionSwitcher` palette (`openSessionSwitcher` on [[submodule-web-store]]) so
-  the user picks the one to attend, instead of landing in a window that may not show the right chat.
-  `formatNotification` keeps the title as the bold **ThinkRail** mark, the worktree as `subtitle`, and the
-  reason as `body` (`N worktrees need your attention` for several); a per-session `tag` lets the browser
-  replace rather than stack.
+- **观察器**（`useAttentionNotifications`，由 [[submodule-web-shell]] 挂载一次）：订阅 store，把每个上升沿
+  喂给引擎。store 在每次变更时都会通知，因此该 hook 在重建候选之前先用 `sessionStateClock` 把关——流式增量
+  绝不触碰注意逻辑。上升沿判定本身是纯函数 `attentionObserver`（基于 `detectAttention`）：它在第一个被安装
+  的快照上、以及每次重连（`connectionGeneration` 变化）时静默打底，因此全新的
+  `installSessionStateSnapshot` 绝不引发风暴。
+- **引擎**（`attentionNotificationEngine`）：一个无 DOM 的队列，带一个全局收集窗口（`ATTENTION_WINDOW_MS`，
+  1s）。累积的边作为一批冲刷；每个会话最后的事件胜出。
+- **使用方**（冲刷）：只有当每道门都通过时才发出——总开关打开、频道权限已授予、窗口**未**获焦点，且该会话
+  的点**仍然亮着**（已经回答过的边被丢弃）。只有一个幸存会话时，打开它的聊天
+  （`activateWorkspaceFromRoute`，落在最新消息处）；有多个时，打开跨工作区的 `SessionSwitcher` 面板
+  （[[submodule-web-store]] 上的 `openSessionSwitcher`），让用户挑选要去处理的那一个，而不是落进一个可能
+  显示错聊天的窗口。`formatNotification` 把标题保持为加粗的 **ThinkRail** 标记，工作树作为 `subtitle`，
+  原因作为 `body`（多个时是 `N worktrees need your attention`）；按会话的 `tag` 让浏览器替换而不是堆叠
+  通知。
 
-## Channels
+## 频道
 
-The consumer emits through a `NotificationChannel` (permission / requestPermission / show) that
-`selectNotificationChannel()` picks by capability — suppression, format, queue, and settings stay
-channel-agnostic above it:
+使用方通过一个 `NotificationChannel`（permission / requestPermission / show）发出，由
+`selectNotificationChannel()` 按能力挑选——抑制、格式、队列与设置都在它之上保持频道无关：
 
-- **Web** (`webNotifications`): the page Notifications API. It has no subtitle field, so it folds
-  `subtitle · body` into one line, and uses the browser permission flow. It also sets the symbol-only
-  ThinkRail icon (`/favicon.svg`, the browser-tab/shell-logo artwork), honored by Chrome/Edge/Firefox;
-  Safari ignores a page notification's icon and shows its own. On mobile the constructor can throw
-  (Android Chrome needs a Service Worker; iOS Safari needs an installed PWA) and is swallowed as a no-op.
-- **Desktop** (`desktopNotifications`): the native OS channel via the frozen
-  `__THINKRAIL_NATIVE_NOTIFICATIONS__` bridge ([[module-desktop]]), using `subtitle` as a distinct field.
-  The OS owns permission, so `permission()` is always `granted` and the in-app preface never shows.
-  Electrobun click callbacks are not landed yet, so a native notification carries no click action.
+- **Web**（`webNotifications`）：页面 Notifications API。它没有 subtitle 字段，因此把
+  `subtitle · body` 折成一行，并使用浏览器权限流程。它还会设置仅符号的 ThinkRail 图标（`/favicon.svg`，
+  即浏览器标签页/外壳标志的图稿），Chrome/Edge/Firefox 会尊重它；Safari 忽略页面通知的图标并显示自己的。
+  在移动端，构造函数可能抛错（Android Chrome 需要 Service Worker；iOS Safari 需要已安装的 PWA），此时会被
+  吞掉当作空操作。
+- **桌面**（`desktopNotifications`）：经由冻结的 `__THINKRAIL_NATIVE_NOTIFICATIONS__` 桥
+  （[[module-desktop]]）的原生 OS 频道，把 `subtitle` 用作独立字段。权限归 OS 所有，因此 `permission()`
+  永远是 `granted`，应用内前言绝不出现。Electrobun 的点击回调尚未落地，因此原生通知不携带点击动作。
 
-Selection is capability-detection only (the bridge's presence), never a `desktop` branch. No Service
-Worker on either channel: a fully-closed app has no live client and raises nothing by design.
+选择只做能力检测（桥是否存在），绝不是 `desktop` 分支。两个频道都没有 Service Worker：完全关闭的应用没有
+活着的客户端，按设计什么也不会发出。
 
-**OS-dependent (desktop).** The native rendering is the pinned Electrobun 2.0.1 backend, which takes
-`title` + `body` + `subtitle` + `silent` and renders per platform: macOS `UNUserNotificationCenter`
-(native title/subtitle/body, OS-requested authorization on first show), Windows a `Shell_NotifyIconW` tray
-**balloon** (title + body; `subtitle` folds in as an extra line per the SDK — not a Windows Toast and no App
-User Model ID), Linux libnotify/D-Bus (DE-dependent, Wayland caveats, subtitle folded likewise). The macOS
-bundle id comes from `apps/desktop/electrobun.config.ts` (`identifier: ai.thinkrail.app`, name `ThinkRail`),
-and the OS supplies the app icon (the native call has no icon field). **Limitation:** the bridge exposes no
-way to read the OS permission state, so the desktop channel reports `granted` unconditionally; if the user
-has denied notifications at the OS level the call is accepted and silently not shown. Querying/handling OS
-permission (and click callbacks) is deferred.
+**依赖 OS（桌面）。** 原生渲染是精确锁定的 Electrobun 2.0.1 后端，它接收 `title` + `body` + `subtitle` +
+`silent`，并按平台渲染：macOS 的 `UNUserNotificationCenter`（原生 title/subtitle/body，首次显示时由 OS
+请求授权）；Windows 的 `Shell_NotifyIconW` 托盘**气泡**（title + body；按 SDK 的说法 `subtitle` 折成额外
+一行——不是 Windows Toast，也没有 App User Model ID）；Linux 的 libnotify/D-Bus（取决于 DE，Wayland 有
+注意事项，subtitle 同样被折叠）。macOS 的 bundle id 来自 `apps/desktop/electrobun.config.ts`
+（`identifier: ai.thinkrail.app`，名称为 `ThinkRail`），图标由 OS 提供（原生调用没有图标字段）。**限制：**
+桥没有暴露任何读取 OS 权限状态的方法，因此桌面频道无条件报告 `granted`；如果用户在 OS 层面拒绝了通知，
+调用会被接受但静默不显示。查询/处理 OS 权限（以及点击回调）被推迟。
 
-## Suppression
+## 抑制
 
-One rule: **window focused ⇒ never notify.** If the window holds focus the user is in ThinkRail and sees
-the dot regardless of which workspace/chat is open, so no per-chat visibility check is needed.
+一条规则：**窗口获焦 ⇒ 绝不通知。** 如果窗口持有焦点，用户就在 ThinkRail 里，无论开着哪个工作区/聊天都能
+看到那个点，因此不需要按聊天的可见性检查。
 
-The focus signal is **channel-aware**: `NotificationChannel.isWindowFocused()` lets each channel use the
-best available API. The desktop channel receives OS-level window focus from the native bridge
-(`__THINKRAIL_NATIVE_NOTIFICATIONS__.isWindowFocused()`), which correctly reports `true` when DevTools
-or other in-window chrome has renderer focus — the native window is still focused at the OS level. The
-browser channel falls back to `document.hasFocus()`, which returns `false` in that scenario; this is a
-known browser-API limitation that does not affect end users (only developers with DevTools open).
+焦点信号是**频道感知的**：`NotificationChannel.isWindowFocused()` 让每个频道使用可得的最佳 API。桌面频道
+从原生桥获取 OS 层面的窗口焦点（`__THINKRAIL_NATIVE_NOTIFICATIONS__.isWindowFocused()`），当 DevTools
+或其他窗口内 chrome 持有渲染器焦点时它会正确报告 `true`——原生窗口在 OS 层面仍然是聚焦的。浏览器频道回退
+到 `document.hasFocus()`，在那个场景里它返回 `false`；这是一个已知的浏览器 API 限制，不影响最终用户
+（只影响开着 DevTools 的开发者）。
 
-**Platform caveat (Windows):** on Windows, DevTools opens as a separate native window; focusing it fires
-`blur` on the main `BrowserWindow`, so `isWindowFocused()` returns `false` — the same limitation as the
-browser channel. On macOS, DevTools is docked inside the same native window and the main-window focus is
-preserved. Electrobun 2.0.1 exposes only per-window `focus`/`blur` events with no application-level
-activation signal, so a cross-window solution requires a future Electrobun API.
+**平台注意事项（Windows）：** 在 Windows 上，DevTools 作为独立的原生窗口打开；聚焦它会向主
+`BrowserWindow` 发出 `blur`，于是 `isWindowFocused()` 返回 `false`——与浏览器频道同样的限制。在 macOS 上，
+DevTools 停靠在同一个原生窗口内部，主窗口的焦点得以保留。Electrobun 2.0.1 只暴露按窗口的 `focus`/`blur`
+事件，没有应用级的激活信号，因此跨窗口的解法需要未来的 Electrobun API。
 
-## Permission
+## 权限
 
-Permission is requested at the clearest user gesture. The primary, visible path is the Settings panel
-(`panels/NotificationsSettings`): turning the toggle on, or clicking **Allow in browser** when permission is
-still `default`, calls `Notification.requestPermission()` directly — present-user acquisition that does not
-depend on an out-of-focus event (the panel also shows blocked/granted/unsupported status). For a client
-that is already enabled, the in-app preface (`NotificationPermissionPrompt`) is the away-path fallback — shown
-before the system request only on the first batch that would actually notify (passed suppression and the
-toggle), lowering hard-deny risk. "Enable" calls `Notification.requestPermission()`; "Not now" snoozes for 7
-days (`notificationPrompt`, browser-local in `localStorage`); a `denied` state never auto-prompts again and
-surfaces a manual re-enable hint. Permission is per-browser, so the snooze is client-local, while the master
-toggle is host-synced app config and defaults on (notifications still require the browser grant).
+权限在最清晰的用户手势处请求。首要的、可见的路径是 Settings 面板（`panels/NotificationsSettings`）：打开
+开关，或在权限仍为 `default` 时点击 **Allow in browser**，会直接调用 `Notification.requestPermission()`
+——这种用户在场时的获取不依赖一个失焦事件（该面板也会显示 blocked/granted/unsupported 状态）。对于已经
+启用的客户端，应用内前言（`NotificationPermissionPrompt`）是离开路径上的回退——只在第一批真正会通知的
+（已通过抑制与开关的）事件之前、在系统请求之前显示，从而降低硬拒绝的风险。“Enable”调用
+`Notification.requestPermission()`；“Not now” 静默 7 天（`notificationPrompt`，浏览器本地存于
+`localStorage`）；`denied` 状态绝不再自动提示，并给出手动重新启用的提示。权限是按浏览器的，因此静默是
+客户端本地的，而总开关是宿主同步的应用配置且默认为开（通知仍然需要浏览器授权）。
 
-## Boundary
+## 边界
 
-- **Owns:** the attention-notification pipeline, the `NotificationChannel` seam, and both channel
-  implementations (browser Notifications API + the native desktop bridge wrapper).
-- **Public surface (`index.ts` barrel):** `useAttentionNotifications`, `NotificationPermissionPrompt`,
-  `selectNotificationChannel`, `NotificationChannel`, `NotificationPermissionState`, `ATTENTION_WINDOW_MS`.
-- **Allowed deps:** [[submodule-web-store]] (session-state reads, prompt state, `activateWorkspaceFromRoute`
-  and `openSessionSwitcher` actions), `ui` (the preface dialog), [[module-contracts]] (`SessionState` /
-  `SessionCompletion` / `NativeNotificationBridge` types), React, Remix Icon.
-- **Forbidden:** a second source of truth for attention; raw agent-event listening; any host/`pi` import;
-  branching on `desktop` (channel choice is capability detection of the native bridge).
+- **拥有：** 注意通知流程、`NotificationChannel` 接缝，以及两个频道实现（浏览器 Notifications API + 原生
+  桌面桥包装）。
+- **Public surface（公开接口，`index.ts` barrel）：** `useAttentionNotifications`、
+  `NotificationPermissionPrompt`、`selectNotificationChannel`、`NotificationChannel`、
+  `NotificationPermissionState`、`ATTENTION_WINDOW_MS`。
+- **允许的依赖：** [[submodule-web-store]]（会话状态读取、提示词状态、`activateWorkspaceFromRoute` 与
+  `openSessionSwitcher` 动作）、`ui`（前言对话框）、[[module-contracts]]（`SessionState` /
+  `SessionCompletion` / `NativeNotificationBridge` 类型）、React、Remix Icon。
+- **绝不触碰：** 注意逻辑的第二处真相来源；监听原始 agent 事件；任何宿主/`pi` 导入；按 `desktop` 分支
+  （频道选择是对原生桥的能力检测）。
 
-The master toggle (`notificationsEnabled`) lives in app config; its Settings panel is
-`panels/NotificationsSettings`, not this module. Multi-client is accepted: focus is client-local, so one
-agent event may notify in several connected clients independently.
+总开关（`notificationsEnabled`）住在应用配置里；它的 Settings 面板是 `panels/NotificationsSettings`，不是
+本模块。多客户端是可以接受的：焦点是客户端本地的，因此一个 agent 事件可能在多个已连接的客户端里各自通知。

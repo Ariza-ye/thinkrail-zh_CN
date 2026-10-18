@@ -2,134 +2,110 @@
 id: submodule-web-chat-resources
 type: submodule-design
 status: active
-title: Chat Resources — trigger, dock and inspector for command and subagent work and MCP servers
+title: Chat Resources — 命令与子代理工作及 MCP 服务器的触发按钮、停靠栏与检查器
 parent: submodule-web-chat
 depends-on: [module-contracts]
 tags: [chat, resources, public-surface-checked]
 ---
 
-## Responsibility
+## 职责
 
-The current chat's **Resources** surfaces: a header **trigger** with its MCP **attention marker**, an
-ambient **dock** above the composer, and an **inspector** over the transcript. Together they make
-agent-created work — background commands and subagents — glanceable while you type, inspectable without
-scrolling to old tool calls, and stoppable, without confusing it with user-owned workspace terminals; and
-they show the chat's MCP servers with their per-chat actions.
+当前聊天的 **Resources** 界面：带 MCP **注意标记**的头部**触发按钮**、输入框上方的常驻**停靠栏**，以及覆盖
+在对话记录之上的**检查器**。它们一起让 agent 创建的工作——后台命令与子代理——在你打字时可一眼瞥见、无需滚回
+旧工具调用即可检查、并且可以停止，同时不会把它与用户拥有的工作区终端搞混；它们还显示该聊天的 MCP 服务器及其
+按聊天的动作。
 
-All three render one host-reported snapshot through one row grammar; none is a permanent pane or a
-workbench tab. The inspector lives inside the chat column and leaves the composer usable.
+三者都用同一套行语法渲染同一份宿主报告的快照；没有一个是永久窗格或工作台标签页。检查器住在聊天列内部，并让
+输入框保持可用。
 
-## Boundary
+## 边界
 
-- **Owns:** props-driven `ResourcesButton`, `ResourcesAttention`, `ResourcesDock`, `ResourcesInspector`,
-  and `CommandLogView`, exported through `index.ts`, plus the private row/state vocabulary they share and
-  the private MCP rows (`mcpRow.tsx`). The inspector renders the roster and a detail *header*; the detail
-  *body* is a slot the parent fills.
-- **Public surface:** `ResourcesButton`, `ResourcesAttention`, `ResourcesDock`, `ResourcesInspector`,
-  `CommandLogView`.
-- **Allowed external deps:** contracts, React, Remix icons, shared UI primitives and theme utilities, and
-  `lib` (the shared MCP state vocabulary). Time arrives as a `now` prop so formatting stays pure.
-- **Forbidden:** store/transport, server/portable extension packages, Pi value imports, process
-  execution, log persistence, subagent transcript fetching, and workbench placement. Parent-chat
-  integration (what fills the detail slot, where the surfaces mount) and sibling dependency edges
-  belong to [[submodule-web-chat]].
+- **拥有：** props 驱动的 `ResourcesButton`、`ResourcesAttention`、`ResourcesDock`、`ResourcesInspector`
+  和 `CommandLogView`，通过 `index.ts` 导出，外加它们共享的私有行/状态词汇与私有 MCP 行（`mcpRow.tsx`）。
+  检查器渲染名单和一个细节*头部*；细节*主体*是父级填充的槽位。
+- **Public surface（公开接口）：** `ResourcesButton`, `ResourcesAttention`, `ResourcesDock`,
+  `ResourcesInspector`, `CommandLogView`.
+- **允许的外部依赖：** contracts、React、Remix 图标、共享 UI 原语与主题工具，以及 `lib`（共享的 MCP 状态
+  词汇）。时间作为 `now` prop 到达，因此格式化保持纯函数。
+- **绝不触碰：** store/transport、服务端/可移植扩展包、Pi 值导入、进程执行、日志持久化、子代理对话记录抓取，
+  以及工作台放置。父级 chat 的集成（什么填充细节槽位、这些界面挂在哪里）与兄弟依赖边属于
+  [[submodule-web-chat]]。
 
-## Row grammar
+## 行语法
 
-Every surface renders a resource as one row: kind glyph with a status dot · name (command display
-name or subagent role) · activity (the command text or the task) · state · elapsed, with Inspect/Stop
-appearing on hover and focus in place of the state text so rows never change height. A row's visual
-state collapses the wire statuses into one in-flight presentation and three settled ones:
+每个界面都把资源渲染为一行：带状态点的种类字形 · 名称（命令显示名或子代理角色） · 活动（命令文本或任务） ·
+状态 · 已用时间，Inspect/Stop 在悬停与聚焦时代替状态文本出现，因此行高永不改变。一行的视觉状态把线上协议
+状态折叠成一个进行中的呈现和三个已落定的呈现：
 
-- *running* commands and *running* subagents → **Working** (primary, breathing dot); *queued* →
-  **Queued**; *stopping* → **Stopping…** — all live, all sorted before settled rows, **oldest start
-  first regardless of live state**, so a row never jumps when it starts or begins stopping;
-- *completed* with exit 0 / *completed* subagents → **Done** (success); nonzero exit, *error* → **Failed**
-  (error, auto-visible); *stopped* / *aborted* → **Stopped** (neutral: a user stop is not a failure).
+- *running* 的命令与 *running* 的子代理 → **Working**（primary，呼吸点）；*queued* → **Queued**；
+  *stopping* → **Stopping…**——全是活的，全部排在已落定的行之前，**无论活状态如何都按最早开始优先**，因此
+  一行在启动或开始停止时绝不会跳动；
+- 退出码为 0 的 *completed* / *completed* 的子代理 → **Done**（success）；非零退出、*error* → **Failed**
+  （error，自动可见）；*stopped* / *aborted* → **Stopped**（中性：用户停止不是失败）。
 
-State is always glyph + colour + word; colour and motion are never the only signal. Elapsed time is
-coarse (minutes) because the shared clock ticks every 30 s; it is a live row's duration, or a settled
-row's run time — a command's finish minus start, a subagent's host-reported `durationMs` (absent from
-an older host, so that row shows no duration rather than a guess). Exit codes render as a monospaced
-badge.
+状态永远是字形 + 颜色 + 词；颜色与动效绝不是唯一的信号。已用时间是粗粒度的（分钟），因为共享时钟每 30 秒
+跳一次；它是活行的时长，或已落定行的运行时长——命令的结束减开始，子代理则由宿主报告 `durationMs`（更旧的
+宿主没有此字段，因此那一行不显示时长，而不是去猜）。退出码渲染为等宽徽章。
 
-## Presentation
+## 呈现
 
-**Trigger.** The header button reads **Resources** plus the count of active resources only while the
-snapshot is authoritative: live rows plus MCP servers that are connected or starting. The icon breathes
-only while background work runs (`working`), so an always-connected server never animates the header.
-Before the first read, during
-reconnect, or after refresh failure it shows an explicit unavailable-count mark and a matching
-accessible label rather than claiming zero. A parent being idle does not hide its resources. At narrow
-widths the label may collapse, but the control/count state and accessible name remain available. The
-trigger toggles the inspector and carries `aria-expanded`. A separate small **attention marker**
-(`ResourcesAttention`, a sibling button, never nested) appears while any of the chat's servers needs
-sign-in, failed, or awaits approval, and opens Settings › MCP servers.
+**触发按钮。** 头部按钮显示 **Resources** 加上活跃资源的数量，但只在快照是权威的时候：活行加上已连接或
+正在启动的 MCP 服务器。图标只在后台工作运行时才呼吸（`working`），因此一个始终连接的服务器绝不会让头部产生
+动效。在第一次读取之前、重连期间，或刷新失败之后，它显示一个明确的不可用计数标记及相配的无障碍标签，而不是
+声称零。父级空闲并不隐藏它的资源。在窄宽度下标签可以折叠，但控件/计数状态与无障碍名称仍然可用。触发按钮
+切换检查器，并携带 `aria-expanded`。一个单独的小**注意标记**（`ResourcesAttention`，一个兄弟按钮，绝不
+嵌套）在该聊天的任何服务器需要登录、失败或等待批准时出现，并打开 Settings › MCP servers。
 
-**Dock.** The dock lists live rows only — never finished work — directly above the composer, and
-renders nothing when there is none. Past four rows it collapses to one summary line (live count,
-per-kind counts) that the user can expand; the collapsed/expanded choice is local to the dock. A dock
-row has exactly two controls: its name and activity together are one Inspect control that opens the
-inspector at that row, and Stop requests cancellation for that row. The dock is **hidden while the inspector is open** so the live roster is never rendered twice.
-It reserves its rows rather than animating height on every change, so the composer does not jitter.
+**停靠栏。** 停靠栏只列出活行——绝不列已完成的工作——紧挨输入框上方，没有内容时不渲染任何东西。超过四行时
+它折叠成一行摘要（活数量、按种类计数），用户可展开；折叠/展开的选择是停靠栏本地的。停靠栏的一行恰好有两个
+控件：名称与活动合起来是一个 Inspect 控件，它在那一行打开检查器；Stop 则为那一行请求取消。**检查器打开时
+停靠栏被隐藏**，因此活名单绝不会被渲染两次。它为行预留空间，而不是在每次变化时给高度做动画，因此输入框
+不会抖动。
 
-**Inspector.** A non-modal in-place dialog over the transcript region with the chat header and
-composer still visible and usable: a roster column (**Active**, then **Finished**, each with counts) and
-a detail column for the selected row. The detail header repeats the row's name and state and offers
-Stop for live rows; the detail body is the parent's slot — bounded plain-text command output for a
-command (this module's `CommandLogView`), the read-only subagent transcript pane for a subagent. The
-roster is a listbox: clicking selects, `↑`/`↓` move the selection, `Esc` or the close control dismisses,
-and clicking the composer or header does **not** dismiss. Each option keeps its activity on a second
-line and in its accessible name (`name: activity, state`), so two same-role subagents stay
-distinguishable; the option contains no control — its Stop is a sibling inside a presentational row
-wrapper, which carries the row's test ids and `data-selected`. **Stop all subagents** sits in the roster
-header, guarded by the parent's confirmation that names the current active count; it never stops the
-main chat or disables future delegation. Stale/unavailable snapshots show a banner and disable
-controls; read failures stay visible with Retry.
+**检查器。** 一个覆盖在对话记录区域之上、就地打开的非模态对话框，聊天头部与输入框仍可见且可用：一个名单列
+（**Active**，然后是 **Finished**，各自带计数）和一个选中行的细节列。细节头部重复该行的名称与状态，并为
+活行提供 Stop；细节主体是父级的槽位——命令是有界的纯文本命令输出（本模块的 `CommandLogView`），子代理是
+只读的子代理对话记录窗格。名单是一个 listbox：点击即选中，`↑`/`↓` 移动选择，`Esc` 或关闭控件将其关闭，而
+点击输入框或头部**不会**关闭它。每个选项把它的活动保留在第二行和它的无障碍名称里
+（`name: activity, state`），因此两个同角色的子代理仍然可区分；选项内部不含控件——它的 Stop 是展示型行
+包装器里的兄弟节点，该打包器携带该行的测试 id 与 `data-selected`。**Stop all subagents** 位于名单头部，由
+父级指明当前活跃数量的确认来把关；它绝不停止主聊天，也不禁用未来的委派。过期/不可用的快照显示一条横幅并
+禁用控件；读取失败保持
+可见并带 Retry。
 
-**MCP servers.** When the snapshot carries `mcpServers` (a host at `MCP_PROTOCOL_VERSION`; `null` hides
-the list) the roster adds a third section after Finished. Rows are not listbox options and never in the
-dock — a server is not work: plug glyph with a state dot · name · the shared state label (with the tool
-count when connected) · transport (stdio "runs on host"), attention rows first. Actions follow the state:
-**Disable in this chat** / **Enable in this chat** (applied at the chat's next idle reload, which restarts
-its other servers — a helper line under the list says so; never offered on a `registered` row, a server an
-extension registered, which the host refuses to disable per chat), **Reconnect** for failed or
-disconnected, and Sign in / Review / Edit for needs-sign-in, pending approval or invalid config, which open
-Settings (`resource-mcp-settings`), like the section header's **Settings** link (`resources-mcp-settings`).
-There is no PID and no immediate stop: pi offers neither. Controls are disabled without
-authority, one request per server is in flight, and errors stay on the row.
+**MCP 服务器。** 当快照携带 `mcpServers`（版本为 `MCP_PROTOCOL_VERSION` 的宿主；`null` 会隐藏该列表）时，
+名单在 Finished 之后增加第三个小节。这些行不是 listbox 选项，也绝不出现在停靠栏里——服务器不是工作：插头
+字形带状态点 · 名称 · 共享的状态标签（已连接时带工具计数） · 传输层（stdio 为 "runs on host"），注意行
+排在前。动作随状态而定：**Disable in this chat** / **Enable in this chat**（在该聊天下一次空闲重载时应用，
+这会重启它的其他服务器——列表下方有一行辅助说明；绝不在 `registered` 行上提供，即扩展注册的服务器，宿主
+拒绝按聊天禁用它）、失败或断开时为 **Reconnect**，需要登录、待批准或配置无效时为 Sign in / Review / Edit，
+它们打开 Settings（`resource-mcp-settings`），与小节头部的 **Settings** 链接（`resources-mcp-settings`）
+一样。没有 PID，也没有立即停止：pi 两者都不提供。无权限时控件被禁用，每个服务器同时只有一个请求在飞，错误
+留在该行上。
 
-**Receipts.** The transcript's turn divider may carry a "N still running" chip supplied by the parent;
-it opens the inspector and is the only chat-body roster hint — there is no inline list.
+**回执。** 对话记录的轮次分隔线可能携带父级提供的 "N still running" 小标签；它打开检查器，并且是聊天主体
+里唯一的名单提示——没有内联列表。
 
-Command output is plain monospaced text, not an interactive terminal or interpreted markup. Show when
-only a bounded tail remains, and distinguish empty output, loading, transient read failure and
-permanently unavailable/evicted output. The history limit is runtime history, not a promise of retained
-logs after host restart.
+命令输出是纯等宽文本，不是交互式终端，也不是被解释的标记。当只剩下有界的尾部时显示这一点，并区分空输出、
+加载中、瞬时读取失败，以及永久不可用/已被驱逐的输出。历史上限是运行时历史，不是宿主重启后仍保留日志的
+承诺。
 
-Successful Stop means cancellation was requested, not that a terminal state may be fabricated. While a
-control request is pending, avoid duplicate submission; subsequent state comes from the host. A
-finished resource racing a click is harmless. A stale/disconnected view cannot offer active controls
-until it has current authority, and an old-host connection hides the trigger, dock and inspector rather
-than displaying an empty list as proof nothing is running.
+成功的 Stop 意味着取消已被请求，而不是可以伪造一个终态。当某个控制请求在等待时，避免重复提交；后续状态
+来自宿主。已完成的资源与一次点击竞争是无害的。过期/断开的视图在没有当前权威之前不能提供活跃控件，而与旧
+宿主的连接会隐藏触发按钮、停靠栏和检查器，而不是显示一个空列表当作“没有东西在运行”的证据。
 
-Closing the inspector, the dock, or the chat placement never stops work. Keyboard focus returns to the
-header trigger when the inspector closes; if a known older host removes that trigger, focus returns to
-the composer instead. A supported-to-known-unsupported welcome retires the inspector and the Stop-all
-confirmation. A transient reconnect with unknown protocol support preserves the open inspector as stale
-instead of misclassifying the host. Use existing Radix primitives (the in-place `DialogPanel`), token-only
-styling and visible text alongside status icons.
+关闭检查器、停靠栏，或聊天放置位置，绝不停止工作。检查器关闭时键盘焦点回到头部触发按钮；如果某个已知的
+更旧宿主移除了那个触发按钮，焦点改为回到输入框。从受支持变为已知不支持的 welcome 会退役检查器与 Stop-all
+确认。协议支持未知的瞬时重连会把打开的检查器保留为过期状态，而不是误判宿主。使用既有的 Radix 原语（就地
+打开的 `DialogPanel`）、仅 token 的样式，以及与状态图标并存的可见文本。
 
-The subagent list includes this chat's direct foreground and background children. Their registry does
-not distinguish detachment, and queued/running must never be used to guess it. This version has no
-recursive tree, workspace/global scope, restart/steer actions, artifacts, needs-you state (children run
-headless), or arbitrary shell-process discovery. Ordinary workspace terminal tabs do not appear.
+子代理列表包含本聊天的直接前台与后台子代。它们的注册表不区分分离状态，而队列/运行状态绝不能用来猜测它。
+这个版本没有递归树、工作区/全局范围、重启/引导动作、产物、需要你的状态（子代以无头方式运行），也没有任意
+的 shell 进程发现。普通的工作区终端标签页不会出现。
 
-## Verification obligations
+## 验证义务
 
-Cover empty/active/finished/stale/unavailable states, exact live counts, the dock's collapse and
-hidden-while-inspecting rule, the trigger's breathing-only-while-working and unknown-count marks, the MCP
-section's per-state actions, absence for older hosts and the attention marker, keyboard navigation and
-focus return, safe plain-text logs, row-specific stop failures and stop-all confirmation.
-Browser coverage must prove current-chat isolation, reload/reconnect rehydration, late completion while
-the inspector is closed, and no cancellation from view closure.
+覆盖空/活跃/已完成/过期/不可用状态、精确的活计数、停靠栏的折叠与检查时隐藏规则、触发按钮仅在工作时呼吸与
+未知计数标记、MCP 小节的按状态动作、对更旧宿主的缺省与注意标记、键盘导航与焦点回归、安全的纯文本日志、
+按行的停止失败与 stop-all 确认。浏览器覆盖必须证明当前聊天的隔离、重载/重连的重新水合、检查器关闭期间的
+迟到完成，以及视图关闭不引发取消。

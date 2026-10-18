@@ -2,107 +2,96 @@
 id: module-web-scripts
 type: submodule-design
 status: active
-title: apps/web build-time scripts — the typography, colour and spacing pipelines
+title: apps/web 构建期脚本 — 排版、颜色与间距流水线
 parent: module-web
 ---
 
 # `apps/web/scripts`
 
-Build-time tooling for `apps/web`. **Nothing here ships**: these modules run under Bun on a developer's
-machine or in CI, never in the browser bundle. They read files from `src/`, write generated files back
-into `src/`, and exit with a status code.
+`apps/web` 的构建期工具。**这里的东西都不随成品发布**：这些模块在开发者的机器上或 CI 里以 Bun 运行，绝不进入
+浏览器 bundle。它们从 `src/` 读文件，把生成的文件写回 `src/`，并以一个状态码退出。
 
-The directory holds four pipelines — typography, colour, spacing and provider glyphs — built the same way, plus the
-React Compiler census: a diagnostic whose baseline is a ratchet gate. They live here rather than in `src/` because
-they are *generators*: they use `node:fs` and `node:path`, which must never reach browser-bundled code.
+该目录存放四条流水线——排版、颜色、间距与提供商字形——以同样的方式构建，另加 React Compiler 盘点：一个基线
+即棘轮门禁的诊断工具。它们住在这里而不是 `src/`，因为它们是*生成器*：它们使用 `node:fs` 与 `node:path`，而
+那些绝不能进入浏览器打包的代码。
 
-## What it owns
+## 它拥有什么
 
-| File | Role |
+| 文件 | 角色 |
 |---|---|
-| `typography.ts` | the library: load → validate → render CSS. The **only** place CSS custom-property names, semantic class names and prose root class names are derived. |
-| `generate-typography.ts` | CLI. Writes `src/styles/generated/typography.css` and `src/styles/generated/fonts.css` (the `@import`s for the self-hosted faces); `--check` fails instead of writing when a committed file is stale. |
-| `validate-typography.ts` | CLI. Validates `src/styles/typography.json` and prints a summary. The enforced gate. |
-| `colors.ts` | the library: load → validate → render. The **only** place a colour derivation (a palette alias or an alpha step) is written. |
-| `generate-colors.ts` | CLI. Writes `src/styles/generated/colors.css` — the roles, the appearance-level effects, and the Tailwind map; `--check` fails when it is stale. |
-| `spacing.ts` | the library: load → validate → render. It enforces step identity and is the only place the generated spacing-CSS shape and `--spacing: 1px` (number = px) base are derived; the step lengths live only in `spacing.json`. |
-| `spacing.test.ts` | Pins the spacing source validator's closed root/metadata shapes and value types against the schema. |
-| `generate-spacing.ts` | CLI. Writes `src/styles/generated/spacing.css` — the `--space-<n>` tokens + the Tailwind base; `--check` fails when it is stale. |
-| `providerGlyphs.ts` | the library: the **only** pi-provider-id → vendor-mark mapping, plus the reader that accepts a vendored SVG only when it is a 24×24, path-only, `currentColor` glyph (layered marks keep their per-path opacity) and the renderer that shares one constant per mark. Source set: the dev-only `@lobehub/icons-static-svg` (MIT; the marks stay their owners' trademarks). |
-| `generate-provider-glyphs.ts` | CLI. Writes `src/chat/generated/providerGlyphs.ts`; `--check` fails when it is stale. The generated module is Biome-ignored like `styles/generated`. |
-| `providerGlyphs.test.ts` | pins that every mapped mark exists in the vendored set and that coloured, oddly sized or non-path SVGs are rejected rather than flattened. |
-| `generatedFiles.ts` | what every generate CLI does with a rendered file: `--check` reports drift, otherwise write. The **only** definition of "stale", so the three pipelines and the tests cannot disagree. |
-| `generatedFiles.test.ts` | pins that definition — content drift and a missing file are stale, a CRLF working tree is not. |
-| `compiler-census.ts` | CLI. Runs `babel-plugin-react-compiler` with a logger over app, shared UI, and extension web sources (tests, stories and generated data excluded) and prints every function the compiler bails out on as `file:line: [fn] category: reason`, plus totals; `--json` prints the full census. Run: `bun run --cwd apps/web compiler:census [--json]`. `--write` renders the bailed-out functions to `compiler-census.baseline.txt` as `file fnName`, line-free so edits above them don't churn it. `fnName` is lexical, never positional: the binding a function is assigned to (through wrapping calls like `memo(…)`), else its own name, qualified by its named enclosing functions (`factory.Row`). Two compiler units in one file with the same identity fail the census, because neither a line nor an ordinal survives an insertion above them. `--check` (`bun run check:compiler`, CI) fails on any drift and names each function that newly bails out or now compiles. A new bail-out is fixed, or accepted by regenerating (`bun run compiler:census:generate`). |
-| `compiler-census.baseline.txt` | The committed census baseline. |
-| `compiler-census.test.ts` | pins that a function's baseline identity survives inserting a sibling before it, that nested functions are qualified by their owners, and that indistinguishable compiler units are rejected. |
+| `typography.ts` | 库：加载 → 校验 → 渲染 CSS。**唯一**推导 CSS 自定义属性名、语义类名和 prose 根类名的地方。 |
+| `generate-typography.ts` | CLI。写入 `src/styles/generated/typography.css` 与 `src/styles/generated/fonts.css`（自托管字体面的 `@import`）；当某个已提交的文件过期时，`--check` 会失败而不是写入。 |
+| `validate-typography.ts` | CLI。校验 `src/styles/typography.json` 并打印摘要。被强制执行的门禁。 |
+| `colors.ts` | 库：加载 → 校验 → 渲染。**唯一**书写颜色派生（调色板别名或 alpha 步进）的地方。 |
+| `generate-colors.ts` | CLI。写入 `src/styles/generated/colors.css`——角色、外观级效果，以及 Tailwind 映射；过期时 `--check` 失败。 |
+| `spacing.ts` | 库：加载 → 校验 → 渲染。它强制步进同一性，并且是唯一推导生成的间距 CSS 形状与 `--spacing: 1px`（数值 = px）基值的地方；步进长度只存在于 `spacing.json` 里。 |
+| `spacing.test.ts` | 把间距源校验器的封闭根/元数据形状与值类型钉在 schema 上。 |
+| `generate-spacing.ts` | CLI。写入 `src/styles/generated/spacing.css`——`--space-<n>` token + Tailwind 基值；过期时 `--check` 失败。 |
+| `providerGlyphs.ts` | 库：**唯一**的 pi 提供商 id → 厂商标记映射，外加那个只在厂商 SVG 是 24×24、仅路径、`currentColor` 字形时才接受它的读取器（分层标记保留各自的按路径不透明度），以及为每个标记共享一个常量的渲染器。来源集合：仅开发用的 `@lobehub/icons-static-svg`（MIT；这些标记仍是其各自所有者的商标）。 |
+| `generate-provider-glyphs.ts` | CLI。写入 `src/chat/generated/providerGlyphs.ts`；过期时 `--check` 失败。该生成模块像 `styles/generated` 一样被 Biome 忽略。 |
+| `providerGlyphs.test.ts` | 钉住每个被映射的标记都存在于厂商集合中，以及带颜色的、尺寸异常或非路径的 SVG 被拒绝而不是被压平。 |
+| `generatedFiles.ts` | 每个 generate CLI 对渲染出的文件要做的事：`--check` 报告漂移，否则写入。“过期”的**唯一**定义，因此三条流水线与测试不可能互相矛盾。 |
+| `generatedFiles.test.ts` | 钉住那个定义——内容漂移与缺失文件算过期，CRLF 的工作树不算。 |
+| `compiler-census.ts` | CLI。用带 logger 的 `babel-plugin-react-compiler` 跑应用、共享 UI 与扩展 web 的源码（排除测试、stories 与生成数据），把编译器放弃的每个函数打印为 `file:line: [fn] category: reason`，外加总计；`--json` 打印完整盘点。运行：`bun run --cwd apps/web compiler:census [--json]`。`--write` 把被放弃的函数渲染到 `compiler-census.baseline.txt`，形如 `file fnName`，不含行号，因此其上方的编辑不会让它翻动。`fnName` 是词法的，绝不是位置性的：函数被赋值到的绑定（穿过像 `memo(…)` 这样的包装调用），否则是它自己的名字，并由其具名外层函数限定（`factory.Row`）。同一个文件里两个身份相同的编译器单元会让盘点失败，因为在它们上方插入之后行号和序号都不再成立。`--check`（`bun run check:compiler`，CI）在任何漂移时失败，并指名每个新放弃或现在能编译的函数。新的放弃要么修好，要么通过重新生成来接受（`bun run compiler:census:generate`）。 |
+| `compiler-census.baseline.txt` | 已提交的盘点基线。 |
+| `compiler-census.test.ts` | 钉住函数的基线身份在它前面插入一个兄弟后仍然存活、嵌套函数由其所有者限定、以及无法区分的编译器单元被拒绝。 |
 
-`designSources.ts` owns the shared adoption-guard and compiler-census source scan: app source, `packages/ui`, and every
-`thinkrail-extensions/*/web` source tree, excluding tests, generated output, and installed dependencies.
-The same SDK/extension roots are explicit Tailwind `@source` directives in the app stylesheet. Extension
-sources name recursive file globs: a wildcard directory ending in `*/web` alone does not discover the
-nested files, silently dropping extension-only classes such as fullscreen zoom. The browser zoom probe
-checks rendered dimensions, not just the zoom label, to pin actual CSS generation. Each token `*:check`
-command checks generated output and its corresponding adoption guard, so moving a primitive
-out of the app cannot hide token misuse or make a live token look unused.
+`designSources.ts` 拥有共享的采纳守卫与编译器盘点的源码扫描：应用源码、`packages/ui`，以及每棵
+`thinkrail-extensions/*/web` 源码树，排除测试、生成产物与已安装的依赖。同一批 SDK/扩展根在应用样式表里是显式
+的 Tailwind `@source` 指令。扩展源码用的是递归文件 glob：仅以 `*/web` 结尾的通配目录发现不了其中的嵌套文件，
+会静默丢掉诸如全屏缩放这样的扩展专属类。浏览器缩放探针检查渲染出的尺寸，而不只是缩放标签，以钉住真实的 CSS
+生成。每条 token 的 `*:check` 命令既检查生成输出，也检查它对应的采纳守卫，因此把某个原语移出应用无法掩盖
+token 误用，也无法让一个在用的 token 看起来未被使用。
 
-Public surface: the `typography.ts`, `colors.ts`, `spacing.ts`, `providerGlyphs.ts`, `generatedFiles.ts` and `designSources.ts` exports. There is no `index.ts` barrel — the CLIs are entry points
-invoked by name from `package.json`, and the one importer outside this directory
-(`src/styles/*.test.ts`) imports the library directly, which keeps the tests and the generator provably
-in agreement about the same functions.
+Public surface（公开接口）：`typography.ts`、`colors.ts`、`spacing.ts`、`providerGlyphs.ts`、
+`generatedFiles.ts` 与 `designSources.ts` 的导出。没有 `index.ts` barrel——CLI 是从 `package.json` 按名
+调用的入口点，而本目录之外唯一的导入方（`src/styles/*.test.ts`）直接导入库，这使测试与生成器关于同一批函数
+的一致性是可证明的。
 
-## Boundary
+## 边界
 
-- **Allowed deps:** `node:fs`, `node:path`, `node:module` (resolving the vendored glyph set), the three JSON sources + their schemas, the dev-only `@lobehub/icons-static-svg` files read as *data*, and two further reads
-  taken as *data*, never as imports: `src/themes/schema.ts` (for `colors.ts`, so the roles and
-  `THEME_COLOR_KEYS` cannot drift) and `apps/web/package.json` (for `typography.ts`, so a `selfHosted`
-  entry and the installed font packages cannot drift).
-- **Forbidden:** runtime imports of React, Tailwind, `src/`, or any `@thinkrail/*` package, any runtime
-  (non-dev) dependency, and any network or shell access. Adoption guards read source as data; generators
-  read only their declared inputs. A generator that needed one of those would be
-  the wrong shape.
-- **Census exception:** `compiler-census.ts` also uses `@babel/core` and `babel-plugin-react-compiler`
-  and reads authored TypeScript from the shared source scan as *text*, so extracting a component into
-  the SDK or an extension does not silently remove it from the report. It must pass the compiler the same options as
-  `reactCompilerPreset()` in `vite.config.ts` and mirror the preset's file filter, so its counts match
-  the real build. Build-time compiler validations differ from the lint rules (for example
-  `StaticComponents` is lint-only), so its counts differ from an oxlint React scan by design.
-- **Imported by:** `apps/web/package.json` scripts (`typography:generate` / `:validate` / `:check`,
-  `colors:generate` / `:check`, `spacing:generate` / `:check`, `provider-glyphs:generate` / `:check`, `compiler:census:generate`, re-exported from the root `package.json`, plus `compiler:census:check` as the root `check:compiler`; `compiler:census` itself is web-only), and
-  `src/styles/typography.test.ts` + `src/styles/typographyUsage.test.ts` +
-  `src/styles/colorUsage.test.ts` + `src/styles/spacingUsage.test.ts`. Nothing in the shipped app may import from here — the generated
-  CSS is the interface.
-- **Writes:** `src/styles/generated/` and `src/chat/generated/`, plus the census's `compiler-census.baseline.txt`. Both directories are committed (so every typography, colour, spacing
-  or glyph change is reviewable as a diff) and excluded from biome in `biome.json`.
+- **允许的依赖：** `node:fs`、`node:path`、`node:module`（解析厂商字形集合）、三个 JSON 源 + 它们的
+  schema、仅开发用的 `@lobehub/icons-static-svg` 文件（作为*数据*读取），以及另外两处作为*数据*、绝不作为
+  导入的读取：`src/themes/schema.ts`（给 `colors.ts`，使角色与 `THEME_COLOR_KEYS` 不会漂移）和
+  `apps/web/package.json`（给 `typography.ts`，使 `selfHosted` 条目与已安装的字体包不会漂移）。
+- **绝不触碰：** 对 React、Tailwind、`src/` 或任何 `@thinkrail/*` 包的运行时导入，任何运行时（非 dev）依赖，
+  以及任何网络或 shell 访问。采纳守卫把源码当数据读；生成器只读它们声明的输入。需要上述之一的生成器会是错误
+  的形状。
+- **盘点例外：** `compiler-census.ts` 还使用 `@babel/core` 与 `babel-plugin-react-compiler`，并作为*文本*
+  从共享源码扫描里读取手写的 TypeScript，因此把一个组件抽取进 SDK 或扩展不会静默地把它从报告里移除。它必须把
+  与 `vite.config.ts` 里 `reactCompilerPreset()` 相同的选项传给编译器，并镜像该预设的文件过滤，使它的计数与
+  真实构建一致。构建期的编译器校验与 lint 规则不同（例如 `StaticComponents` 只在 lint 里），因此它的计数按
+  设计会与 oxlint 的 React 扫描不同。
+- **被谁导入：** `apps/web/package.json` 的脚本（`typography:generate` / `:validate` / `:check`，
+  `colors:generate` / `:check`，`spacing:generate` / `:check`，`provider-glyphs:generate` / `:check`，
+  `compiler:census:generate`，从根 `package.json` 再导出，另有 `compiler:census:check` 作为根的
+  `check:compiler`；`compiler:census` 本身仅限 web），以及 `src/styles/typography.test.ts` +
+  `src/styles/typographyUsage.test.ts` + `src/styles/colorUsage.test.ts` +
+  `src/styles/spacingUsage.test.ts`。发布的应用里没有任何东西可以从这里导入——生成的 CSS 才是接口。
+- **写入：** `src/styles/generated/` 与 `src/chat/generated/`，外加盘点的
+  `compiler-census.baseline.txt`。两个目录都已提交（因此每次排版、颜色、间距或字形的变化都能作为 diff 被
+  复查），并在 `biome.json` 里被排除在 biome 之外。
 
-## Invariants
+## 不变量
 
-- **The built-in-palette reset leads the `@theme inline` block.** `colors.ts` emits
-  `--color-*: initial;` *before* our own entries so Tailwind's stock palette (`bg-red-500`,
-  `text-white`) stops being a utility at all — stock utilities compile happily otherwise: hardcoded,
-  un-themeable, and invisible in review. The order is load-bearing: a reset emitted in a later block
-  would wipe our entries too.
-- **A plain-alias role never redeclares its own palette variable.** A role whose name *is* its palette
-  key (`primary` → `--primary`) publishes the palette variable directly and emits no `:root` line:
-  `--primary: var(--primary)` is a computed-value-time self-reference (invalid), masked today only
-  because the runtime writes the palette as an inline style that outranks `:root`.
-- **The JSON is the only source.** `typography.ts` derives every emitted name mechanically, so a new
-  token, style or prose system needs no change here. If adding a style requires editing this directory,
-  the naming rule was wrong.
-- **Generation is deterministic and idempotent.** Same input → byte-identical output; no clock, no
-  randomness, no environment reads. That is what makes `--check` a usable drift gate in pre-commit,
-  `apps/web build` and CI. Line endings are the one exception, because they belong to the checkout
-  rather than the content: `.gitattributes` pins the working tree to LF, and every comparison against
-  a committed file goes through `normalizeEol` so a CRLF clone cannot report drift that is not there.
-- **`validate()` is the gate, not the JSON Schema.** The schemas are editor-facing contracts (`$schema`
-  in each source gives completion + inline errors); the toolchain has no JSON Schema validator. Every
-  validator mirrors its schema's closed root and nested object shapes before enforcing policies Schema
-  cannot express. Referential integrity, mono-is-code-only, `title.card` == `title.dialog`, matching
-  prose element sets, the document heading ladder, and spacing step-name/value identity all live in
-  `validate()`. Changing either contract means checking the other.
-- **A generated file is never hand-edited.** The emitted CSS headers say so, and each pipeline's
-  `*:check` command enforces it.
+- **内置调色板重置领起 `@theme inline` 块。** `colors.ts` 在我们自己的条目*之前*发出 `--color-*: initial;`，
+  使 Tailwind 的库存调色板（`bg-red-500`、`text-white`）根本不再是工具类——否则库存工具类会愉快地编译通过：
+  硬编码、不可主题化，且在复查中不可见。顺序是承重的：若重置在更后的块里发出，会把我们的条目一并抹掉。
+- **纯别名角色绝不重新声明自己的调色板变量。** 名字*就是*其调色板键的角色（`primary` → `--primary`）直接
+  发布该调色板变量，不发任何 `:root` 行：`--primary: var(--primary)` 是计算值阶段的自引用（无效），今天之所
+  以被掩盖，只是因为运行时把调色板写成内联样式，而它优先于 `:root`。
+- **JSON 是唯一的来源。** `typography.ts` 机械地推导每个被发出的名字，因此新增 token、样式或 prose 系统
+  不需要改动这里。如果新增一个样式需要编辑本目录，那说明命名规则错了。
+- **生成是确定且幂等的。** 相同输入 → 逐字节相同的输出；没有时钟、没有随机性、没有环境读取。正是这一点让
+  `--check` 成为 pre-commit、`apps/web build` 与 CI 里可用的漂移门禁。行尾是唯一的例外，因为它们属于检出
+  而不是内容：`.gitattributes` 把工作树钉在 LF 上，而每次与已提交文件的比较都经过 `normalizeEol`，因此一个
+  CRLF 的克隆无法报告并不存在的漂移。
+- **门禁是 `validate()`，而不是 JSON Schema。** schema 是面向编辑器的契约（每个源里的 `$schema` 给出补全 +
+  行内错误）；工具链没有 JSON Schema 校验器。每个校验器都先镜像其 schema 的封闭根与嵌套对象形状，再执行
+  Schema 无法表达的策略。引用完整性、mono 仅用于代码、`title.card` == `title.dialog`、prose 元素集合匹配、
+  文档标题阶梯，以及间距步进名/值同一性，全都住在 `validate()` 里。改动任一份契约都意味着检查另一份。
+- **生成的文件绝不手工编辑。** 发出的 CSS 头部就写着这一点，而每条流水线的 `*:check` 命令强制执行它。
 
-Design and rationale for each system itself: [../src/styles/TYPOGRAPHY.md](../src/styles/TYPOGRAPHY.md)
-(`web-typography`), [../src/styles/COLOR.md](../src/styles/COLOR.md) (`web-color`), and
-[../src/styles/SPACING.md](../src/styles/SPACING.md) (`web-spacing`).
+每个系统本身的设计与理由：[../src/styles/TYPOGRAPHY.md](../src/styles/TYPOGRAPHY.md)（`web-typography`）、
+[../src/styles/COLOR.md](../src/styles/COLOR.md)（`web-color`），以及
+[../src/styles/SPACING.md](../src/styles/SPACING.md)（`web-spacing`）。

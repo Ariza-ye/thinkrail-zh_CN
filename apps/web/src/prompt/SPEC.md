@@ -2,40 +2,35 @@
 id: submodule-web-prompt
 type: submodule-design
 status: active
-title: prompt — shared command-aware input behavior
+title: prompt — 共享的命令感知输入行为
 parent: module-web
 depends-on: [module-contracts]
 tags: [ui, prompts]
 ---
 
-## Responsibility
+## 职责
 
-The reusable, lifecycle-neutral behavior behind command-aware prompt fields: slash parsing and matching,
-keyboard/menu interaction, command-catalog normalization, race-safe prompt-template selection, and Pi-compatible
-template-slot editing. Chat and pre-session workspace creation supply their own catalogs, template readers,
-geometry, and submit actions; this module makes those inputs behave the same once supplied equivalent data.
+命令感知的提示词字段背后可复用、与生命周期无关的行为：斜杠解析与匹配、键盘/菜单交互、命令目录规范化、
+竞态安全的提示词模板选择，以及 Pi 兼容的模板槽位编辑。chat 与会话前的工作区创建各自提供目录、模板读取器、
+几何信息与提交动作；一旦供给等价的数据，本模块就让这些输入行为一致。
 
-## Boundary
+## 边界
 
-- **Owns:** the props-driven slash menu and completion controller; pure catalog merge and command insertion;
-  frontmatter stripping/template assembly; placeholder parsing, editing, mirroring, highlighting, and finalization;
-  the template-pick controller that refuses to overwrite a draft changed after selection.
-- **Public surface:** `index.ts` is the only import path and re-exports the command-completion, template-text,
-  template-pick, template-slot, and caret/selection-restoration (`usePendingSelection`) APIs.
-- **Allowed deps:** `contracts` types, React, and `@thinkrail/ui/utils` (`cn`).
-- **Forbidden:** store or transport access; workspace/session/project lookup; deciding which commands exist in a
-  lifecycle; sending a prompt; importing `chat` or `panels`.
+- **拥有：** props 驱动的斜杠菜单与补全控制器；纯目录合并与命令插入；frontmatter 剥离/模板装配；占位符解析、
+  编辑、镜像、高亮与定稿；以及拒绝覆盖选取之后被改动过的草稿的模板选取控制器。
+- **Public surface（公开接口）：** `index.ts` 是唯一的导入路径，再导出命令补全、模板文本、模板选取、模板槽位，
+  以及光标/选区恢复（`usePendingSelection`）的 API。
+- **允许的依赖：** `contracts` 类型、React，以及 `@thinkrail/ui/utils`（`cn`）。
+- **绝不触碰：** store 或传输层访问；工作区/会话/项目查找；决定某个生命周期里存在哪些命令；发送提示词；
+  导入 `chat` 或 `panels`。
 
-## Behavior
+## 行为
 
-A slash token is active only at the beginning of the draft and before its first whitespace. Up/Down wrap the
-visible matches; Enter/Tab selects; Escape dismisses; IME-owned key events take precedence in the consuming
-input. Catalog merge is deterministic and lets the caller's more-specific later source replace a same-named
-earlier source.
+斜杠 token 仅在草稿开头、且在其第一个空白之前才处于激活状态。Up/Down 环绕遍历可见的匹配项；Enter/Tab 选中；
+Escape 关闭；由 IME 掌管的按键事件在使用它的输入框中优先。目录合并是确定性的，并让调用方更具体的后来源替换
+同名的更早来源。
 
-Template selection is latest-pick-wins and applies only while the draft is byte-identical to its value at pick
-time and the caller's project/workspace context is unchanged. The picker exposes pending state so submit
-controls stay disabled while it resolves; the draft remains editable, and an edit or context switch invalidates
-the delayed application. A selected template replaces the complete draft. Tab and Shift+Tab cycle placeholders, Escape ends the
-slot session, edited repeated groups mirror when leaving a slot, and submission removes untouched markers.
-Presentation helpers expose the same hint and highlight states while leaving each input's layout to its owner.
+模板选择是最后选取者胜，且只在草稿与选取时刻的值逐字节相同、调用方的项目/工作区上下文未变时才生效。选取器
+暴露 pending 状态，使提交控件在它解析期间保持禁用；草稿仍可编辑，而一次编辑或上下文切换会让延迟的应用失效。
+被选中的模板替换整个草稿。Tab 与 Shift+Tab 循环遍历占位符，Escape 结束槽位会话，被编辑过的重复组在离开槽位时
+镜像，提交会移除未被触碰的标记。展示辅助函数暴露相同的提示与高亮状态，同时把每个输入的布局留给它的所有者。

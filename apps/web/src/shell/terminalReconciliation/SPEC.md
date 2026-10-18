@@ -2,22 +2,30 @@
 id: submodule-web-shell-terminal-reconciliation
 type: submodule-design
 status: active
-title: shell/terminalReconciliation — terminal catalog and local placement convergence
+title: shell/terminalReconciliation — 终端目录与本地放置的收敛
 parent: submodule-web-shell
 tags: [terminal, layout, reconciliation]
 ---
 
-## Responsibility
+## 职责
 
-Reconcile the host-authoritative terminal catalog with one frontend surface's workspace-local terminal references while keeping PTY lifetime, frame geometry, and workspace attention separate.
+把宿主权威的终端目录与某一个前端表面的工作区本地终端引用对齐，同时保持 PTY 生命周期、frame 几何与工作区注意
+彼此分开。
 
-## Boundary
+## 边界
 
-- **Owns:** authoritative-catalog advancement tracking; pruning local references only after catalog readiness; title refresh; and passive local seeding of the deterministic initial terminal when absent from this surface's workspace view.
-- **Public surface (`index.ts`):** the mounted terminal catalog/local-placement reconciliation hook and terminal placement-id helper used by intent processing.
-- **External deps:** contracts terminal types; store terminal catalog and local workspace-view state; the panel-owned catalog hydration hook; React.
-- **Forbidden:** creating/attaching/closing PTYs; terminal stream ownership; selecting a passively recovered terminal; changing frame topology/geometry to accommodate catalog state; direct WS calls; panel rendering; server/shared/pi imports; current-layout transport; or treating a local reference as terminal existence proof.
+- **拥有：** 权威目录推进追踪；只在目录就绪之后修剪本地引用；标题刷新；以及当该表面的工作区视图中缺少确定性
+  的初始终端时，被动地在本地播种它。
+- **Public surface（公开接口，`index.ts`）：** 已挂载的终端目录/本地放置收敛 hook，以及意图处理使用的终端
+  放置 id 助手。
+- **外部依赖：** contracts 终端类型；store 的终端目录与本地工作区视图状态；面板拥有的目录水合 hook；React。
+- **绝不触碰：** 创建/附接/关闭 PTY；终端流所有权；选中被动恢复的终端；为迁就目录状态而改变 frame 拓扑/
+  几何；直接的 WS 调用；面板渲染；server/shared/pi 导入；当前布局的传输层；或把本地引用当作终端存在的证明。
 
-Reservation-pending terminals stay behind their initiating surface's explicit placement intent until the host catalog confirms them. A confirmed deterministic initial terminal absent from the local workspace view is seeded without selection into an existing compatible slot, preferring bottom and falling back to the last-focused center group; recovery never implicitly reshapes the frame. Other catalog terminals never gain placement merely because another frontend created them. Existing local placements never move merely because another frontend moved the same host terminal in its own view.
+处于预留待定状态的终端，在宿主目录确认之前一直停留在其发起表面的显式放置意图之后。一个已确认的确定性初始终端
+若不在本地工作区视图中，会被播种到一个已有的兼容槽位中而不被选中，优先底部，回退到最后一个获得焦点的中心组；
+恢复绝不隐式重塑 frame。其他目录终端绝不因为另一个前端创建了它们就获得放置。已有的本地放置绝不因为另一个前端在
+它自己的视图里移动了同一个宿主终端而移动。
 
-Catalog removal prunes every local reference to that terminal after readiness and reconciles attention. Explicit host terminal close remains the only PTY-lifetime action; local frame moves and preset application preserve catalog identity.
+目录移除会在就绪之后修剪指向该终端的所有本地引用，并调和注意。显式的宿主终端关闭仍是唯一的 PTY 生命周期动作；
+本地 frame 移动与预设应用保留目录身份。

@@ -2,26 +2,24 @@
 id: submodule-web-shell-legacy-selection
 type: submodule-design
 status: active
-title: shell/legacySelection — temporary selection compatibility adapter
+title: shell/legacySelection — 临时选择兼容适配器
 parent: submodule-web-shell
 tags: [layout, legacy, adapter]
 ---
 
-## Responsibility
+## 职责
 
-Contain the temporary bridge from workbench-local attention to migration-era active editor, preview, and
-terminal mirrors used by feature render caches.
+容纳从工作台本地注意到迁移时代活动编辑器、预览与终端镜像的临时桥，那些镜像由功能渲染缓存使用。
 
-## Boundary
+## 边界
 
-- **Owns:** resolving the selected center placement to the matching editor cache or terminal catalog key;
-  atomically clearing the incompatible legacy mirror; and rerunning when a cache identity is repaired beneath
-  a stable placement.
-- **Public surface (`index.ts`):** the mounted compatibility hook and the imperative attention-change adapter
-  used by the workbench callback.
-- **External deps:** web-local center-resource types; store selectors and the single legacy mirror action; React.
-- **Forbidden:** changing frame or workspace placement, incrementing navigation, transport calls, panel/session/terminal
-  lifetime, server/shared/pi imports, or becoming a second attention authority.
+- **拥有：** 把选中的中心放置解析为匹配的编辑器缓存或终端目录键；原子地清除不兼容的遗留镜像；以及当某个
+  缓存身份在稳定的放置之下被修复时重新运行。
+- **Public surface（公开接口，`index.ts`）：** 已挂载的兼容 hook，以及工作台回调使用的命令式注意变更适配
+  器。
+- **外部依赖：** web 本地中心资源类型；store 选择器与唯一的遗留镜像动作；React。
+- **绝不触碰：** 改变 frame 或工作区放置、递增导航、传输层调用、面板/会话/终端生命周期、server/shared/pi
+  导入，或成为第二个注意权威。
 
-All shell writes to `activeTabByWorkspace` / `activeTerminalByWorkspace` compatibility state pass through
-this module. Removal of those mirrors remains a separate migration and is not part of this refactor.
+外壳对 `activeTabByWorkspace` / `activeTerminalByWorkspace` 兼容状态的所有写入都经过本模块。移除这些镜像
+仍是一次独立的迁移，不属于本次重构。

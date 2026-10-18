@@ -2,22 +2,48 @@
 id: submodule-web-shell-chat-reconciliation
 type: submodule-design
 status: active
-title: shell/chatReconciliation — local chat placement and host cache convergence
+title: shell/chatReconciliation — 本地聊天放置与宿主缓存收敛
 parent: submodule-web-shell
 tags: [chat, layout, reconciliation]
 ---
 
-## Responsibility
+## 职责
 
-Converge host-owned chat/session existence and transcripts with this frontend surface's workspace-local placements, render cache, and history—without turning cache state into placement authority.
+把宿主拥有的聊天/会话存在性与对话记录，与这个前端表面的工作区本地放置、渲染缓存和历史收敛——同时不把缓存状态
+变成放置权威。
 
-## Boundary
+## 边界
 
-- **Owns:** generation-qualified hydration for locally placed chats; authoritative session-list reconciliation with bounded passive auto-open; exact-chat route-target validation and first-priority local placement/focus; failed catalog/transcript reporting and retryable history fallback; missing/tombstoned session pruning; chat-location/deep-link orchestration; and stale-read/local-placement rechecks before installation.
-- **Public surface (`index.ts`):** mounted tombstone, catalog/cache, and chat-location reconciliation hooks plus locally placed-chat hydration/current-destination operations required by intent handling and retry UI.
-- **External deps:** contracts chat/session types; chat transcript hydration; store session/cache/navigation APIs; transport session reads; shell-neutral `lib`; React.
-- **Forbidden:** host session lifetime, terminal reconciliation, frame geometry/topology, generic placement policy, feature-panel rendering, server/shared/pi imports, current-layout transport, or selecting a tab merely because domain hydration arrived.
+- **拥有：** 对本地放置聊天做世代限定水合；带被动自动打开上限的权威会话列表调和；精确聊天路由目标校验与最高
+  优先级本地放置/焦点；失败的目录/对话记录上报与可重试的历史回退；缺失/已墓碑化的会话修剪；聊天位置/深链
+  编排；以及安装之前的过期读取/本地放置复核。
+- **Public surface（公开接口，`index.ts`）：** 已挂载的墓碑、目录/缓存与聊天位置调和 hook，以及意图处理和
+  重试 UI 所需的本地放置聊天水合/当前目标操作。
+- **外部依赖：** contracts 聊天/会话类型；聊天对话记录水合；store 的会话/缓存/导航 API；传输层会话读取；
+  shell 中立的 `lib`；React。
+- **绝不触碰：** 宿主会话生命周期、终端调和、frame 几何/拓扑、通用放置策略、功能面板渲染、server/shared/pi
+  导入、当前布局传输，或仅仅因为领域水合到达就选中一个标签页。
 
-Every asynchronous path verifies connection generation, workspace/session tombstones, current request identity, and surviving semantic local placement before installing state. An exact-chat route target owns its session hydration while unresolved, preventing duplicate reads. Only successful authoritative absence consumes an unresolved target; catalog/transcript failure retains it for reconnect. Once its local placement, workspace attention, and runtime converge, the target clears and URL sync resumes.
+每条异步路径在安装状态之前都会校验连接世代、工作区/会话墓碑、当前请求身份，以及仍然存在的语义本地放置。一个
+精确聊天路由目标在未解析期间拥有它的会话水合，从而避免重复读取。只有成功的权威缺失才会消费一个未解析的目标；
+目录/对话记录失败会保留它以便重连。一旦它的本地放置、工作区注意与运行时收敛，该目标就被清除，URL 同步随之
+恢复。
 
-Locally persisted chat references hydrate on workspace activation. On the authoritative session-list read, **only when no exact-chat route target is being handled in that same pass**, up to `AUTO_OPEN_CHAT_LIMIT` (4) unplaced sessions that are still live or have open todos are opened passively, newest first; if the workspace opens with nothing placed and nothing qualifies, the single most-recent session opens as a fallback so a workspace never lands empty while chat history exists. Classification and the fallback draw from every unplaced session on the read, regardless of whether its runtime is already known locally (e.g. one `closeChatToHistory` just unplaced, which keeps the runtime alive precisely so this can happen) — a known session reopens straight from cache (existing `tabsByWorkspace` entry, or a synthesized one titled from `closedChatsByWorkspace`/the summary) instead of refetching; only a session with no local runtime yet goes through the fetch-and-hydrate path. A pass that is resolving a route target skips passive auto-open entirely instead of merely excluding the target's own session — otherwise an unrelated live chat opened alongside it could win the group's selection out from under the link the surface was asked to land on. Passive auto-open is attempted **at most once per (workspaceId, connectionGeneration)**, latched in a module-level set keyed by workspace id and cleared whenever the connection generation advances — not a per-mount ref, because the latch must survive the surface leaving and returning to a workspace regardless of whether the hosting component stayed mounted (it now is re-targeted in place) or remounted. Two things this latch defeats: the session-list effect re-fires on every `commit` identity change (its caller recreates `commit` whenever the document changes, e.g. right after this same effect places a tab), so without it a route target that resolves and clears between two of those re-fires would let a later same-mount pass — now target-free — passively open an unrelated live session out from under it; and switching away from a workspace and back must not look like a fresh arrival, or a chat another frontend started while this one was elsewhere would open locally instead of landing in history like any other post-attempt arrival. Everything else — including a live/unfinished session once the limit is spent, or one that arrived after the attempt was already spent — enters history only. A failed placed transcript read is reported and leaves the session retryable in history; a failed catalog is reported instead of presenting unexplained emptiness. Cancelled, disconnected, or removed-workspace passes stay silent. Every accepted local transition is synchronous, so chat-location work needs no host-layout-write barrier; request-time navigation stamps alone prevent a stale jump from undoing a newer close or selection.
+本地持久化的聊天引用在工作区激活时水合。在权威会话列表读取时，**仅当同一次遍历中没有正在处理的精确聊天路由
+目标时**，至多 `AUTO_OPEN_CHAT_LIMIT`（4）个仍然活着或仍有未完成待办的未放置会话会被被动打开，最新的优先；
+如果工作区打开时没有任何已放置的会话、也没有符合条件的会话，则最近的那一个会话作为回退打开，这样在聊天历史存在
+时，工作区永远不会落得空无一物。分类与回退都取自这次读取中的每一个未放置会话，无论它的运行时在本地是否已经已知
+（例如某个 `closeChatToHistory` 刚刚取消放置，而它保持运行时活着正是为了让这件事发生）——已知会话直接从缓存重
+新打开（既有的 `tabsByWorkspace` 条目，或一个由 `closedChatsByWorkspace`/摘要命名的合成条目），而不是重新抓取；
+只有尚无本地运行时的会话才走抓取并水合的路径。正在解析路由目标的那一次遍历会完全跳过被动自动打开，而不是仅仅排
+除目标自身的会话——否则随之打开的一个无关活聊天可能从该表面被要求落到的链接底下抢走该组的选中项。被动自动打开
+**至多每个 (workspaceId, connectionGeneration) 尝试一次**，锁存在一个按工作区 id 索引的模块级集合中，并在连接
+世代推进时清除——不是每次挂载的 ref，因为该锁存必须在表面离开并返回某个工作区时存活下来，无论宿主组件是保持挂载
+（它现在是在原地被重新指向）还是重新挂载。这个锁存击败了两件事：会话列表 effect 会在每次 `commit` 身份变化时重
+新触发（其调用方在文档变化时重建 `commit`，例如就在同一个 effect 放置一个标签页之后），所以没有它的话，一个在两
+次这样的重新触发之间解析并清除的路由目标，会让之后一次同挂载遍历——此时已无目标——从它底下被动打开一个无关的活
+会话；以及，离开某个工作区再回来绝不能看起来像全新到达，否则另一个前端在这个前端身处别处时启动的聊天会在本地打
+开，而不是像其他任何尝试之后的到达那样落进历史。其他一切——包括上限用尽之后的活/未完成会话，或在尝试已用尽之后
+才到达的会话——都只进入历史。已放置对话记录的读取失败会被上报，并让该会话在历史中保持可重试；目录失败会被上报，
+而不是呈现无法解释的空。被取消、断连或工作区已被移除的遍历保持静默。每个被接受的本地迁移都是同步的，因此聊天位
+置的工作不需要宿主布局写入屏障；仅凭请求时刻的导航戳就能防止一次过期跳转撤销更新的关闭或选择。

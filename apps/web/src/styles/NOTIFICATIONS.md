@@ -2,76 +2,68 @@
 id: web-notices
 type: submodule-design
 status: active
-title: ThinkRail in-app notices — one look for toasts and inline banners
+title: ThinkRail 应用内提示 — toast 与内联横幅的统一外观
 parent: module-web
 references: [web-color, web-spacing, web-typography]
 ---
 
-# In-app notices
+# 应用内提示
 
-One visual language for every transient or inline message the app shows inside its own window: toasts
-(`packages/ui/toast.tsx` composed by `panels/Toaster`) and inline notices such as `ProjectTrustNotice`,
-`ProviderWarningBanner`, the trust notices in `SkillsDialog` / `NewWorkspaceDialog`, and the chat
-`ErrorTurn` / `CompactionNotice`. OS-level notifications are a different thing, owned by the `notifications`
-module.
+为应用在自己窗口内展示的每条临时或内联消息提供统一视觉语言：toast（`packages/ui/toast.tsx`，由
+`panels/Toaster` 组合）以及内联提示，例如 `ProjectTrustNotice`、`ProviderWarningBanner`、`SkillsDialog` /
+`NewWorkspaceDialog` 中的信任提示，以及聊天的 `ErrorTurn` / `CompactionNotice`。OS 级通知是另一回事，由
+`notifications` 模块拥有。
 
-## Raising a toast
+## 触发 toast
 
-Use the store helpers: `toast.info|success|warning|error(message, title?)` from `@/store`. Use `pushToast`
-when you need an `action` (`{ label, onClick }`) or a custom `durationMs`. Error toasts stay until
-dismissed. Every other toast auto-dismisses.
+使用 store 助手：来自 `@/store` 的 `toast.info|success|warning|error(message, title?)`。当需要一个 `action`
+（`{ label, onClick }`）或自定义 `durationMs` 时使用 `pushToast`。错误 toast 会一直保留到被关闭。其他每个
+toast 都会自动消失。
 
-## Surface
+## 外观
 
-- Neutral fill: `bg-container-elevated-bg` for every severity. No tinted `bg-feedback-*-subtle` fill and
-  no left accent stripe.
-- Severity is shown only by the 1px border (`border-feedback-<severity>-muted`) and the icon colour
-  (`text-feedback-<severity>`). Body text stays `text-text-default`.
-- Geometry: `rounded-sm`. Inline notices use `px-12 py-8`, or `px-8 py-4` inside dense side panels
-  such as the Resources inspector. Toasts use `p-12`.
-- Text: message `tr-text-ui text-text-default`, secondary line `tr-text-metadata text-text-muted`.
+- 中性填充：每个严重级别都用 `bg-container-elevated-bg`。不使用带色调的 `bg-feedback-*-subtle` 填充，也没有
+  左侧强调条。
+- 严重级别仅由 1px 边框（`border-feedback-<severity>-muted`）与图标颜色（`text-feedback-<severity>`）表达。
+  正文保持 `text-text-default`。
+- 几何：`rounded-sm`。内联提示使用 `px-12 py-8`，在资源检查器这类密集侧边面板内使用 `px-8 py-4`。toast 使用
+  `p-12`。
+- 文字：消息用 `tr-text-ui text-text-default`，次要行用 `tr-text-metadata text-text-muted`。
 
-## Icons
+## 图标
 
-Use one Line glyph per severity, everywhere, coloured with the matching `text-feedback-*` and marked
-`aria-hidden`:
+每一处都按严重级别使用同一个 Line 字形，用匹配的 `text-feedback-*` 上色并标记 `aria-hidden`：
 
-| Severity | Glyph |
+| 严重级别 | 字形 |
 |---|---|
 | info | `RiInformationLine` |
 | success | `RiCheckboxCircleLine` |
-| warning | `RiAlertLine` (triangle) |
-| error | `RiErrorWarningLine` (circled `!`) |
+| warning | `RiAlertLine`（三角形） |
+| error | `RiErrorWarningLine`（带圈的 `!`） |
 
-A notice whose meaning is more specific than its severity may use a domain glyph, for example
-`RiShieldCheckLine` on the trusted-project notice.
+一个含义比其严重级别更具体的提示可以使用领域字形，例如受信任项目提示上的 `RiShieldCheckLine`。
 
-## Layout
+## 布局
 
-Pick one of two layouts based on the content:
+根据内容在两种布局中择一：
 
-- **Single line** (one short message, no secondary line): `flex items-center gap-8`. The icon, message
-  (`flex-1`) and actions sit in one row. Nudge a 14px icon with `-mt-2` so it lines up optically with the
-  text.
-- **Multi-line** (a secondary line, or a message that can wrap): `flex flex-col gap-8`. Put the icon and
-  text in a content row (`flex items-start gap-8`, icon `mt-2` to match the first line). Put the actions
-  in a footer row (`flex justify-end gap-8`). Never keep actions on the right of text that wraps.
+- **单行**（一条短消息，无次要行）：`flex items-center gap-8`。图标、消息（`flex-1`）与动作同处一行。用
+  `-mt-2` 轻推 14px 图标，让它在视觉上与文字对齐。
+- **多行**（有次要行，或消息可能换行）：`flex flex-col gap-8`。把图标与文字放进内容行（`flex items-start
+  gap-8`，图标用 `mt-2` 对齐首行）。把动作放进页脚行（`flex justify-end gap-8`）。绝不把动作放在会换行的
+  文字右侧。
 
-Toasts always use the multi-line layout. `ToastClose` sits in the content row, and the optional action
-goes in a `mt-12` footer.
+toast 始终使用多行布局。`ToastClose` 位于内容行，可选动作放入 `mt-12` 的页脚。
 
-## Actions
+## 动作
 
-- Use `size="sm"` buttons. The primary action is `variant="outline"`. A secondary action next to it is
-  `variant="ghost"`.
-- Never use a filled (`default`) or coloured button inside a notice. The border already carries the
-  severity, and a filled button would compete with the page's primary action.
-- A toast action is rendered through `ToastAction asChild` around a `Button`. That way Radix still closes
-  the toast and announces the action's `altText`.
+- 使用 `size="sm"` 按钮。主作用 `variant="outline"`。紧挨它的次要动作用 `variant="ghost"`。
+- 绝不在提示内使用填充（`default`）或彩色按钮。边框已经承载了严重级别，填充按钮会与页面的主操作竞争。
+- toast 动作经由 `ToastAction asChild` 包住一个 `Button` 渲染。这样 Radix 仍会关闭 toast 并播报该动作的
+  `altText`。
 
-## Not yet migrated
+## 尚未迁移
 
-A few older error surfaces still use the tinted style, for example `ExistingWorktreeDialog` and the
-`SpecsPanel` load error. Migrate them when you next touch them, and do not copy their style into new
-notices. Markdown alert callouts (`panels/markdownAlerts`) are not notices: they deliberately mirror
-GitHub's alert styling.
+少数较旧的错误表面仍在使用带色调的样式，例如 `ExistingWorktreeDialog` 和 `SpecsPanel` 的加载错误。下次接触
+它们时迁移，不要把它们的样式复制进新的提示。Markdown 警告标注（`panels/markdownAlerts`）不是提示：它们刻意
+镜像 GitHub 的警告样式。

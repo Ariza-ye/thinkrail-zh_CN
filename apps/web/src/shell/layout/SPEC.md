@@ -2,244 +2,287 @@
 id: submodule-web-shell-layout
 type: submodule-design
 status: active
-title: shell/layout — frontend-local workbench frame
+title: shell/layout — 前端本地的 workbench 帧
 parent: submodule-web-shell
 depends-on: [module-contracts]
 tags: [ui, layout, tabs, drag-and-drop]
 ---
 
-## Responsibility
+## 职责
 
-The shell-owned, headless workbench engine: the normalized frontend-local frame and per-workspace view grammar; legal atomic mutations and projection; recursive center plus left/right/bottom rendering; resize/alignment and drag geometry; keyboard arrangement commands; and focus recovery. It renders containers; feature views remain arrangement-agnostic.
+外壳拥有的、无头的 workbench 引擎：归一化的前端本地帧与按工作区的视图语法；合法的原子改动与投影；递归的
+中间区加上左/右/底部渲染；缩放/对齐与拖拽几何；键盘排布命令；以及焦点恢复。它渲染容器；功能视图保持与
+排布无关。
 
-## Boundary
+## 边界
 
-- **Owns:** web-local `WorkbenchFrame`/`WorkspaceViewState` types; frame-plus-view projection; pure topology, placement, attention, and policy operations; semantic minimum and independent group-limit checks; one-result drag previews; center/side/bottom renderers; alignment-owned nested composition and side-width projection; tab-strip overflow; ARIA tab/separator behavior; and the terminal visibility gate.
-- **Public surface (`index.ts`):** all current-layout types; workbench renderer/controller; the edge-chrome primitives (`AuxiliaryRail`, `AuxiliaryRailToolButton`, `AuxiliaryPaneHeader`, `AuxiliaryPaneHideButton`); pure mutations, projection, and validation helpers; built-in preset definitions plus instantiate/apply/capture operations and `frameMatchesPreset` (geometry equality ignoring generated ids, which Settings uses to mark the applied preset); attention fallback helpers; and unavailable-reason results. Callers inject resource renderers and commit complete pure results rather than splicing arrays.
-- **External deps:** `@thinkrail/contracts` for the resource-free custom-preset DTO and git diff-scope type only; shell-neutral `lib` attention/id primitives; React; `@thinkrail/ui/*` (including `@thinkrail/ui/resizable`); `@dnd-kit/core`.
-- **Forbidden:** server/shared/pi imports; domain-resource lifetime; browser persistence or WS calls; feature-panel internals; a mutable third-party docking model; inline component styles; or non-semantic colour values.
+- **拥有：** web 本地的 `WorkbenchFrame`/`WorkspaceViewState` 类型；帧加视图的投影；纯拓扑、放置、注意与策略
+  操作；语义最小值与彼此独立的组上限检查；单结果拖拽预览；中间区/侧/底部渲染器；对齐拥有的嵌套组合与侧宽度
+  投影；标签页条带溢出；ARIA 标签页/分隔符行为；以及终端可见性门禁。
+- **Public surface（公开接口，`index.ts`）：** 所有当前布局类型；workbench 渲染器/控制器；边缘 chrome 原语
+  （`AuxiliaryRail`、`AuxiliaryRailToolButton`、`AuxiliaryPaneHeader`、`AuxiliaryPaneHideButton`）；纯改动、
+  投影与校验助手；内置预设定义加上实例化/应用/捕获操作与 `frameMatchesPreset`（忽略生成 id 的几何相等，
+  Settings 用它标记已应用的预设）；注意回退助手；以及不可用原因结果。调用方注入资源渲染器并提交完整的纯结果，
+  而不是拼接数组。
+- **外部依赖：** `@thinkrail/contracts` 仅用于无资源的自定义预设 DTO 与 git diff 范围类型；外壳中立的 `lib`
+  注意/id 原语；React；`@thinkrail/ui/*`（含 `@thinkrail/ui/resizable`）；`@dnd-kit/core`。
+- **绝不触碰：** server/shared/pi 导入；领域资源生命周期；浏览器持久化或 WS 调用；功能面板内部；可变的第三方
+  停靠模型；内联组件样式；或非语义色值。
 
-## State contract
+## 状态契约
 
-One `WorkbenchFrame` belongs to a frontend surface, not a workspace. It carries stable group/split ids, center topology, left/right/bottom groups and geometry, auxiliary visibility/folds, bottom alignment, singleton-tool placement/order, and restore targets. It carries no workspace resource identity, preview, selected tab, navigation clock, pointer draft, or viewport compression.
+一个 `WorkbenchFrame` 属于某个前端表面，而不属于某个工作区。它携带稳定的分组/拆分 id、中间区拓扑、左/右/
+底部分组与几何、辅助可见性/折叠、底部对齐、单例工具的放置/顺序，以及恢复目标。它不携带工作区资源身份、
+预览、选中标签页、导航时钟、指针草稿或视口压缩。
 
-A `WorkspaceViewState` is keyed by workspace and references frame group ids. It carries
-file/diff/changes/chat/document/terminal membership and order plus center preview identity (a `changes`
-tab is the per-scope review surface defined in the store spec; its layout record is kind + id + name +
-scope, nothing cached, and it is preview-eligible like file and diff tabs). The separate
-`LayoutAttention` overlay carries selection per group, last focus for center/each auxiliary region, and
-per-group navigation clocks. Attention is keyed per workspace, but a selected singleton tool is shared
-across the window's views (a resource selection is not); the pure adoption rule lives here and its
-fan-out in `layoutState`. The mounted workbench document is a pure projection of the singular frame,
-active workspace view, and its attention; it is never stored as another authority.
+一个 `WorkspaceViewState` 按工作区键控，并引用帧分组 id。它携带
+file/diff/changes/chat/document/terminal 的成员资格与顺序，加上中间区预览身份（一个 `changes` 标签页是
+store 规范中定义的按范围评审表面；它的布局记录是 kind + id + name + scope，不缓存任何东西，并且它与 file
+与 diff 标签页一样可参与预览）。独立的 `LayoutAttention` 覆盖层携带每个分组的选中项、中间区/每个辅助区域的
+最后焦点，以及按分组的导航时钟。注意按工作区键控，但一个被选中的单例工具在整个窗口的视图之间共享（资源选中
+则不是）；纯的采纳规则住在这里，它的扇出在 `layoutState`。已挂载的 workbench 文档是那个唯一帧、活跃工作区
+视图及其注意的纯投影；它绝不被存储为另一个权威。
 
-Pure operations return either one complete local-state result or an unavailable reason. A resource-only
-command patches the active workspace view. A frame command returns the frame plus every required
-retained-workspace remap; the store installs that result atomically through
-[[submodule-web-shell-layout-state]]. Components never splice groups or tabs. Stable ids are placement keys;
-a tab's `name` remains non-identity metadata. Singleton tool names resolve from the current web-owned catalog
-at presentation time, so copy updates never rewrite local layout state.
+纯操作要么返回一个完整的本地状态结果，要么返回一个不可用原因。仅涉及资源的命令只对活跃工作区视图打补丁。
+帧命令返回帧加上每一处必需的保留工作区重映射；store 通过 [[submodule-web-shell-layout-state]] 原子地安装
+那个结果。组件绝不拼接分组或标签页。稳定 id 是放置键；标签页的 `name` 仍是非身份元数据。单例工具名在呈现时
+从当前 web 拥有的目录解析，因此文案更新绝不重写本地布局状态。
 
-A click that may become a browser `dblclick` waits the shared 250 ms settle window. The upgraded gesture emits
-only its final keep while retaining the leading preview-slot claim, whether content was cached or required a
-host read. It never persists an intermediate preview. Pointer/resize drafts and viewport compression remain
-runtime-only.
+一次可能升级为浏览器 `dblclick` 的点击会等待共享的 250 ms 落定窗口。升级后的手势只发出它最终的 keep，同时
+保留领头的预览槽位声明，无论内容是已缓存还是需要一次宿主读取。它绝不持久化中间的预览。指针/缩放草稿与视口
+压缩仍只存在于运行时。
 
-Frame groups may remain empty in any workspace. Closing a final resource therefore leaves topology untouched. Explicit remove/merge is the only way to delete a group, and its result rehomes every resource that references it across all locally retained workspace views. At least one center leaf always remains.
+帧分组在任何工作区中都可以保持为空。因此关闭最后一个资源不会改动拓扑。显式移除/合并是删除一个分组的唯一
+方式，其结果会把引用它的每一个资源在所有本地保留的工作区视图中重新安置。始终至少留下一个中间区叶子。
 
-## Auxiliary presentation and recall
+## 辅助呈现与召回
 
-Edge entries are a derived projection of the current document and attention, never a second persisted
-layout. **The rail mirrors the region's panes**: entries come in ordered clusters, one per group in
-document order, separated by a hairline, so the rail answers "which icons share a pane" without a tab
-strip — the group model stays the authority and merely becomes observable. A singleton entry sits in the
-cluster of the group that holds it; each terminal-bearing group has one entry with its own named session
-tabs; an empty group is a one-entry cluster. Tools placed nowhere (after *Remove tool from group*) form a
-trailing, dimmed cluster behind a last separator; activating one restores it to its recorded target.
-Exactly one entry per expanded pane is pressed and none in a folded or hidden one, so the pressed set
-reads as "panes currently open". Clicking an unpressed entry selects it in *its* pane (revealing or
-unfolding the pane); clicking the pressed one folds that pane.
+边缘条目是当前文档与注意的派生投影，绝不是第二份被持久化的布局。**轨道镜像该区域的面板**：条目按有序的
+簇出现，按文档顺序每个分组一簇，用一条细线分隔，因此轨道无需标签页条带就能回答“哪些图标共用一个窗格”——
+分组模型仍是权威，只是变得可观察。单例条目坐在持有它的那个分组的簇里；每个带终端的分组有一个条目，
+连同它自己具名的会话标签页；空分组是一个单条目的簇。无处放置的工具（在 *Remove tool from group* 之后）形成
+最后一个分隔符之后的尾部变暗簇；激活其中一个会把它恢复到它记录的目标。每个展开的窗格恰好有一个条目是按下态，
+折叠或隐藏的窗格里一个也没有，因此按下的集合读作“当前打开的窗格”。点击一个未按下的条目会在*它自己的*窗格中
+选中它（显现或展开该窗格）；点击已按下的那个则折叠该窗格。
 
-**Tools and terminals never share a pane.** A group holding tools is a tool pane; terminals live only in
-tool-free groups (`canJoinAuxiliaryGroup`). Joining a tool into a pane that shows terminals, or a terminal
-into a tool pane, is unavailable ("Tools and terminals use separate panes."); creating a new pane is
-always fine, and removing a pane merges its tabs into the nearest sibling (previous, then next) that
-can take them all, else it stays unavailable. Normalization applies the same rule to retained workspace views: a terminal whose group became
-a tool pane rehomes to the same region's nearest tool-free pane, then a tool-free bottom pane, then center.
-Passive terminal placement and preset remaps choose destinations with that predicate. The rule exists
-because a mixed pane had no coherent rendering: a terminal-selected pane is a session tab strip in which
-the sibling tools appear nowhere. With it, the former mixed-order anchors (`beforeToolByTabId`) and the
-terminal strip's document-index plumbing are gone; a persisted view still carrying the field is accepted
-and the field dropped.
+**工具与终端绝不共用一个窗格。** 持有工具的分组是工具窗格；终端只住在无工具的分组里
+（`canJoinAuxiliaryGroup`）。把一个工具并入显示终端的窗格，或把一个终端并入工具窗格，都不可用
+（"Tools and terminals use separate panes."）；创建一个新窗格总是可以的，而移除一个窗格会把它的标签页
+合并进最近的、能全部接住它们的兄弟窗格（先前一个，再后一个），否则它保持不可用。归一化把同一条规则施加到
+保留的工作区视图上：分组变成了工具窗格的终端会重新安置到同一区域最近的无工具窗格，然后是一个无工具的底部
+窗格，再然后是中间区。被动的终端放置与预设重映射用那个谓词选择目标。这条规则之所以存在，是因为混合窗格没有
+连贯的渲染方式：一个选中终端的窗格就是一条会话标签页条带，其中的兄弟工具在哪里都不出现。有了它，先前的混合
+顺序锚点（`beforeToolByTabId`）与终端条带的文档索引管线都不存在了；仍携带该字段的已持久化视图会被接受，
+并丢弃该字段。
 
-A terminal entry restores the pane's selected session, else its first terminal; because a terminal pane
-holds nothing but terminals, `selectedByGroup` is the whole recall and the former
-`lastTerminalByGroup` field is gone (a saved copy is ignored). Resource selection never participates in
-singleton-tool fan-out. Activating the already displayed entry folds only its group; restoring an entry
-reveals/unfolds/selects in one transition. An empty bottom entry reveals a process-free creation surface, not a terminal reservation.
+一个终端条目恢复该窗格选中的会话，否则恢复它的第一个终端；因为一个终端窗格除了终端什么都不持有，
+`selectedByGroup` 就是全部召回，先前的 `lastTerminalByGroup` 字段已不存在（保存下来的副本会被忽略）。
+资源选中绝不参与单例工具的扇出。激活已经显示的条目只折叠它的分组；恢复一个条目在一次转变中完成
+显现/展开/选中。空的底部条目显现一个无进程的创建表面，而不是一个终端预留。
 
-`AuxiliaryRail` is a props-driven toolbar, owning only roving DOM focus. The workbench adapts
-placed tools through the existing `WorkbenchTab` menu/drag controller; terminal-group entries navigate
-rather than dragging or closing a representative session. The selected tool gets a plain pane header
-whose title is a drag handle for that tool — the same drag data as its rail entry, so a user who looks at
-the pane rather than the edge still finds something to grab; selected terminals retain named session
-tabs. Project Home composes the header without drag data. The rail, its tool-entry geometry and selection classes,
-the plain pane header, and its Hide control are the one owner of edge-chrome styling: `WorkbenchTab`
-(rail mode) and the droppable `AuxiliaryRailButton` reuse the rail-entry frame/button class helpers,
-`AuxiliaryGroupHeader` reuses the header component, and the shell's Project Home branch
-([[submodule-web-shell]]) composes the exported `AuxiliaryRail` / `AuxiliaryRailToolButton` /
-`AuxiliaryPaneHeader` around its own geometry so a tool looks identical with or without a frame. Every
-rail entry is a `data-active` frame around the control, so the selected fill (`control-bg-selected`, the
-same role every tab strip uses) and the accent indicator sit on the frame while hover, focus, and drop
-cues sit on the control. Tab
-and tool icons resolve in one place (`tabIcon`), Line at rest and Fill when active; rail tooltips open away
-from their edge. Rail geometry is excluded from available pane space, but
-saved dimensions remain workbench-wide ratios; viewport projection never rewrites them. Measurement
-observers follow the actual DOM node through ref attachment/cleanup, including keyed panel-group
-replacement; a mounted workbench does not imply its measured descendants survived. Rail selection is
-the tab strip's grammar turned sideways: the selected fill, a Fill icon, and a short accent edge (the
-rail's analogue of a resource tab's underline), identical in every theme — a palette decides how loud
-each reads, never a per-theme selector in the component.
+`AuxiliaryRail` 是一个由 props 驱动的工具栏，只拥有漫游的 DOM 焦点。workbench 通过既有的
+`WorkbenchTab` 菜单/拖拽控制器来适配已放置的工具；终端分组条目只做导航，而不拖拽或关闭某个代表会话。
+选中的工具获得一个朴素的窗格头部，其标题是该工具的拖拽手柄——与它的轨道条目相同的拖拽数据，好让一个看着
+窗格而不是边缘的用户仍然能找到可抓的东西；选中的终端保留具名的会话标签页。Project Home 组合该头部时不带
+拖拽数据。轨道、它的工具条目几何与选择类、朴素的窗格头部，以及它的 Hide 控件，是边缘 chrome 样式的唯一
+拥有者：`WorkbenchTab`（轨道模式）与可拖放的 `AuxiliaryRailButton` 复用轨道条目的 frame/button 类助手，
+`AuxiliaryGroupHeader` 复用该头部组件，而外壳的 Project Home 分支（[[submodule-web-shell]]）围绕自己的几何
+组合导出的 `AuxiliaryRail` / `AuxiliaryRailToolButton` / `AuxiliaryPaneHeader`，好让一个工具无论在帧内
+还是帧外看起来都一样。每个轨道条目都是控件周围的一个 `data-active` frame，因此选中的填充
+（`control-bg-selected`，与每条标签页条带使用的同一个角色）与强调指示器坐落在 frame 上，而悬停、焦点与拖放
+提示坐落在控件上。标签页与工具图标在一处解析（`tabIcon`），静息时 Line、激活时 Fill；轨道提示向远离其边缘
+的方向展开。轨道几何被排除在可用窗格空间之外，但保存的尺寸仍是 workbench 级的比率；视口投影绝不重写它们。
+测量观察器通过 ref 的附加/清理跟随实际的 DOM 节点，包括带 key 的面板组替换；一个已挂载的 workbench 并不
+意味着它测量过的后代仍然存活。轨道选中是标签页条带的语法转了 90 度：选中的填充、一个 Fill 图标，以及一条短
+的强调边缘（轨道对资源标签页下划线的类比），在每个主题中都完全一致——调色板决定每者读起来多响，绝不是组件里
+的按主题选择器。
 
-## Layout grammar
+## 布局语法
 
-- **Center:** a recursive horizontal/vertical binary tree, maximum four leaves. A split replaces one leaf with equal halves. User creation/resize requires each child to remain at least 320 px wide and 180 px high. Empty leaves are valid frame slots and render the shell-provided empty surface. Remove/Merge promotes a sibling and rehomes every affected workspace's tabs deterministically.
-- **Auxiliary eligibility:** Projects, Specs, Files, Changes, and Review are singleton auxiliary-only tools owned by the frame; terminals are workspace resources and may occupy center or any auxiliary region. Hiding a singleton preserves its restore target. View/deep-link reveal restores or unfolds it in frame-local position and focuses the requested item in current workspace attention.
-- **Left/right:** ordered vertical frame stacks beside persistent full-height tool rails. Dragging an outer separator through its minimum hides that side and retains the last expanded width. Broad upper/lower body targets create adjacent groups; the rail's cluster-boundary zones offer the same commands for folded or hidden panes. Expanded bodies have a 120 px normal minimum; folded groups occupy no interior body space and retain their expanded weights, with restoration on the edge rail. An empty frame group remains available across workspaces until explicit removal and renders a named
-  Add/Reveal surface rather than disappearing; a region with groups may stay hidden.
-- **Bottom:** ordered left-to-right frame groups resize on vertical separators. Folded groups retain only
-  their edge-rail controls, not an interior vertical strip. A persistent bottom tool rail spans the column
-  selected by bottom alignment, even when the body is hidden or there are no groups. A bottom-eligible drag
-  exposes a broad Primary restore/drop target in unused rail space, leaving explicit group controls
-  reachable; dropping reveals its destination. With no drag active, `Mod+Shift+J` and the rail provide
-  the same restore path. Height starts at 30%, has a 120 px body minimum, and caps at 70%.
-  Alignment is center, center+left, center+right, or full workbench. A side excluded from that span owns its
-  lower corner and continues to the workbench bottom; an included side ends above it; the drag-time drop zone
-  follows the same ownership. Alignment follows actual browser-local side projection during resize and narrow
-  compression while persisted workbench-wide frame ratios remain the target and are converted through nested
-  panel groups. A separator gesture commits only the ratio of the side that owns it; compression of an
-  untouched neighbor remains runtime-local. Hidden sides contribute no phantom width. A visible empty bottom
-  frame slot remains available across workspaces until explicit removal and renders terminal creation/reveal
-  affordances.
-- **Limits:** left/right share a local setting defaulting to six groups per side; bottom has an independent local setting defaulting to three. Both accept 1–32, with closed hard safety bounds enforced even for untrusted local state or shared presets. Existing overages survive; creation is unavailable until below the configured limit, while reorder/join/reducing moves remain legal. Stable-id uniqueness, one canonical resource placement per workspace view, normalized geometry, and the final-center-leaf invariant are enforced by every mutation.
-- **Small viewports:** restoring onto less space may compress below operation minimums locally. Content scrolls/clips; bottom alignment projects from actual compressed side spans, while frame topology, alignment choice, and ratios are never rewritten merely because this viewport is narrow.
+- **中间区：** 一棵递归的水平/垂直二叉树，最多四个叶子。一次拆分用相等的两半替换一个叶子。用户创建/缩放要求
+  每个子节点保持至少 320 px 宽、180 px 高。空叶子是合法的帧槽位，并渲染外壳提供的空表面。移除/合并会提升
+  一个兄弟节点，并确定性地重新安置每个受影响工作区的标签页。
+- **辅助资格：** Projects、Specs、Files、Changes 与 Review 是帧拥有的、仅限辅助区的单例工具；终端是工作区
+  资源，可占据中间区或任何辅助区域。隐藏一个单例保留它的恢复目标。视图/深链显现会在帧本地位置恢复或展开
+  它，并在当前工作区注意中聚焦所请求的项。
+- **左/右：** 有序的垂直帧栈，旁边是常驻的全高工具轨道。把外侧分隔符拖过它的最小值会隐藏那一侧，并保留
+  最后展开的宽度。宽大的上/下主体目标会创建相邻分组；轨道的簇边界区为折叠或隐藏的窗格提供同样的命令。
+  展开的主体有 120 px 的常规最小值；折叠的分组不占内部主体空间，并保留它们展开时的权重，可在边缘轨道上
+  恢复。一个空的帧分组跨工作区保持可用，直到显式移除，并渲染一个具名的 Add/Reveal 表面而不是消失；一个
+  有分组的区域可以保持隐藏。
+- **底部：** 有序的从左到右的帧分组在垂直分隔符上缩放。折叠的分组只保留
+  它们的边缘轨道控件，而不是内部的垂直条带。一条常驻的底部工具轨道横跨由底部对齐选中的那一列，
+  即使主体被隐藏或根本没有分组。一次底部合格的拖拽会在一段未使用的轨道空间中暴露一个宽大的 Primary
+  恢复/拖放目标，同时让显式的分组控件仍然可达；拖放会显现它的去向。没有活跃拖拽时，`Mod+Shift+J`
+  与轨道提供同样的恢复路径。高度从 30% 开始，主体最小 120 px，上限 70%。
+  对齐是中间区、中间区+左、中间区+右，或整个 workbench。被排除在该跨度之外的一侧拥有它的
+  下角，并一直延续到 workbench 底部；被包含的一侧在它之上结束；拖拽时的拖放区
+  遵循同样的归属。对齐在缩放与窄幅压缩期间跟随实际的浏览器本地侧投影，
+  而持久化的 workbench 级帧比率仍是目标，并通过嵌套的
+  面板组换算。一次分隔符手势只提交拥有它的那一侧的比率；未被
+  触碰的邻居的压缩仍只存在于运行时。隐藏的侧不贡献幻影宽度。一个可见的空底部
+  帧槽位跨工作区保持可用，直到显式移除，并渲染终端创建/显现
+  可供性。
+- **上限：** 左/右共享一个本地设置，默认每侧六个分组；底部有一个独立的本地设置，默认三个。两者都接受
+  1–32，即使面对不可信的本地状态或共享预设也强制封闭的硬性安全边界。既有的超限会存活；在降到配置上限
+  之下以前创建不可用，而重排序/并入/减少的移动仍然合法。稳定 id 唯一性、每个工作区视图一份规范资源放置、
+  归一化几何，以及最后中间区叶子的不变量，由每一次改动强制。
+- **小视口：** 恢复到更小的空间时，可能会在本地压缩到操作最小值以下。内容滚动/裁剪；底部对齐从实际压缩后
+  的侧跨度投影，而帧拓扑、对齐选择与比率绝不因为此视口很窄而被重写。
 
-Ordinary opens target the active workspace's last-focused surviving center group. Reopening a canonical resource selects its existing local placement rather than duplicating it and refreshes non-identity metadata in place. Each center group has one workspace-local preview slot: preview replaces in place, keep promotes one-way, and navigation clocks are group-local. A passive restore may select its first result without incrementing the user-navigation clock. A user open advances its clock at request time and carries that stamp through acceptance rather than counting twice; reselecting the active center tab also advances once so it defeats older deferred work. Incidental DOM focus changes update last-focus routing but not navigation.
+普通打开以活跃工作区最后聚焦的存活中间区分组为目标。重新打开一个规范资源会选中它已有的本地放置，而不是
+复制它，并就地刷新非身份元数据。每个中间区分组有一个工作区本地的预览槽位：预览就地替换，keep 单向提升，
+而导航时钟是分组本地的。一次被动恢复可以选中它的第一个结果，而不推进用户导航时钟。一次用户打开在请求时
+推进它的时钟，并把那个戳记贯穿接纳过程，而不是计两次；重新选中活跃的中间区标签页也推进一次，好让它击败
+更旧的延迟工作。附带发生的 DOM 焦点变化更新最后聚焦路由，但不更新导航。
 
-Async completion reroutes from a removed group to current last focus and advances the surviving destination once, unless newer local placement already contains the resource. File/chat/document closes update local attention immediately. Terminal close waits for host-domain acceptance, then removes that terminal from every local workspace view for the workspace; a rejection leaves placement and attention untouched. Any newer tab gesture or navigation suppresses delayed close-focus recovery.
+异步完成会从已被移除的分组改道到当前最后焦点，并把存活的去向推进一次，除非更新的本地放置已经包含该资源。
+file/chat/document 的关闭立即更新本地注意。终端关闭等待宿主领域接纳，然后从该工作区的每一个本地工作区视图
+中移除那个终端；一次拒绝会让放置与注意保持不动。任何更新的标签页手势或导航都会压制延迟的关闭焦点恢复。
 
-## Shape changes without remounts
+## 不重新挂载的形状变化
 
-Every `ResizablePanelGroup` the engine renders (outer columns, aligned row, bottom column, side and
-bottom stacks, center splits) has a structural key only; the projection epoch, side visibility, bottom
-visibility, folds, and alignment never key a group. A region that appears or disappears adds or removes its
-`ResizablePanel` in place with a stable `id` and `order`, and the bottom column is one always-mounted
-vertical group whose bottom panel is conditional, so the top row never changes parent. Resource bodies,
-tool panes, terminals, and the chat transcript therefore keep their DOM and component state while a
-neighbouring pane folds, hides, or shows; the only remount is a side stack that moves between the outer
-column and the aligned row because bottom alignment or corner ownership changed.
+引擎渲染的每个 `ResizablePanelGroup`（外列、对齐行、底列、侧与底栈、中间区拆分）只带一个结构性 key；
+投影纪元、侧可见性、底部可见性、折叠与对齐绝不作一个分组的 key。一个出现或消失的区域就地添加或移除它的
+`ResizablePanel`，带稳定的 `id` 与 `order`，而底列是一个始终挂载的垂直分组，其底部面板是有条件的，因此
+顶行绝不更换父级。因此资源体、工具窗格、终端与聊天对话记录在相邻窗格折叠、隐藏或显示时保留它们的 DOM 与
+组件状态；唯一的重挂载是一个侧栈因为底部对齐或角落归属变化而在外列与对齐行之间迁移。
 
-Sizes are not left to the library's redistribution. `defaultSize` props always carry the committed
-projection for the current panel set, so a membership change recalculates onto the committed geometry,
-and a layout effect per group re-applies the committed sizes with `setLayout` whenever they differ by
-more than the tolerance and the group's panel count matches. Minimums that depend on the panel set
-(`minSize` derived from how many groups or sides are present) are relaxed to `0` for the one commit in
-which a group's membership changes and applied in the synchronous follow-up commit (`useTopologySettled`):
-react-resizable-panels re-evaluates a panel's constraints in that panel's layout effect against the
-group's not-yet-recalculated layout, and letting a constraint and a sibling panel change in the same
-commit makes it index a stale layout and throw. The enforcement effect keys on that settled flag so the
-committed sizes are re-applied once the real constraints are live. A gesture's rollback (`restore`)
-likewise refuses to write a layout whose length no longer matches the group.
+尺寸不被留给库的重新分配。`defaultSize` props 始终携带当前面板集已提交的投影，因此一次成员变化会重新计算
+到已提交的几何上，而每个分组的一个布局 effect 会在已提交尺寸与当前差异超过容差、且该分组的面板数匹配时，
+用 `setLayout` 重新施加已提交的尺寸。依赖面板集的最小值（由存在多少分组或侧推导出的 `minSize`）会在某个
+分组成员变化的那一次提交中被放宽为 `0`，并在同步的后续提交中施加（`useTopologySettled`）：
+react-resizable-panels 在该面板的布局 effect 中针对分组尚未重新计算的布局重新求值它的约束，而让一个约束
+与一个兄弟面板在同一次提交中变化，会让它索引一份过期的布局并抛出。强制 effect 以那个落定标志为 key，因此
+一旦真实约束生效，已提交的尺寸会被重新施加一次。一次手势的回滚（`restore`）同样拒绝写入一个长度不再匹配该
+分组的布局。
 
-## Arrangement and accessibility
+## 排布与可访问性
 
-A tab drag paints exactly one result: strip insertion, whole-group join, legal center half-split, side
-upper/lower boundary, or bottom left/right boundary. Expanded terminal strips remain join/reorder targets
-while bodies create adjacent groups. On a rail, the two target kinds follow the cluster grammar: the
-before/after halves of an entry insert into *that pane* (reorder, or join from anywhere), and every
-cluster boundary — rail start, between clusters, rail end — carries one **New pane here** zone that
-creates a group at that index, replacing the former compact folded/hidden-side creation slivers. Both
-kinds are painted only when legal: a boundary zone needs room under the local limit and must not be an
-exact-position no-op, and a join target obeys the tool/terminal pane rule. Hidden side rails keep a broad
-unused-space creation target within local limits. When bottom is not rendered, its drag-time zone reuses the active workspace's last-focused surviving
-bottom frame group, falls back to the trailing group, or creates one at the trailing boundary only when no
-group exists and the local bottom limit permits; either drop reveals the region. Successful explicit auxiliary group/insertion drops also unfold their
-destination in that same interactive mutation; generic placement and passive terminal reconciliation
-retain their non-unfolding policy. Illegal domains, limits,
-exact-position no-ops, and minimum violations paint no target and commit nothing. Escape, pointer
-cancellation, outside drop, or a superseding local frame/view transition restores the source. A drag moves one
-workspace resource or one frame-owned tool; it never copies or crosses workspaces.
+一次标签页拖拽恰好绘制一个结果：条带内插入、整分组并入、合法的中间区两半拆分、侧的上/下边界，或底部的
+左/右边界。展开的终端条带仍是并入/重排序目标，而主体创建相邻分组。在轨道上，这两种目标种类遵循簇语法：
+一个条目的前/后两半插入*那个窗格*（重排序，或从任何地方并入），而每条簇边界——轨道起点、簇之间、轨道
+终点——带有一个 **New pane here** 区，在那个索引处创建一个分组，取代先前紧凑的折叠/隐藏侧创建细条。
+两种种类都只在合法时才绘制：一个边界区需要在本地上限之下有空间，且绝不能是一个精确位置的空操作，而一个
+并入目标遵循工具/终端窗格规则。隐藏的侧轨道在本地上限之内保留一个宽大的未使用空间创建目标。当底部未被
+渲染时，它的拖拽时区域复用活跃工作区最后聚焦的存活底部分组，回退到尾部那个分组，或仅在没有任何分组且
+本地底部上限允许时在尾部边界创建一个；任何一种拖放都会显现该区域。成功的显式辅助分组/插入拖放也会在同一次
+交互改动中展开它们的去向；通用放置与被动的终端调和保留它们不展开的策略。非法领域、上限、精确位置空操作与
+最小值违规都不绘制任何目标，也不提交任何东西。Escape、指针取消、外部拖放，或一次取代性的本地帧/视图转变，
+都会恢复源。一次拖拽移动一个工作区资源或一个帧拥有的工具；它绝不复制，也不跨工作区。
 
-Drop-target styling has no resting treatment. As soon as a movable tab is picked up, every currently valid
-destination shows a subtle Primary hint, and the destination under the pointer strengthens. Both states derive
-from the existing drag state and each site's already-computed validity—there is no second drag-state
-machine—and use only semantic Primary roles, never `feedback-*`: `drop-hint` is a subtle Primary outline or
-translucent surface and `drop-active` is stronger. Tab-header targets outline the whole group header;
-individual before/after insertion markers remain the precise hover cue. Center-split targets show compact
-directional edge hints at drag start and fill the true resulting half on hover. The bottom drag-time zone is
-24 px high and takes collision priority within that band over overlapping lower-body targets. Active emphasis
-clears on pointer leave; all hints clear on drop or cancel; decorative layers never alter hit-testing or the
-committed result.
+拖放目标的样式没有静息处理。一个可移动标签页一旦被拿起，每一个当前合法的去向都显示一个微妙的 Primary 提示，
+而指针下的去向会加强。两种状态都从既有的拖拽状态与每个站点已计算好的合法性派生——没有第二个拖拽状态机
+——并且只使用语义 Primary 角色，绝不用 `feedback-*`：`drop-hint` 是一个微妙的 Primary 轮廓或半透明表面，
+`drop-active` 更强。标签页头部目标勾勒整个分组头部；单独的前/后插入标记仍是精确的悬停提示。中间区拆分目标
+在拖拽开始时显示紧凑的方向边缘提示，并在悬停时填充真正得到的半个区域。底部拖拽时区域高 24 px，在那个条带内
+对重叠的下部主体目标拥有碰撞优先级。活跃强调在指针离开时清除；所有提示在拖放或取消时清除；装饰层绝不改变
+命中测试或已提交的结果。
 
-Creating or deleting a group is visibly a frame command and therefore affects every workspace in this window. Moving a resource among existing groups affects only its workspace view. Moving a singleton tool changes frame placement globally within this window. Uncommitted drag/resize drafts stay runtime-local and commit once on drop/pointer-up; no host revision can cancel them. A local projection epoch and required workspace identity fence gestures and delayed focus/preview-settle work without remounting the workbench. A workspace switch cancels an active gesture even when a singleton placement or deterministic terminal id also exists in the new view; stale focus requests are not replayed on return. Tab removal also cancels its drag. Invalidating a resize restores the live panel group's committed
-projection before paint and rejects the remainder of that gesture until release, not merely its pending
-persistence. The same recovery applies to outer/aligned sides, bottom height, auxiliary stacks, and
-recursive center splits without keying the workbench by workspace. The canceled-drag announcement is reserved for a pointer/keyboard gesture in progress when its base or workspace is replaced, or a tab drag whose tab left the document: `@thinkrail/ui/resizable` reports layout on every group mount and ordinary resize, so a group that merely lived through earlier local transitions announces nothing.
+创建或删除一个分组明显是一条帧命令，因此影响本窗口中的每一个工作区。在既有分组之间移动一个资源只影响它的
+工作区视图。移动一个单例工具会在本窗口内全局改变帧放置。未提交的拖拽/缩放草稿留在运行时本地，并在拖放/抬起
+指针时提交一次；没有任何宿主修订能取消它们。一个本地投影纪元与必需的工作区身份把手势以及延迟的焦点/预览
+落定工作围栏起来，而不重新挂载 workbench。一次工作区切换会取消一个活跃手势，即使新视图里也存在一个单例放置
+或确定性终端 id；过期的焦点请求不会在返回时重放。标签页移除也会取消它的拖拽。让一次缩放失效会在绘制之前
+恢复活跃面板组已提交的投影，并在释放之前拒绝该手势的剩余部分，而不只是它待定的持久化。同样的恢复适用于
+外侧/对齐的侧、底部高度、辅助栈与递归中间区拆分，且不以工作区作 workbench 的 key。取消拖拽的宣告保留给
+在它的基础或工作区被替换时仍在进行的指针/键盘手势，或一个标签页已离开文档的标签页拖拽：
+`@thinkrail/ui/resizable` 在每次分组挂载与普通缩放时都报告布局，因此一个只是经历了早期本地转变的分组什么
+也不宣告。
 
-Pointer is never the sole arrangement path. Keyboard controls and shadcn menus cover group/tab focus, select/close/keep/reorder/move, directional center splits, absolute and adjacent auxiliary-group creation, explicit group remove/merge, fold/show/hide/tool restore, bottom alignment, and keyboard separator resize, always with an unavailable reason. A tab can reproduce every interior pointer placement through move plus New group. The optional chat-rename menu item replaces the tab label with an inline editor and commits through a shell-injected callback: layout identifies the chat tab and owns the transient edit interaction but never imports transport/store or performs the domain mutation. Resource strips implement WAI-ARIA tabs and visible roving focus. Rails are named toolbars of pressed buttons: arrows move focus, Enter/Space activates, and `aria-controls` links each existing group. Tool bodies are named regions and terminal bodies are tabpanels. A folded auxiliary group retains a linked native-hidden region while unmounting the body; its selected edge-rail control is the focus endpoint when no tab renders. A local fold moves focus to that control and expansion returns it to the selected tab. Separators expose orientation and current/min/max values. `Ctrl+F6` visits upper-row groups in visual order, then visible bottom groups left-to-right.
+指针绝不是唯一的排布路径。键盘控件与 shadcn 菜单覆盖分组/标签页焦点，选中/关闭/keep/重排序/移动，方向性的
+中间区拆分，绝对与相邻的辅助分组创建，显式的分组移除/合并，折叠/显示/隐藏/工具恢复，底部对齐，以及键盘
+分隔符缩放，且总是带一个不可用原因。一个标签页可以通过移动加 New group 复现每一处内部的指针放置。可选的
+聊天重命名菜单项用一个内联编辑器替换标签页标签，并通过外壳注入的回调提交：布局识别聊天标签页并拥有这个
+瞬态的编辑交互，但绝不导入 transport/store 或执行领域改动。资源条带实现 WAI-ARIA 标签页与可见的漫游焦点。
+轨道是按下按钮的具名工具栏：方向键移动焦点，Enter/Space 激活，而 `aria-controls` 链接每个既有的分组。工具体
+是具名区域，终端体是 tabpanel。一个折叠的辅助分组在卸载主体的同时保留一个带链接的原生隐藏区域；在没有标签页
+渲染的场合，它选中的边缘轨道控件就是焦点终点。一次本地折叠把焦点移到那个控件，展开则把它还给选中的标签页。
+分隔符暴露朝向与当前/最小/最大值。`Ctrl+F6` 按视觉顺序访问上行的分组，然后从左到右访问可见的底部分组。
 
-Center resource strips and auxiliary terminal-session strips have bounded readable tab widths and no fixed previous/next controls: wheel, trackpad, touch,
-roving-keyboard navigation, active reveal, and the searchable keyboard overflow list scroll the same list.
-Native scrollbars stay hidden; pointer-transparent edge fades appear only where clipped and update without
-changing the fixed 28 px strip. Full-height strip actions share that width. A control renders only when it can
-act: overflow search only while clipped; every expanded auxiliary pane has a Hide action because its rail
-remains available for restoration. Singleton tool icons have no inline close glyph; explicit Remove tool
-from group stays in their menu and on Delete, separate from pane visibility. Terminals and center
-resources retain direct close controls.
+中间区资源条带与辅助终端会话条带拥有有界的可读标签页宽度，且没有固定的前后控件：滚轮、触控板、触摸、
+漫游键盘导航、活跃显现与可搜索的键盘溢出列表滚动同一个列表。原生滚动条保持隐藏；指针透明的边缘淡出只在
+被裁剪之处出现，且更新时不改变固定的 28 px 条带。全高条带动作共享那个宽度。一个控件只在它能动作时渲染：
+溢出搜索只在被裁剪时；每个展开的辅助窗格都有一个 Hide 动作，因为它的轨道仍然可用于恢复。单例工具图标
+没有内联关闭字形；显式的 Remove tool from group 留在它们的菜单里与 Delete 上，与窗格可见性分开。终端与
+中间区资源保留直接的关闭控件。
 
-An external close request arrives through an injected `subscribeCloseRequest` prop; only requests after subscribe count, so a stale request never closes a tab. A focused edge-rail selector is navigation chrome, not an individual resource close target, and yields a no-op before fallback. Internal pure `closeRequestTarget` picks the selected (else first) tab of the DOM-focused group, else of the last-focused center group; a tool tab, folded group, or hidden region yields no target, with no further fallback. The workbench routes it through its normal close path.
+一次外部关闭请求通过一个注入的 `subscribeCloseRequest` prop 到达；只有订阅之后到达的请求才被计数，因此过期
+请求绝不关闭标签页。一个获得焦点的边缘轨道选择器是导航 chrome，而不是单个资源的关闭目标，并在回退之前
+产生一个空操作。内部纯的 `closeRequestTarget` 选择 DOM 聚焦分组中选中的（否则第一个）标签页，否则选择最后
+聚焦的中间区分组的；工具标签页、折叠分组或隐藏区域不产生目标，也没有进一步回退。workbench 把它路由经它
+正常的关闭路径。
 
-Each auxiliary pane header or terminal-session strip trails an add-to-this-pane menu owned by the layout:
-*New terminal* on a terminal or empty pane adds to that pane, while a tool pane offers *New terminal pane
-below*, which creates a tool-free group directly after it and places the terminal there (`onNewTerminal`
-with `newPaneBelow`; the shell no longer injects side-menu actions). The menu also lists unplaced tools
-valid for that region; two rails never offer the same singleton. Center tab menus offer no singleton
-tools. A terminal created from an auxiliary group lands in that workspace's matching group; a vanished
-target reroutes through the current local focus rule. Menus name a pane by its contents — `Move to right
-pane (Changes, Review)`, at most three names then `+N`, `(empty)` when it has none — never by an id, and
-a tab's menu lists only commands that can ever apply to it: tools carry no center-only items (keep
-preview, the four splits) and auxiliary terminals carry no splits.
+每个辅助窗格头部或终端会话条带尾部跟随一个由布局拥有的“加入此窗格”菜单：终端或空窗格上的 *New terminal*
+加入那个窗格，而工具窗格提供 *New terminal pane below*，它直接在其后创建一个无工具的分组并把终端放在那里
+（`onNewTerminal` 带 `newPaneBelow`；外壳不再注入侧边菜单动作）。该菜单还列出对该区域合法的未放置工具；
+两条轨道绝不提供同一个单例。中间区标签页菜单不提供单例工具。从一个辅助分组创建的终端会落在该工作区匹配的
+分组里；一个已消失的目标会经由当前本地焦点规则改道。菜单以一个窗格的内容给它命名——
+`Move to right pane (Changes, Review)`，最多三个名字然后 `+N`，没有名字时 `(empty)`——绝不按 id，而一个
+标签页的菜单只列出永远可能适用于它的命令：工具不携带仅中间区的项（keep 预览、四个拆分），辅助终端不携带
+拆分。
 
-## Presets and local persistence
+## 预设与本地持久化
 
-Balanced, Focus, and Review are web-owned resource-free frame definitions with a below-center bottom slot:
-Balanced and Review show it; Focus hides it. Balanced and Focus start with one center group; Review provides
-its deliberate vertical pair. Custom presets use the same grammar and capture geometry,
-topology, tools, folds, and empty structural slots, never workspace resources or terminal count. Preset node
-ids are template-local labels: instantiation mints frontend-local frame ids and returns the old→new group map
-used to rehome every workspace view. Only custom definitions cross the wire through settings.
+Balanced、Focus 与 Review 是 web 拥有的无资源帧定义，带一个中间区之下的底部槽位：
+Balanced 与 Review 显示它；Focus 隐藏它。Balanced 与 Focus 以一个中间区分组开始；Review 提供
+它刻意的垂直双叶。自定义预设使用同一套语法，并捕获几何、
+拓扑、工具、折叠与空的结构槽位，绝不捕获工作区资源或终端数量。预设节点
+id 是模板本地的标签：实例化铸造前端本地的帧 id，并返回旧→新的分组映射，
+用于重新安置每一个工作区视图。只有自定义定义通过设置穿过线上协议。
 
-Applying a preset creates one replacement frame, raises this surface's local side/bottom limits if required, and remaps all retained workspace views atomically. Center resources preserve visual order and distribute across destination leaves; terminals map into compatible slots; singleton tool placement ids survive where possible. Omitted tools receive deterministic restore targets, so a sparse preset cannot strand Projects or another tool. The local default preset is the target of the explicit Reset frame command; ordinary workspace switches retain the current frame. Default selection and limits persist locally, not in host settings.
+应用一个预设会创建一个替换帧，必要时抬高本表面的本地侧/底部上限，并原子地重映射所有保留的工作区视图。
+中间区资源保持视觉顺序并分配到去向叶子；终端映射到兼容的槽位；单例工具放置 id 尽可能存活。被省略的工具会
+获得确定性的恢复目标，因此一个稀疏预设无法让 Projects 或另一个工具搁浅。本地默认预设是显式 Reset 帧命令的
+目标；普通工作区切换保留当前帧。默认选择与上限在本地持久化，而不是在宿主设置里。
 
-`layoutState` validates and persists the normalized frame/views/attention document under browser endpoint + frontend-surface identity or the native stable adapter's profile/window scope. Reload and supported session restoration reuse it; simultaneous windows never consume each other's storage events. Persistence contains references only. Failure leaves live state intact; unknown schema falls back to the Balanced safe frame.
+`layoutState` 在浏览器端点加前端表面身份、或原生稳定适配器的 profile/window 作用域之下，校验并持久化归一化
+的帧/视图/注意文档。重新加载与受支持的会话恢复会复用它；同时存在的窗口绝不消费彼此的存储事件。持久化只包含
+引用。失败会让实时状态保持完好；未知 schema 回退到 Balanced 安全帧。
 
-The complete current-layout grammar, including the derived `WorkspaceLayoutDocument` projection consumed by existing shell renderers, is web-local. A pristine surface instantiates Balanced; no host snapshot or prior layout schema is imported.
+完整的当前布局语法，包括既有外壳渲染器消费的派生 `WorkspaceLayoutDocument` 投影，是 web 本地的。一个全新
+表面实例化 Balanced；不导入任何宿主快照或先前的布局 schema。
 
-The terminal visibility gate mounts a body only for a terminal locally selected in an unfolded visible group. Distinct terminal identities may mount concurrently; one identity has one body per browser surface. Inactive/folded/hidden tabs never attach. Global New Terminal targets last local bottom focus, creating a frame slot only through an explicit frame command; center Group Header creation captures that group. Host catalog reconciliation may place an unrepresented terminal locally without selecting it, but cannot change frame geometry.
+终端可见性门禁只为在一个未折叠可见分组中被本地选中的终端挂载主体。不同的终端身份可以并发挂载；一个身份在每个
+浏览器表面只有一个主体。非活动/折叠/隐藏的标签页绝不挂载。全局 New Terminal 以最后的本地底部焦点为目标，
+只通过一次显式的帧命令创建帧槽位；中间区 Group Header 创建捕获那个分组。宿主目录调和可以把一个未被表达的
+终端放置到本地而不选中它，但不能改变帧几何。
 
-## Render isolation
+## 渲染隔离
 
-The workbench is a mounted-body host, so the renderer protects injected feature bodies from arrangement churn. The root `Workbench` owns all transient view state — drag, resize projection, measured sizes, focus-after-close — and owns every attention transition. Groups never mutate attention: the root hands down stable, ref-reading callbacks (`onSelectTab`, `onFocusGroup`, `onApply`, `onFocusAdjacentGroup`, `onHideSide`, `onRevealTool`, `readAttention`) whose identities survive document and attention changes, so a re-render of the root never invalidates a child's props by identity alone.
+workbench 是一个已挂载主体的宿主，因此渲染器保护被注入的功能主体免受排布扰动。根 `Workbench` 拥有所有
+瞬态的视图状态——拖拽、缩放投影、测量尺寸、关闭后的焦点——并拥有每一次注意转变。分组绝不改动注意：
+根把稳定的、读取 ref 的回调（`onSelectTab`、`onFocusGroup`、`onApply`、`onFocusAdjacentGroup`、
+`onHideSide`、`onRevealTool`、`readAttention`）传下去，它们的身份在文档与注意变化之后仍然存活，因此根的一次
+重新渲染绝不单凭身份就使子级的 props 失效。
 
-The singular `attention` object is not threaded into leaves. Only the region wrappers that enumerate groups (center node/split, the side and bottom stacks) receive it and project each group's `selectedId` as a primitive; leaf group views receive that primitive, never the whole overlay. Leaf group views, the tab strip, the tab, and the stacks are memoized. Two isolation guarantees follow and are the renderer's contract:
+那个唯一的 `attention` 对象不被穿进叶子。只有枚举分组的区域包裹（中间区节点/拆分、侧与底栈）接收它，并把每个
+分组的 `selectedId` 投影成一个原始值；叶子分组视图接收那个原始值，绝不接收整个覆盖层。叶子分组视图、标签页
+条带、标签页与栈都被 memo 化。由此得到两条隔离保证，它们就是渲染器的契约：
 
-- A resize or drag gesture mutates only root-local projection state; because document, attention, and the shared callbacks are all unchanged, the memoized group subtree does not re-render and no feature body re-renders during the gesture. The pointer-up commit that actually changes the document is the only re-render.
-- A selection or focus change in one group re-renders that group's chrome only; sibling groups keep their `selectedId` and skip. Every mounted tab body sits behind the memoized `GroupTabBody` boundary keyed by selected-tab identity and depending only on the stable body renderers, so a body re-renders only when its own selected tab changes — never because a sibling, a resize, or a drag re-rendered. The shell host keeps that true for editor-tab cache writes too: a file/diff/changes body resolves its own cache tab inside the body (`EditorResourceBody`), never through the renderer's closure, so a review tab's keystroke-rate writes re-render that body alone (`e2e/perf/editorTabIsolation.perf.ts`).
+- 一次缩放或拖拽手势只改动根本地的投影状态；因为文档、注意与共享回调全都没变，被 memo 的分组子树不会重新
+  渲染，手势期间也没有任何功能主体重新渲染。真正改变文档的那次抬指提交是唯一的一次重新渲染。
+- 一个分组里的选中或焦点变化只重新渲染那个分组的 chrome；兄弟分组保留它们的 `selectedId` 并跳过。每个已挂载的
+  标签页主体坐在以选中标签页身份为 key、且只依赖稳定主体渲染器的被 memo 的 `GroupTabBody` 边界之后，因此一个
+  主体只在它自己选中的标签页变化时重新渲染——绝不因为兄弟、缩放或拖拽重新渲染过。外壳宿主对编辑器标签页缓存
+  写入也保持这一点为真：一个 file/diff/changes 主体在主体内部（`EditorResourceBody`）解析它自己的缓存标签页，
+  绝不通过渲染器的闭包，因此一个评审标签页以击键频率发生的写入只重新渲染那个主体
+  （`e2e/perf/editorTabIsolation.perf.ts`）。
 
-The memoization assumes the injected render callbacks are referentially stable: the shell host passes `renderTabBody`/`renderToolBody`/`renderTabAdornment`/`renderEmptyCenter`/`renderCenterActions` as memoized identities, so a parent re-render (such as an attention change) does not break a sibling group's chrome memo by prop identity alone.
+这种 memo 化假定被注入的渲染回调在引用上稳定：外壳宿主把 `renderTabBody`/`renderToolBody`/`renderTabAdornment`/
+`renderEmptyCenter`/`renderCenterActions` 作为被 memo 的身份传入，因此一次父级重新渲染（例如一次注意变化）
+不会单凭 prop 身份就破坏兄弟分组的 chrome memo。
 
-`e2e/perf/layoutIsolation.perf.ts` pins both guarantees against the render profiler.
+`e2e/perf/layoutIsolation.perf.ts` 针对渲染 profiler 钉住这两条保证。
 
-## Internal module structure
+## 内部模块结构
 
-The renderer is one submodule behind `index.ts`; its files are internal and import each other directly. `workbenchShared` holds the public prop contracts (`WorkbenchProps`, `SharedGroupProps`, `LayoutTabFocusRequest`), the drag-and-drop primitives, the resize/size/overflow/settle hooks, the DOM-id helpers (group, tab, rail group, rail control), and the shared leaf primitives (`DropZone`, `CenterSplitTarget`, `PanelWithHandle`, `GroupTabBody`). `workbenchTabs` owns the tab strip and tab (including a tab's rail mode); `workbenchCenter`, `workbenchSide` (also the `AuxiliaryGroupHeader` both edge families share), and `workbenchBottom` own their region view families; `workbenchRails` owns the region rail and its droppable entry button; `tabIcon` is the one Line/Fill icon resolver, shared with the shell's Project Home; `Workbench` is the root that composes them and owns state. The rail is the one leaf that renders from `attention` (its entries' selected state), so the root passes it the overlay explicitly like a stack, while its activation runs through `onApply` and the shared `onUserNavigation`. `index.ts` re-exports the component, its public types, and the rail/pane-header primitives Project Home composes.
+渲染器是 `index.ts` 之后的单一子模块；它的文件是内部的，彼此直接导入。`workbenchShared` 持有公开的 prop 契约
+（`WorkbenchProps`、`SharedGroupProps`、`LayoutTabFocusRequest`）、拖放原语、缩放/尺寸/溢出/落定 hook、DOM-id
+助手（分组、标签页、轨道分组、轨道控件），以及共享的叶子原语（`DropZone`、`CenterSplitTarget`、
+`PanelWithHandle`、`GroupTabBody`）。`workbenchTabs` 拥有标签页条带与标签页（包括标签页的轨道模式）；
+`workbenchCenter`、`workbenchSide`（也是两个边缘家族共享的 `AuxiliaryGroupHeader`）与 `workbenchBottom` 拥有
+各自的区域视图家族；`workbenchRails` 拥有区域轨道及其可拖放条目按钮；`tabIcon` 是唯一的 Line/Fill 图标
+解析器，与外壳的 Project Home 共享；`Workbench` 是组合它们并拥有状态的根。轨道是唯一从 `attention`（其条目的
+选中状态）渲染的叶子，因此根像对待栈那样显式把覆盖层传给它，而它的激活走 `onApply` 与共享的
+`onUserNavigation`。`index.ts` 重新导出该组件、它的公开类型，以及 Project Home 组合的轨道/窗格头部原语。
