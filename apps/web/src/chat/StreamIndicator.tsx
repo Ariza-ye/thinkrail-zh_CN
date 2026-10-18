@@ -1,3 +1,4 @@
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { RunningIcon } from "@/components/RunningIcon";
 import type { ChatTurn } from "./types";
 
@@ -31,19 +32,22 @@ export function streamStatus(turns: ChatTurn[], currentAssistantId: string | nul
 export function phaseLabel({ phase, toolName }: StreamStatus): string {
 	switch (phase) {
 		case "thinking":
-			return "Thinking…";
+			return translate("Thinking…");
 		case "writing":
-			return "Writing…";
+			return translate("Writing…");
 		case "running-tool":
-			return toolName ? `Running ${toolName}…` : "Running tool…";
+			return toolName
+				? translate("Running {value}…", { value: toolName })
+				: translate("Running tool…");
 		case "compacting":
-			return "Compacting context…";
+			return translate("Compacting context…");
 		default:
-			return "Working…";
+			return translate("Working…");
 	}
 }
 
 export function StreamIndicator({ status }: { status: StreamStatus }) {
+	useI18n();
 	return (
 		<div
 			data-testid="stream-indicator"
@@ -67,6 +71,7 @@ export function StreamStatusSlot({
 	status: StreamStatus | null;
 	measureClassName?: string;
 }) {
+	useI18n();
 	return (
 		<div
 			data-testid="chat-status-slot"

@@ -8,6 +8,7 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@thinkrail/ui/dialog";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { useState } from "react";
 import { type ChatActions, useChatActions } from "../../ChatActions";
 import {
@@ -29,6 +30,7 @@ function actionHandler(actions: ChatActions | null, action: McpCliAction | null)
 }
 
 function CliActionButton({ action, onOpen }: { action: McpCliAction; onOpen: () => void }) {
+	const { t } = useI18n();
 	return (
 		<button
 			type="button"
@@ -43,15 +45,16 @@ function CliActionButton({ action, onOpen }: { action: McpCliAction; onOpen: () 
 				<RiSettings3Line className="size-12 shrink-0" />
 			)}
 			{action === "provider-sign-in"
-				? "Sign in to provider"
+				? t("Sign in to provider")
 				: action === "sign-in"
-					? "Sign in"
-					: "Open MCP settings"}
+					? t("Sign in")
+					: t("Open MCP settings")}
 		</button>
 	);
 }
 
 export function McpCliActionButton({ text }: { text: string }) {
+	useI18n();
 	const actions = useChatActions();
 	const action = mcpCliAction(text);
 	const openSettings = actionHandler(actions, action);
@@ -76,8 +79,9 @@ export function McpFullOutputBody({
 	state: McpFullOutputState;
 	onRetry: () => void;
 }) {
+	const { t } = useI18n();
 	if (state.kind === "loading") {
-		return <p className="text-text-muted tr-text-metadata">Loading the full output…</p>;
+		return <p className="text-text-muted tr-text-metadata">{t("Loading the full output…")}</p>;
 	}
 	if (state.kind === "failed") {
 		return (
@@ -89,7 +93,7 @@ export function McpFullOutputBody({
 					onClick={onRetry}
 					className={ACTION_CLASS}
 				>
-					Try again
+					{t("Try again")}
 				</button>
 			</p>
 		);
@@ -104,12 +108,12 @@ export function McpFullOutputBody({
 			>
 				<p className="text-text-default tr-text-ui">
 					{result.reason === "expired"
-						? "The full output has expired."
-						: "This result has no full output to show."}
+						? t("The full output has expired.")
+						: t("This result has no full output to show.")}
 				</p>
 				{result.reason === "expired" ? (
 					<p className="text-text-muted tr-text-metadata">
-						pi kept it in a temporary file that no longer exists.
+						{t("pi kept it in a temporary file that no longer exists.")}
 					</p>
 				) : null}
 			</div>
@@ -119,7 +123,7 @@ export function McpFullOutputBody({
 		<>
 			{result.truncated ? (
 				<p data-testid="mcp-full-output-truncated" className="text-text-muted tr-text-metadata">
-					Truncated — showing the beginning of the full output.
+					{t("Truncated — showing the beginning of the full output.")}
 				</p>
 			) : null}
 			<pre
@@ -133,7 +137,9 @@ export function McpFullOutputBody({
 }
 
 function failureMessage(error: unknown): string {
-	return error instanceof Error && error.message ? error.message : "Couldn't read the full output.";
+	return error instanceof Error && error.message
+		? error.message
+		: translate("Couldn't read the full output.");
 }
 
 function McpFullOutput({
@@ -145,6 +151,7 @@ function McpFullOutput({
 	title: string;
 	readOutput: (toolCallId: string) => Promise<McpReadOutputResult>;
 }) {
+	const { t } = useI18n();
 	const [state, setState] = useState<McpFullOutputState | null>(null);
 	const load = () => {
 		setState({ kind: "loading" });
@@ -162,12 +169,12 @@ function McpFullOutput({
 			<DialogTrigger asChild>
 				<button type="button" data-testid="mcp-full-output" className={ACTION_CLASS}>
 					<RiFileTextLine className="size-12 shrink-0" />
-					Full output
+					{t("Full output")}
 				</button>
 			</DialogTrigger>
 			<DialogContent data-testid="mcp-full-output-dialog" className="max-h-[85vh] max-w-3xl">
 				<DialogHeader className="pr-24">
-					<DialogTitle>Full output</DialogTitle>
+					<DialogTitle>{t("Full output")}</DialogTitle>
 					<DialogDescription className="truncate">{title}</DialogDescription>
 				</DialogHeader>
 				<McpFullOutputBody state={state ?? { kind: "loading" }} onRetry={load} />
@@ -187,6 +194,7 @@ export function McpActions({
 	result: unknown;
 	failureText: string;
 }) {
+	useI18n();
 	const actions = useChatActions();
 	const readOutput = actions?.readMcpOutput;
 	const fullOutput = readOutput && mcpFullOutputPath(result) !== null ? readOutput : null;

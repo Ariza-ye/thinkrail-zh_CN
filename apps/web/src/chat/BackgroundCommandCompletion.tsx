@@ -1,25 +1,27 @@
 import { RiTerminalBoxLine } from "@remixicon/react";
 import type { BackgroundCommandCompletionDetails } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 
 export function BackgroundCommandCompletion({
 	details,
 }: {
 	details: BackgroundCommandCompletionDetails;
 }) {
+	const { t } = useI18n();
 	return (
 		<div
 			data-testid="background-command-completion"
 			data-resource-id={details.id}
-			data-status={details.status}
+			data-status={t(details.status)}
 			className="flex min-w-0 flex-col gap-8 rounded-sm border border-border-muted p-12"
 		>
 			<div className="flex min-w-0 items-center gap-4 tr-text-ui">
 				<RiTerminalBoxLine className="size-12 shrink-0 text-text-muted" />
 				<span className="min-w-0 truncate">{details.name}</span>
 				<span className="shrink-0 text-text-muted tr-text-metadata">
-					{details.status}
+					{t(details.status)}
 					{details.exitCode !== undefined && details.exitCode !== null
-						? ` · Exit ${details.exitCode}`
+						? t(" · Exit {value}", { value: details.exitCode })
 						: ""}
 				</span>
 			</div>
@@ -30,7 +32,7 @@ export function BackgroundCommandCompletion({
 			) : null}
 			{details.output.truncated ? (
 				<p className="text-text-muted tr-text-metadata">
-					Output truncated — retained tail at completion.
+					{t("Output truncated — retained tail at completion.")}
 				</p>
 			) : null}
 			{details.output.text ? (
@@ -38,7 +40,7 @@ export function BackgroundCommandCompletion({
 					{details.output.text}
 				</pre>
 			) : (
-				<p className="text-text-muted tr-text-metadata">No output.</p>
+				<p className="text-text-muted tr-text-metadata">{t("No output.")}</p>
 			)}
 		</div>
 	);

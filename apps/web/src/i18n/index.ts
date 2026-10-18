@@ -1,4 +1,4 @@
-import { configureMessages, getLocale, setLocale, type Locale } from "@thinkrail/ui/i18n";
+import { configureMessages, type Locale, setLocale } from "@thinkrail/ui/i18n";
 import { useSyncExternalStore } from "react";
 import { getStablePreferenceAdapter, type StablePreferenceAdapter } from "../clientPreferences";
 import { STORAGE_PREFIX } from "../constants/branding";
@@ -6,6 +6,7 @@ import chat from "./messages/chat";
 import panels from "./messages/panels";
 import settings from "./messages/settings";
 import shell from "./messages/shell";
+import transport from "./messages/transport";
 
 export type LanguagePreference = "system" | Locale;
 export const LANGUAGE_STORAGE_KEY = `${STORAGE_PREFIX}interface-language`;
@@ -14,7 +15,7 @@ let persist: ((value: LanguagePreference) => void) | undefined;
 let systemLanguages: readonly string[] = ["en"];
 const listeners = new Set<() => void>();
 
-export const zhCNMessages = { ...settings, ...panels, ...chat, ...shell };
+export const zhCNMessages = { ...settings, ...panels, ...chat, ...shell, ...transport };
 
 export function parseLanguagePreference(value: unknown): LanguagePreference {
 	return value === "en" || value === "zh-CN" ? value : "system";
@@ -22,8 +23,12 @@ export function parseLanguagePreference(value: unknown): LanguagePreference {
 
 export function resolveLanguage(value: LanguagePreference, languages: readonly string[]): Locale {
 	if (value !== "system") return value;
-	const language = languages[0]?.toLowerCase() ?? "en";
-	return /^zh(?:$|-cn\b|-sg\b|-hans\b)/.test(language) ? "zh-CN" : "en";
+	try {
+		const language = new Intl.Locale(languages[0] ?? "en");
+		return language.language === "zh" && language.maximize().script === "Hans" ? "zh-CN" : "en";
+	} catch {
+		return "en";
+	}
 }
 
 function applyPreference(value: LanguagePreference): void {
@@ -91,5 +96,3 @@ export function initI18n(
 		persist = undefined;
 	};
 }
-
-export { getLocale };

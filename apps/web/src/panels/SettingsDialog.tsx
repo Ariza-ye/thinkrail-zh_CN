@@ -1,4 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import type { ReactNode } from "react";
 import { SettingsSection, useAppStore } from "@/store";
@@ -24,6 +25,7 @@ export function SettingsDialog({
 	layoutSettings: ReactNode;
 	updateSettings?: ReactNode;
 }) {
+	const { t } = useI18n();
 	const open = useAppStore((s) => s.settingsOpen);
 	const section = useAppStore((s) => s.settingsSection);
 	const protocolVersion = useAppStore((s) => s.protocolVersion);
@@ -51,18 +53,18 @@ export function SettingsDialog({
 				className="flex h-[80vh] max-h-[85vh] w-full max-w-[52rem] flex-col gap-0 overflow-hidden p-0"
 			>
 				<DialogHeader className="border-border-default border-b px-16 py-12">
-					<DialogTitle>Settings</DialogTitle>
+					<DialogTitle>{t("Settings")}</DialogTitle>
 				</DialogHeader>
 
 				<div className="flex min-h-0 flex-1 flex-col md:flex-row">
 					<nav
-						aria-label="Settings sections"
+						aria-label={t("Settings sections")}
 						className="flex shrink-0 gap-4 overflow-x-auto border-border-default border-b p-8 md:w-192 md:flex-col md:gap-12 md:overflow-x-visible md:overflow-y-auto md:border-r md:border-b-0 md:bg-container-elevated-bg md:p-12"
 					>
 						{filteredGroups.map((group) => (
-							<div key={group.label} className="flex shrink-0 md:flex-col">
+							<div key={t(group.label)} className="flex shrink-0 md:flex-col">
 								<span className="hidden h-28 py-4 tr-text-label-pill text-text-subtle uppercase md:block">
-									{group.label}
+									{t(group.label)}
 								</span>
 								<div className="flex gap-4 md:flex-col md:gap-2">
 									{group.sections.map(({ id, label, icon: Icon }) => {
@@ -82,7 +84,7 @@ export function SettingsDialog({
 												)}
 											>
 												<Icon className="size-14 shrink-0" />
-												{label}
+												{t(label)}
 											</button>
 										);
 									})}
@@ -100,7 +102,9 @@ export function SettingsDialog({
 								feedbackActive ? "bg-primary-subtle" : "bg-control-bg hover:bg-control-bg-hovered",
 							)}
 						>
-							<span className="tr-text-ui text-primary">Get 100 credits for a user interview</span>
+							<span className="tr-text-ui text-primary">
+								{t("Get 100 credits for a user interview")}
+							</span>
 						</button>
 					</nav>
 

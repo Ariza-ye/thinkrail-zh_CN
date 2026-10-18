@@ -1,3 +1,4 @@
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import {
 	type ComponentType,
 	type LazyExoticComponent,
@@ -59,7 +60,9 @@ function RendererView({
 	let Component = viewComponents.get(implementationKey);
 	if (!Component) {
 		if (!renderer.loadView) {
-			throw new Error(`Resource renderer has no view loader: ${renderer.id}`);
+			throw new Error(
+				translate("Resource renderer has no view loader: {renderer}", { renderer: renderer.id }),
+			);
 		}
 		Component = lazy(renderer.loadView);
 		viewComponents.set(implementationKey, Component);
@@ -74,6 +77,7 @@ function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean
 }
 
 export function FilePane({ tab }: { tab: FileTab }) {
+	const { t } = useI18n();
 	const mobile = usePhoneViewport();
 	const setTabRenderer = useAppStore((state) => state.setTabRenderer);
 	const review = useFileReview(tab.workspaceId, tab.path, "inline");
@@ -146,7 +150,7 @@ export function FilePane({ tab }: { tab: FileTab }) {
 				<div
 					data-testid="resource-view-toggle"
 					role="toolbar"
-					aria-label="Resource view"
+					aria-label={t("Resource view")}
 					className="flex h-32 shrink-0 items-center justify-end gap-4 border-border-default border-b bg-container-header-bg px-12"
 				>
 					<SendReviewButton workspaceId={tab.workspaceId} path={tab.path} />
@@ -155,7 +159,7 @@ export function FilePane({ tab }: { tab: FileTab }) {
 								<ToggleSegment
 									key={candidate.id}
 									testid={rendererTestId(candidate.id)}
-									label={candidate.label}
+									label={t(candidate.label)}
 									active={candidate.id === renderer.id}
 									onClick={() => setTabRenderer(tab.workspaceId, tab.id, candidate.id)}
 								/>

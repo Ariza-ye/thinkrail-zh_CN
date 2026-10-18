@@ -11,6 +11,8 @@ test("uses English fallback and substitutes values without retranslating content
 	setLocale("zh-CN");
 	expect(translate("Open {name}", { name: "Settings {name}" })).toBe("打开 Settings {name}");
 	expect(translate("Missing {count}", { count: 2 })).toBe("Missing 2");
+	expect(translate("toString")).toBe("toString");
+	expect(translate("constructor")).toBe("constructor");
 	expect(formatMessage("{x} {missing}", { x: "$&" })).toBe("$& {missing}");
 	setLocale("en");
 	expect(translate("Open {name}", { name: "file.ts" })).toBe("Open file.ts");
@@ -18,7 +20,9 @@ test("uses English fallback and substitutes values without retranslating content
 
 test("notifies only effective locale changes and supports cleanup", () => {
 	let calls = 0;
-	const dispose = subscribeLocale(() => { calls += 1; });
+	const dispose = subscribeLocale(() => {
+		calls += 1;
+	});
 	setLocale("zh-CN");
 	setLocale("zh-CN");
 	expect(calls).toBe(1);

@@ -1,6 +1,12 @@
 import type { ProviderAuthKind, ThinkingLevel, WireModel } from "@thinkrail/contracts";
+import { getLocale, translate } from "@thinkrail/ui/i18n";
 
 export function formatContext(tokens: number): string {
+	if (getLocale() === "zh-CN")
+		return new Intl.NumberFormat("zh-CN", {
+			notation: "compact",
+			maximumFractionDigits: 1,
+		}).format(tokens);
 	if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`.replace(".0", "");
 	if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
 	return String(tokens);
@@ -41,11 +47,11 @@ export function kindLabel(model: WireModel): string | null {
 	if (!auth) return null;
 	switch (auth.kind) {
 		case "oauth":
-			return auth.detail ?? "plan";
+			return auth.detail ?? translate("plan");
 		case "central":
-			return "quota";
+			return translate("quota");
 		case "env":
-			return auth.detail ?? "env";
+			return auth.detail ?? translate("env");
 		case "api-key":
 			return auth.detail ?? "API key";
 		default:
@@ -56,7 +62,7 @@ export function kindLabel(model: WireModel): string | null {
 /** The full sentence for tooltips and group headings: kind word plus pi's detail. */
 export function describeAuth(model: WireModel): string | null {
 	if (!model.auth) return null;
-	const label = AUTH_KIND_LABEL[model.auth.kind];
+	const label = translate(AUTH_KIND_LABEL[model.auth.kind]);
 	return model.auth.detail ? `${label} · ${model.auth.detail}` : label;
 }
 

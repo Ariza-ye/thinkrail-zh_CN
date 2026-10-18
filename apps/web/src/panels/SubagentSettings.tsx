@@ -7,6 +7,7 @@ import {
 	type SubagentOverride,
 	type Workspace,
 } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useState } from "react";
 import { SettingsGroup } from "./SettingsGroup";
 import { SettingsRow } from "./SettingsRow";
@@ -29,6 +30,7 @@ function SourceTag({
 	testId: string;
 	onReset: () => void;
 }) {
+	const { t } = useI18n();
 	if (!custom) {
 		return (
 			<span
@@ -36,7 +38,7 @@ function SourceTag({
 				data-source="global"
 				className="rounded-sm px-4 text-text-subtle tr-text-metadata"
 			>
-				Global
+				{t("Global")}
 			</span>
 		);
 	}
@@ -46,11 +48,11 @@ function SourceTag({
 			data-testid={testId}
 			data-source="custom"
 			aria-label={resetLabel}
-			title="Use global"
+			title={t("Use global")}
 			onClick={onReset}
 			className="inline-flex items-center gap-2 rounded-sm px-4 text-primary tr-text-metadata outline-none hover:bg-primary-subtle focus-visible:ring-2 focus-visible:ring-primary"
 		>
-			Custom
+			{t("Custom")}
 			<RiArrowGoBackLine aria-hidden className="size-12" />
 		</button>
 	);
@@ -73,6 +75,7 @@ function LimitField({
 	testId: string;
 	onCommit: (value: number | null) => void;
 }) {
+	const { t } = useI18n();
 	const savedText = saved === undefined ? "" : String(saved);
 	const [draft, setDraft] = useState(savedText);
 	const [submitted, setSubmitted] = useState<string | null>(null);
@@ -123,7 +126,10 @@ function LimitField({
 			/>
 			{invalid ? (
 				<span id={errorId} className="text-feedback-error tr-text-metadata">
-					Use {SUBAGENT_MAX_CONCURRENT.min}–{SUBAGENT_MAX_CONCURRENT.max}
+					{t("Use {min}–{max}", {
+						min: SUBAGENT_MAX_CONCURRENT.min,
+						max: SUBAGENT_MAX_CONCURRENT.max,
+					})}
 				</span>
 			) : null}
 		</span>
@@ -149,6 +155,7 @@ export function SubagentSettings({
 	onGlobalLimitChange: (value: number) => void;
 	onWorkspaceLimitChange: (value: number | null) => void;
 }) {
+	const { t } = useI18n();
 	if (protocolVersion === null || protocolVersion < SUBAGENT_SETTINGS_PROTOCOL_VERSION) {
 		return null;
 	}
@@ -161,18 +168,22 @@ export function SubagentSettings({
 	return (
 		<SettingsGroup
 			testId="settings-subagents"
-			title="Subagents"
-			description="Let chats delegate work to specialized agents. Work already running always finishes."
+			title={t("Subagents")}
+			description={t(
+				"Let chats delegate work to specialized agents. Work already running always finishes.",
+			)}
 		>
 			<SettingsRow
-				label="Allow subagents"
+				label={t("Allow subagents")}
 				description={
-					globalEnabled ? "Workspaces may delegate by default." : "Delegation is off by default."
+					globalEnabled
+						? t("Workspaces may delegate by default.")
+						: t("Delegation is off by default.")
 				}
 				control={
 					<SettingsSwitch
 						checked={globalEnabled}
-						label="Allow subagents globally"
+						label={t("Allow subagents globally")}
 						testId="subagents-global-toggle"
 						onChange={onGlobalEnabledChange}
 					/>
@@ -180,13 +191,13 @@ export function SubagentSettings({
 			/>
 			{limitSupported ? (
 				<SettingsRow
-					label="Per chat at once"
-					description="More wait in line."
+					label={t("Per chat at once")}
+					description={t("More wait in line.")}
 					control={
 						<LimitField
 							saved={globalLimit}
 							allowEmpty={false}
-							label="Global subagents per chat"
+							label={t("Global subagents per chat")}
 							testId="subagent-limit-global-input"
 							onCommit={(value) => {
 								if (value !== null) onGlobalLimitChange(value);
@@ -201,26 +212,30 @@ export function SubagentSettings({
 					title={workspace.name}
 					className="flex min-w-0 flex-col gap-2 pt-16 pb-4"
 				>
-					<span className="tr-text-ui text-text-default">This workspace</span>
+					<span className="tr-text-ui text-text-default">{t("This workspace")}</span>
 					<span className="break-words text-text-muted tr-text-metadata">
-						{workspace.name} follows the global settings until you change a value.
+						{t("{name} follows the global settings until you change a value.", {
+							name: workspace.name,
+						})}
 					</span>
 				</div>
 			) : null}
 			{workspace ? (
 				<SettingsRow
-					label="Allow subagents"
+					label={t("Allow subagents")}
 					control={
 						<span className="flex items-center gap-8">
 							<SourceTag
 								custom={enabledOverride !== undefined}
-								resetLabel={`Custom — use the global subagent setting in ${workspace.name}`}
+								resetLabel={t("Custom — use the global subagent setting in {name}", {
+									name: workspace.name,
+								})}
 								testId="subagents-workspace-source"
 								onReset={() => onWorkspaceEnabledChange(null)}
 							/>
 							<SettingsSwitch
 								checked={workspaceEnabled}
-								label={`Allow subagents in ${workspace.name}`}
+								label={t("Allow subagents in {name}", { name: workspace.name })}
 								testId="subagents-workspace-toggle"
 								onChange={(enabled) => onWorkspaceEnabledChange(enabled ? "on" : "off")}
 							/>
@@ -230,13 +245,15 @@ export function SubagentSettings({
 			) : null}
 			{workspace && limitSupported ? (
 				<SettingsRow
-					label="Per chat at once"
+					label={t("Per chat at once")}
 					control={
 						<span className="flex items-start gap-8">
 							<span className="flex h-32 items-center">
 								<SourceTag
 									custom={limitOverride !== undefined}
-									resetLabel={`Custom — use the global subagent limit in ${workspace.name}`}
+									resetLabel={t("Custom — use the global subagent limit in {name}", {
+										name: workspace.name,
+									})}
 									testId="subagent-limit-workspace-source"
 									onReset={() => onWorkspaceLimitChange(null)}
 								/>
@@ -246,7 +263,7 @@ export function SubagentSettings({
 								placeholder={globalLimit}
 								allowEmpty
 								disabled={!workspaceEnabled}
-								label={`Subagents per chat in ${workspace.name}`}
+								label={t("Subagents per chat in {name}", { name: workspace.name })}
 								testId="subagent-limit-workspace-input"
 								onCommit={onWorkspaceLimitChange}
 							/>

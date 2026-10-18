@@ -1,3 +1,4 @@
+import { translate } from "@thinkrail/ui/i18n";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import type { Size } from "../regionReview";
 
@@ -39,7 +40,7 @@ export async function canvasBlobUrl(canvas: HTMLCanvasElement): Promise<string> 
 	const blob = await new Promise<Blob>((resolve, reject) => {
 		canvas.toBlob((value) => {
 			if (value) resolve(value);
-			else reject(new Error("PDF page bitmap creation failed"));
+			else reject(new Error(translate("PDF page bitmap creation failed")));
 		}, "image/png");
 	});
 	return URL.createObjectURL(blob);

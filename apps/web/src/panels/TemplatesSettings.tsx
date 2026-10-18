@@ -7,6 +7,7 @@ import {
 } from "@remixicon/react";
 import type { TemplateInfo, TemplateScope } from "@thinkrail/contracts";
 import { Button } from "@thinkrail/ui/button";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { PopoverTrigger } from "@thinkrail/ui/popover";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { useEffect, useState } from "react";
@@ -101,6 +102,7 @@ function useTemplateList(
 }
 
 export function TemplatesSettings() {
+	const { t } = useI18n();
 	const workspaceId = useAppStore((s) => s.activeWorkspaceId);
 	const [editorOpen, setEditorOpen] = useState(false);
 	const [editing, setEditing] = useState<TemplateInfo | null>(null);
@@ -143,7 +145,7 @@ export function TemplatesSettings() {
 		return (
 			<div data-testid="settings-templates">
 				<p data-testid="templates-error" className="text-text-muted tr-text-ui">
-					Couldn't read templates from the host — reopen Settings to retry.
+					{t("Couldn't read templates from the host — reopen Settings to retry.")}
 				</p>
 			</div>
 		);
@@ -188,35 +190,40 @@ function ProjectTemplatesSection({
 	onNew: () => void;
 	onEdit: (template: TemplateInfo) => void;
 }) {
+	const { t } = useI18n();
 	const hasProject = workspaceId != null;
 
 	return (
 		<section className="flex flex-col gap-12">
 			<div className="flex items-center justify-between">
-				<h4 className="tr-text-label-pill text-text-subtle">Project templates</h4>
+				<h4 className="tr-text-label-pill text-text-subtle">{t("Project templates")}</h4>
 				{hasProject ? (
 					<Button variant="soft" size="sm" data-testid="template-new-project" onClick={onNew}>
 						<Plus className="size-14" />
-						New
+						{t("New template")}
 					</Button>
 				) : null}
 			</div>
 
 			{!hasProject ? (
 				<SettingsNotice variant="info" testId="project-templates-unavailable">
-					<p className="tr-text-ui text-text-default">Open a project to manage its templates</p>
+					<p className="tr-text-ui text-text-default">
+						{t("Open a project to manage its templates")}
+					</p>
 					<p className="tr-text-metadata text-text-muted">
-						Project templates are stored in the project's{" "}
-						<code className="tr-code-text">.pi/prompts/</code> directory and are available in that
-						project.
+						{t(
+							"Project templates are stored in the project's {path} directory and are available in that project.",
+							{ path: ".pi/prompts/" },
+						)}
 					</p>
 				</SettingsNotice>
 			) : templates && templates.length === 0 ? (
 				<SettingsNotice variant="neutral" hideIcon testId="project-templates-empty">
-					<p className="tr-text-ui text-text-default">No project templates yet</p>
+					<p className="tr-text-ui text-text-default">{t("No project templates yet")}</p>
 					<p className="tr-text-metadata text-text-muted">
-						Templates you create here are stored in this project's{" "}
-						<code className="tr-code-text">.pi/prompts/</code> directory.
+						{t("Templates you create here are stored in this project's {path} directory.", {
+							path: ".pi/prompts/",
+						})}
 					</p>
 				</SettingsNotice>
 			) : templates ? (
@@ -246,7 +253,7 @@ async function addStarterTemplates() {
 			});
 		}
 	} catch (err) {
-		toast.error(errorText(err), "Couldn't add starter templates");
+		toast.error(errorText(err), translate("Couldn't add starter templates"));
 	} finally {
 		useAppStore.getState().bumpTemplatesVersion();
 	}
@@ -261,6 +268,7 @@ function GlobalTemplatesSection({
 	onNew: () => void;
 	onEdit: (template: TemplateInfo) => void;
 }) {
+	const { t } = useI18n();
 	const [adding, setAdding] = useState(false);
 
 	const addStarters = () => {
@@ -272,10 +280,10 @@ function GlobalTemplatesSection({
 	return (
 		<section className="flex flex-col gap-12">
 			<div className="flex items-center justify-between">
-				<h4 className="tr-text-label-pill text-text-subtle">Global templates</h4>
+				<h4 className="tr-text-label-pill text-text-subtle">{t("Global templates")}</h4>
 				<Button variant="soft" size="sm" data-testid="template-new-global" onClick={onNew}>
 					<Plus className="size-14" />
-					New
+					{t("New template")}
 				</Button>
 			</div>
 
@@ -293,13 +301,13 @@ function GlobalTemplatesSection({
 							onClick={addStarters}
 						>
 							<MagicWand className="size-14" />
-							Add starter templates
+							{t("Add starter templates")}
 						</Button>
 					}
 				>
-					<p className="tr-text-ui text-text-default">No global templates yet</p>
+					<p className="tr-text-ui text-text-default">{t("No global templates yet")}</p>
 					<p className="tr-text-metadata text-text-muted">
-						Create your own templates, or try a set of starter templates to get started.
+						{t("Create your own templates, or try a set of starter templates to get started.")}
 					</p>
 				</SettingsNotice>
 			) : (
@@ -330,6 +338,7 @@ function TemplateRow({
 	showOpenAsFile: boolean;
 	onEdit: () => void;
 }) {
+	const { t } = useI18n();
 	const [confirmOpen, setConfirmOpen] = useState(false);
 
 	const del = async () => {
@@ -341,7 +350,7 @@ function TemplateRow({
 			});
 			useAppStore.getState().bumpTemplatesVersion();
 		} catch (err) {
-			toast.error(errorText(err), "Couldn't delete the template");
+			toast.error(errorText(err), t("Couldn't delete the template"));
 		}
 	};
 
@@ -355,9 +364,9 @@ function TemplateRow({
 		<ConfirmPopover
 			open={confirmOpen}
 			onOpenChange={setConfirmOpen}
-			title={`Delete ${template.name}?`}
-			description="Removes the template file. This can't be undone."
-			confirmLabel="Delete"
+			title={t("Delete {name}?", { name: template.name })}
+			description={t("Removes the template file. This can't be undone.")}
+			confirmLabel={t("Delete")}
 			destructive
 			confirmTestId="template-confirm-delete"
 			onConfirm={() => void del()}
@@ -379,11 +388,11 @@ function TemplateRow({
 				</div>
 				<div className="flex shrink-0 items-center gap-4">
 					{showOpenAsFile ? (
-						<IconTooltip label="Open as file">
+						<IconTooltip label={t("Open as file")}>
 							<button
 								type="button"
 								data-testid="template-open-file"
-								aria-label="Open as file"
+								aria-label={t("Open as file")}
 								onClick={openAsFile}
 								className="flex size-24 items-center justify-center rounded-sm text-text-muted transition hover:bg-control-bg-hovered hover:text-text-default"
 							>
@@ -391,23 +400,23 @@ function TemplateRow({
 							</button>
 						</IconTooltip>
 					) : null}
-					<IconTooltip label="Edit">
+					<IconTooltip label={t("Edit")}>
 						<button
 							type="button"
 							data-testid="template-edit"
-							aria-label="Edit"
+							aria-label={t("Edit")}
 							onClick={onEdit}
 							className="flex size-24 items-center justify-center rounded-sm text-text-muted transition hover:bg-control-bg-hovered hover:text-text-default"
 						>
 							<Pencil className="size-14" />
 						</button>
 					</IconTooltip>
-					<IconTooltip label="Delete" wrapTrigger>
+					<IconTooltip label={t("Delete")} wrapTrigger>
 						<PopoverTrigger asChild>
 							<button
 								type="button"
 								data-testid="template-delete"
-								aria-label="Delete"
+								aria-label={t("Delete")}
 								className="flex size-24 items-center justify-center rounded-sm text-text-muted transition hover:bg-control-bg-hovered hover:text-feedback-error"
 							>
 								<Trash2 className="size-14" />

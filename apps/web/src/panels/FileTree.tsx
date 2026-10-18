@@ -1,4 +1,5 @@
 import type { FileNode } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useRef, useState } from "react";
 import { LoadingRegion } from "../components/Skeleton";
 import type { TabIntent } from "../store";
@@ -11,6 +12,7 @@ import { useWorkspaceRead } from "./useWorkspaceRead";
 type SetPathsExpanded = (paths: readonly string[], expanded: boolean) => void;
 
 export function FileTree({ workspaceId }: { workspaceId: string }) {
+	const { t } = useI18n();
 	const [nodes, setNodes] = useState<FileNode[] | null>(null);
 	const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -37,7 +39,7 @@ export function FileTree({ workspaceId }: { workspaceId: string }) {
 
 	if (nodes === null) return <LoadingRegion rows={8} className="px-4 py-4" />;
 	if (nodes.length === 0)
-		return <p className="px-4 py-4 tr-text-metadata text-text-muted">Empty</p>;
+		return <p className="px-4 py-4 tr-text-metadata text-text-muted">{t("Empty")}</p>;
 	return (
 		<ul className="flex flex-col motion-safe:animate-reveal">
 			{nodes.map((node) => (

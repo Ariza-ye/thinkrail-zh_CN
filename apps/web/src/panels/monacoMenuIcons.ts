@@ -10,6 +10,7 @@ import {
 	RiChatNewLine as MessageSquarePlus,
 	RiScissorsLine as Scissors,
 } from "@remixicon/react";
+import { translate } from "@thinkrail/ui/i18n";
 import type * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -62,7 +63,9 @@ function decorateOpenMenus(): void {
 			const holder = document.createElement("span");
 			holder.className = "editor-menu-icon";
 			holder.ariaHidden = "true";
-			const icon = ICONS.get(label.textContent.trim().replace(/[.…]+$/u, ""));
+			const text = label.textContent.trim().replace(/[.…]+$/u, "");
+			const source = text === translate("Comment on selection") ? "Comment on selection" : text;
+			const icon = ICONS.get(source);
 			if (icon) holder.innerHTML = icon;
 			label.before(holder);
 		}

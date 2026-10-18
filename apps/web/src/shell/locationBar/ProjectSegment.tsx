@@ -8,6 +8,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@thinkrail/ui/dropdown-menu";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useOpenProject } from "../../panels/useOpenProject";
 import { loadProjectWorkspaces } from "../../panels/workspaceActions";
 import { useAppStore } from "../../store";
@@ -20,18 +21,19 @@ function goToProjectHome(projectId: string): void {
 }
 
 export function ProjectSegment({ project, atHome }: { project: Project; atHome: boolean }) {
+	const { t } = useI18n();
 	const projects = useAppStore((s) => s.projects);
 	const { pickAndOpen, dialogs } = useOpenProject((opened) => goToProjectHome(opened.id));
 	return (
 		<Segment
-			caption="Project"
+			caption={t("Project")}
 			testid="scope-project-segment"
 			className="hidden max-w-[220px] shrink-[3] pl-0 sm:flex"
 		>
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					data-testid="scope-project"
-					aria-label={`Project ${project.name}`}
+					aria-label={t("Project {name}", { name: project.name })}
 					className={pillClass}
 				>
 					<span
@@ -46,7 +48,7 @@ export function ProjectSegment({ project, atHome }: { project: Project; atHome: 
 					<PillChevron />
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="start" data-testid="scope-project-menu">
-					<DropdownMenuLabel>Projects</DropdownMenuLabel>
+					<DropdownMenuLabel>{t("Projects")}</DropdownMenuLabel>
 					{projects.map((candidate) => (
 						<DropdownMenuItem
 							key={candidate.id}
@@ -67,11 +69,11 @@ export function ProjectSegment({ project, atHome }: { project: Project; atHome: 
 						onSelect={() => goToProjectHome(project.id)}
 					>
 						<House />
-						Project home
+						{t("Project home")}
 					</DropdownMenuItem>
 					<DropdownMenuItem data-testid="scope-project-add" onSelect={() => void pickAndOpen()}>
 						<Plus />
-						Add project…
+						{t("Add project…")}
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>

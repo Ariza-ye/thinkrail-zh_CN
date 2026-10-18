@@ -1,4 +1,5 @@
 import type { ReviewAnchor } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { diffArrays } from "diff";
 import { shikiLanguageId } from "@/lib/highlighter";
 import type { AnchorDraft, ReviewThread } from "@/resources";
@@ -224,7 +225,7 @@ export function notebookCellDraft(cell: NotebookCell): AnchorDraft {
 			{ kind: "lineRange", startLine: cell.startLine, endLine: cell.endLine },
 			{ kind: "structural", scheme: "ipynb-cell", ref: cell.ref },
 		],
-		label: `cell ${cell.index + 1}`,
+		label: translate("cell {number}", { number: cell.index + 1 }),
 	};
 }
 

@@ -21,6 +21,7 @@ import type {
 import type { ToolRenderProps } from "@thinkrail/extension-api/web";
 import { Button } from "@thinkrail/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import {
 	memo,
@@ -74,6 +75,7 @@ function ChatTurnViewImpl({
 	/** Live-resource deep link for this chat's latest turn divider only. */
 	stillRunning?: StillRunning | undefined;
 }) {
+	useI18n();
 	switch (row.kind) {
 		case "user":
 			return (
@@ -90,6 +92,7 @@ function ChatTurnViewImpl({
 			return (
 				<ErrorTurn
 					text={row.text}
+					uiMessage={row.uiMessage}
 					onTryAgain={row.recovery === "try-again" ? onTryAgain : undefined}
 				/>
 			);
@@ -206,13 +209,14 @@ const USER_SIDE_UNBOUNDED_CLAMP =
 	"[[data-line-width-bounded=false]_&]:max-w-[calc(100cqw-2*var(--chat-gutter))]";
 
 function AttachmentChip({ label, img }: { label: string; img: ImageContent }) {
+	const { t } = useI18n();
 	const [open, setOpen] = useState(false);
 	return (
 		<>
 			<FileChip
 				data-testid="chat-attachment-chip"
 				title={label}
-				aria-label={`View attachment ${label}`}
+				aria-label={t("View attachment {value}", { value: label })}
 				onClick={() => setOpen(true)}
 				label={label}
 			/>
@@ -247,6 +251,7 @@ function MessageWithCopy({
 	getText: () => string;
 	children: ReactNode;
 }) {
+	useI18n();
 	return (
 		<div
 			data-testid="chat-message"
@@ -277,6 +282,7 @@ function UserTurn({
 	attachmentNames?: string[] | undefined;
 	agentResponded: boolean;
 }) {
+	useI18n();
 	const text = userText(message.content);
 	const attachments = userAttachments(message.content, attachmentNames);
 	const skill = parseSkillInvocation(text);
@@ -342,6 +348,7 @@ function PlainUserTurn({
 	attachments: ReturnType<typeof userAttachments>;
 	agentResponded: boolean;
 }) {
+	const { t } = useI18n();
 	const large = text.length > LARGE_USER_MESSAGE;
 	const [expanded, toggle, toggleRef] = useFold(`${id}:user-collapse`, !agentResponded);
 	const collapsed = large && !expanded;
@@ -381,7 +388,7 @@ function PlainUserTurn({
 							) : (
 								<ChevronDown className="size-16 shrink-0" />
 							)}
-							{expanded ? "Show less" : "Show more"}
+							{expanded ? t("Show less") : t("Show more")}
 						</button>
 					) : null}
 				</div>
@@ -397,6 +404,7 @@ function SkillInvocationCard({
 	foldId: string;
 	invocation: SkillInvocation;
 }) {
+	const { t } = useI18n();
 	const [expanded, toggle, toggleRef] = useFold(foldId);
 	return (
 		<div
@@ -410,12 +418,16 @@ function SkillInvocationCard({
 				type="button"
 				data-testid="skill-invocation-toggle"
 				aria-expanded={expanded}
-				aria-label={`${expanded ? "Hide" : "Show"} instructions for ${invocation.name}`}
+				aria-label={
+					expanded
+						? t("Hide instructions for {name}", { name: invocation.name })
+						: t("Show instructions for {name}", { name: invocation.name })
+				}
 				onClick={toggle}
 				className="flex w-full items-center gap-4 px-12 py-8 text-left outline-none transition-colors hover:bg-control-bg-hovered focus-visible:ring-2 focus-visible:ring-primary"
 			>
 				<BookOpen className="size-14 shrink-0 text-text-muted" aria-hidden="true" />
-				<span className="shrink-0 tr-text-ui text-text-muted">Skill</span>
+				<span className="shrink-0 tr-text-ui text-text-muted">{t("Skill")}</span>
 				<span className="shrink-0 text-text-subtle" aria-hidden="true">
 					·
 				</span>
@@ -444,12 +456,18 @@ function SkillInvocationCard({
 }
 
 function ReviewFixCard({ id, details }: { id: string; details: ReviewFixDetails }) {
+	const { t } = useI18n();
 	const items = reviewFixCommentsToItems(details.comments);
-	const noun = details.comments.length === 1 ? "finding" : "findings";
+
 	const summary =
 		details.comments.length > 0
-			? `Requested a fix on \u201c${details.itemTitle}\u201d \u00b7 ${details.comments.length} ${noun}`
-			: `Requested a fix on \u201c${details.itemTitle}\u201d`;
+			? t(
+					details.comments.length === 1
+						? "Requested a fix on “{title}” · {count} finding"
+						: "Requested a fix on “{title}” · {count} findings",
+					{ title: details.itemTitle, count: details.comments.length },
+				)
+			: t("Requested a fix on “{value}”", { value: details.itemTitle });
 	return (
 		<div
 			data-testid="review-fix-card"
@@ -480,6 +498,7 @@ function ToolRow({
 	workspaceRoot?: string | undefined;
 	onOpenFile?: ((path: string) => void) | undefined;
 }) {
+	useI18n();
 	if (getToolChrome(row.toolName) === "bare") {
 		const renderProps: ToolRenderProps = {
 			toolCallId: row.toolCallId,
@@ -512,6 +531,7 @@ function ToolRow({
 }
 
 function SystemTurn({ text }: { text: string }) {
+	useI18n();
 	return (
 		<div
 			data-testid="chat-message"
@@ -536,12 +556,16 @@ function CompactionTurn({
 	tokensAfter?: number | undefined;
 	resuming?: boolean | undefined;
 }) {
+	const { t } = useI18n();
 	const [open, toggle, toggleRef] = useFold(id);
-	const label = resuming ? "Context compacted — resuming…" : "Context compacted";
+	const label = resuming ? t("Context compacted — resuming…") : t("Context compacted");
 	const tokens =
 		tokensAfter === undefined
-			? `${formatTokens(tokensBefore)} tokens`
-			: `${formatTokens(tokensBefore)} → ${formatTokens(tokensAfter)} tokens`;
+			? t("{value} tokens", { value: formatTokens(tokensBefore) })
+			: t("{value} → {value2} tokens", {
+					value: formatTokens(tokensBefore),
+					value2: formatTokens(tokensAfter),
+				});
 	return (
 		<div data-testid="chat-compaction" data-chat-fold-root className="flex flex-col gap-8">
 			<button
@@ -567,7 +591,16 @@ function CompactionTurn({
 	);
 }
 
-function ErrorTurn({ text, onTryAgain }: { text: string; onTryAgain?: (() => void) | undefined }) {
+function ErrorTurn({
+	text,
+	uiMessage,
+	onTryAgain,
+}: {
+	text: string;
+	uiMessage?: string | undefined;
+	onTryAgain?: (() => void) | undefined;
+}) {
+	const { t } = useI18n();
 	return (
 		<div
 			data-testid="chat-message"
@@ -576,13 +609,15 @@ function ErrorTurn({ text, onTryAgain }: { text: string; onTryAgain?: (() => voi
 		>
 			<div className="flex items-start gap-8">
 				<CircleAlert className="mt-2 size-12 shrink-0 text-feedback-error" aria-hidden />
-				<span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{text}</span>
+				<span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+					{uiMessage ? t(uiMessage) : text}
+				</span>
 			</div>
 			{onTryAgain ? (
 				<div className="flex justify-end">
 					<Button variant="outline" size="sm" data-testid="agent-try-again" onClick={onTryAgain}>
 						<RotateCw className="size-12" />
-						Try again
+						{t("Try again")}
 					</Button>
 				</div>
 			) : null}
@@ -597,6 +632,7 @@ function CompactionNotice({
 	tokensAfter,
 	resuming,
 }: CompactionState) {
+	const { t } = useI18n();
 	if (status === "failed") {
 		return (
 			<div
@@ -613,15 +649,18 @@ function CompactionNotice({
 	}
 	const label =
 		status === "running"
-			? "Compacting context…"
+			? t("Compacting context…")
 			: status === "cancelled"
-				? "Compaction cancelled"
+				? t("Compaction cancelled")
 				: resuming
-					? "Context compacted — resuming…"
-					: "Context compacted";
+					? t("Context compacted — resuming…")
+					: t("Context compacted");
 	const tokens =
 		tokensBefore != null && tokensAfter != null
-			? `${formatTokens(tokensBefore)} → ${formatTokens(tokensAfter)} tokens`
+			? t("{value} → {value2} tokens", {
+					value: formatTokens(tokensBefore),
+					value2: formatTokens(tokensAfter),
+				})
 			: null;
 	return (
 		<div
@@ -651,6 +690,7 @@ function RetryIndicator({
 	maxAttempts: number;
 	delayMs: number;
 }) {
+	const { t } = useI18n();
 	const [draining, setDraining] = useState(false);
 	useEffect(() => {
 		const raf = requestAnimationFrame(() => setDraining(true));
@@ -665,8 +705,12 @@ function RetryIndicator({
 		>
 			<span className="flex items-center gap-4">
 				<RotateCw className="size-12 shrink-0" />
-				{source === "summarization" ? "Retrying summarization" : "Retrying"} ({attempt}/
-				{maxAttempts})…
+				{t(
+					source === "summarization"
+						? "Retrying summarization ({attempt}/{maxAttempts})…"
+						: "Retrying ({attempt}/{maxAttempts})…",
+					{ attempt, maxAttempts },
+				)}
 			</span>
 			<div className="h-4 w-full overflow-hidden rounded-full bg-border-default">
 				<div
@@ -679,6 +723,7 @@ function RetryIndicator({
 }
 
 function FileDiffGlyph({ className }: { className?: string }) {
+	useI18n();
 	return <CustomIcon name="file-diff-line" className={className} />;
 }
 
@@ -702,6 +747,7 @@ function ArtifactChip({
 	listId: string;
 	onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
+	useI18n();
 	const { id, icon: Icon, paths, label, expanded, onOpen, reveal } = group;
 	const many = paths.length > 1;
 	const first = paths[0];
@@ -747,6 +793,7 @@ function ArtifactList({
 	listId: string;
 	workspaceRoot?: string | undefined;
 }) {
+	useI18n();
 	const { id, icon: Icon, paths, onOpen, stats } = group;
 	const testid = `turn-divider-${id}`;
 	return (
@@ -804,6 +851,7 @@ export function TurnDivider({
 	onReveal: (tab: "specs" | "changes") => void;
 	stillRunning?: StillRunning | undefined;
 }) {
+	const { t } = useI18n();
 	const { elapsedMs, toolCount, specs, changedFiles, receipt } = data;
 	const [selected, select] = useSelection(`${id}:artifacts`);
 	const stats = receipt
@@ -831,7 +879,7 @@ export function TurnDivider({
 			id: "specs",
 			icon: FileText,
 			paths: specs,
-			label: (n) => `${n} ${n === 1 ? "spec" : "specs"}`,
+			label: (n) => t(n === 1 ? "{count} spec" : "{count} specs", { count: n }),
 			expanded: selected === "specs",
 			onOpen: onOpenSpec,
 			reveal: () => onReveal("specs"),
@@ -841,9 +889,14 @@ export function TurnDivider({
 			icon: FileDiffGlyph,
 			paths: changedFiles,
 			label: (n) =>
-				`${n} ${n === 1 ? "file changed" : "files changed"}${
-					totals ? ` · +${totals.added} −${totals.removed}` : ""
-				}`,
+				totals
+					? t(
+							n === 1
+								? "{count} file changed · +{added} −{removed}"
+								: "{count} files changed · +{added} −{removed}",
+							{ count: n, added: totals.added, removed: totals.removed },
+						)
+					: t(n === 1 ? "{count} file changed" : "{count} files changed", { count: n }),
 			expanded: selected === "files",
 			onOpen: onOpenChange,
 			reveal: () => onReveal("changes"),
@@ -872,7 +925,7 @@ export function TurnDivider({
 				{toolCount > 0 ? (
 					<span className="flex items-center gap-4">
 						<Wrench className="size-12 shrink-0" />
-						{toolCount} {toolCount === 1 ? "tool call" : "tool calls"}
+						{t(toolCount === 1 ? "{count} tool call" : "{count} tool calls", { count: toolCount })}
 					</span>
 				) : null}
 				{groups.map((group) => (
@@ -891,7 +944,7 @@ export function TurnDivider({
 						className="flex items-center gap-4 rounded-sm px-4 text-primary hover:bg-control-bg-hovered"
 					>
 						<Eye className="size-12 shrink-0" />
-						Review turn
+						{t("Review turn")}
 					</button>
 				) : null}
 				{elapsedMs != null && elapsedMs >= 1000 ? (
@@ -908,7 +961,7 @@ export function TurnDivider({
 						className="flex items-center gap-4 rounded-full border border-primary-muted bg-primary-subtle px-8 text-primary hover:bg-primary-soft"
 					>
 						<Stack className="size-12 shrink-0 motion-safe:animate-working" />
-						{running.count} still running
+						{t("{count} still running", { count: running.count })}
 					</button>
 				) : null}
 				<span className="h-px flex-1 bg-border-muted" />

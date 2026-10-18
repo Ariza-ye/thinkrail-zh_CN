@@ -1,3 +1,5 @@
+import { useI18n } from "@thinkrail/ui/i18n";
+
 const ROWS = [
 	{ key: "r1", width: "w-3/4" },
 	{ key: "r2", width: "w-1/2" },
@@ -14,10 +16,11 @@ const ROWS = [
 ] as const;
 
 export function SkeletonRows({ rows = 6, label = "Loading" }: { rows?: number; label?: string }) {
+	const { t } = useI18n();
 	return (
 		<div
 			role="status"
-			aria-label={label}
+			aria-label={t(label)}
 			aria-busy="true"
 			data-testid="skeleton-rows"
 			className="flex flex-col gap-8"

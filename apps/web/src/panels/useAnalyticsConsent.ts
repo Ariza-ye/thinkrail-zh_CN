@@ -1,4 +1,5 @@
 import type { AppConfigUpdate } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { useCallback, useRef, useState } from "react";
 import { getTransport } from "@/transport";
 
@@ -18,7 +19,7 @@ export function useAnalyticsConsent() {
 		setError(null);
 		void getTransport()
 			.request("settings.update", { config })
-			.catch(() => setError("Couldn't save your choice. Please try again."))
+			.catch(() => setError(translate("Couldn't save your choice. Please try again.")))
 			.finally(() => {
 				pendingRef.current = false;
 				const queued = queuedRef.current;

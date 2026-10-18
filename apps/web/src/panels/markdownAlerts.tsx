@@ -6,6 +6,7 @@ import {
 	type RemixiconComponentType,
 	RiAlertLine as TriangleAlert,
 } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import type { ReactNode } from "react";
 import type { Components } from "react-markdown";
 
@@ -115,6 +116,7 @@ function AlertCallout({
 	node?: { properties?: Record<string, unknown> };
 	children?: ReactNode;
 }) {
+	const { t } = useI18n();
 	const raw = node?.properties?.variant;
 	const cfg = ALERTS[isVariant(raw) ? raw : "note"];
 	const Icon = cfg.icon;
@@ -126,7 +128,7 @@ function AlertCallout({
 		>
 			<p className={`tr-title-card mb-4 flex items-center gap-4 ${cfg.text}`}>
 				<Icon className="size-16 shrink-0" />
-				{cfg.label}
+				{t(cfg.label)}
 			</p>
 			{children}
 		</div>

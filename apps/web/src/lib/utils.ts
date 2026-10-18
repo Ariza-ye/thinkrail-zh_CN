@@ -1,4 +1,5 @@
 import type { UserMessage } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 
 export const DOUBLE_CLICK_SETTLE_MS = 250;
 
@@ -268,24 +269,24 @@ export function platformShortcutLabel(
 
 export function relativeTime(ms: number, now: number): string {
 	const s = Math.floor((now - ms) / 1000);
-	if (s < 60) return "just now";
+	if (s < 60) return translate("just now");
 	const m = Math.floor(s / 60);
-	if (m < 60) return `${m}m ago`;
+	if (m < 60) return translate("{count}m ago", { count: m });
 	const h = Math.floor(m / 60);
-	if (h < 24) return `${h}h ago`;
-	return `${Math.floor(h / 24)}d ago`;
+	if (h < 24) return translate("{count}h ago", { count: h });
+	return translate("{count}d ago", { count: Math.floor(h / 24) });
 }
 
 /** Compact elapsed label for dense rows: `3h`, `12d`, `3w`, `4mo`. */
 export function compactAge(ms: number, now: number): string {
 	const hours = Math.max(0, Math.floor((now - ms) / 3_600_000));
-	if (hours < 1) return "<1h";
-	if (hours < 24) return `${hours}h`;
+	if (hours < 1) return translate("<1h");
+	if (hours < 24) return translate("{count}h", { count: hours });
 	const days = Math.floor(hours / 24);
-	if (days < 14) return `${days}d`;
+	if (days < 14) return translate("{count}d", { count: days });
 	const weeks = Math.floor(days / 7);
-	if (weeks < 10) return `${weeks}w`;
-	return `${Math.floor(days / 30)}mo`;
+	if (weeks < 10) return translate("{count}w", { count: weeks });
+	return translate("{count}mo", { count: Math.floor(days / 30) });
 }
 
 export function isShellInert(value: string): boolean {

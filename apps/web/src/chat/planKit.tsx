@@ -5,6 +5,7 @@ import {
 	RiRecordCircleLine as CircleDot,
 	RiShieldCheckLine as ShieldCheck,
 } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { Markdown } from "./Markdown";
 import { verificationStatus } from "./planView";
 
@@ -16,16 +17,19 @@ const VERIFICATION_PROSE = [
 ].join(" ");
 
 export function SectionLabel({ label }: { label: string }) {
+	useI18n();
 	return <div className="px-4 py-4 tr-text-eyebrow text-text-muted">{label}</div>;
 }
 
 export function PlanStatusIcon({ kind }: { kind: "pending" | "active" | "done" }) {
+	useI18n();
 	if (kind === "done") return <Check className="size-12 shrink-0 text-primary" />;
 	if (kind === "active") return <CircleDot className="size-12 shrink-0 text-primary" />;
 	return <Circle className="size-12 shrink-0 text-text-muted" />;
 }
 
 export function VerificationGlyph({ verification }: { verification: string }) {
+	useI18n();
 	const status = verificationStatus(verification);
 	const Icon = status === "claimed" ? ShieldCheck : CircleAlert;
 	return (
@@ -43,6 +47,7 @@ export function VerificationGlyph({ verification }: { verification: string }) {
 }
 
 export function VerificationBadge({ verification }: { verification: string }) {
+	const { t } = useI18n();
 	const status = verificationStatus(verification);
 	const Icon = status === "claimed" ? ShieldCheck : CircleAlert;
 	return (
@@ -51,8 +56,8 @@ export function VerificationBadge({ verification }: { verification: string }) {
 			data-status={status}
 			title={
 				status === "claimed"
-					? "Verification as reported by the agent — not re-run by the host"
-					: "The agent reports this step was not verified"
+					? t("Verification as reported by the agent — not re-run by the host")
+					: t("The agent reports this step was not verified")
 			}
 			className="flex min-w-0 items-start gap-4 tr-text-metadata"
 		>

@@ -1,4 +1,5 @@
 import MonacoReact, { type OnMount } from "@monaco-editor/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import type { editor } from "monaco-editor/esm/vs/editor/editor.api.js";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import type { ResourceViewProps, SurfaceReview } from "@/resources";
@@ -37,6 +38,7 @@ export default function MonacoEditor({
 	viewState,
 	onViewState,
 }: ResourceViewProps) {
+	useI18n();
 	use(monacoSetup);
 	const fileLineWidth = useAppStore((state) => state.fileLineWidth);
 	const fileLineWidthBounded = useAppStore((state) => state.fileLineWidthBounded);

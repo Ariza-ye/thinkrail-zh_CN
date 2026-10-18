@@ -1,4 +1,5 @@
 import type { SlashCommandInfo } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import type { SlashCommandItem } from "@/prompt";
 import { type PreparedChatTitle, prepareChatTitle } from "./chatTitle";
 
@@ -14,8 +15,8 @@ export function compactSubmissionError(
 	hasDraftImages: boolean,
 	hasQueuedImages: boolean,
 ): string | null {
-	if (hasDraftImages) return COMPACT_IMAGE_ERROR;
-	return hasQueuedImages ? COMPACT_QUEUED_IMAGE_ERROR : null;
+	if (hasDraftImages) return translate(COMPACT_IMAGE_ERROR);
+	return hasQueuedImages ? translate(COMPACT_QUEUED_IMAGE_ERROR) : null;
 }
 
 export const NATIVE_CHAT_COMMANDS: readonly SlashCommandItem[] = [
@@ -91,7 +92,9 @@ export function parseNativeChatCommand(
 }
 
 export function prepareNameChatCommand(titleInput: string, hasImages: boolean): PreparedChatTitle {
-	return hasImages ? { reason: "Remove images to use /name" } : prepareChatTitle(titleInput);
+	return hasImages
+		? { reason: translate("Remove images to use /name") }
+		: prepareChatTitle(titleInput);
 }
 
 export function mergeNativeChatCommands(

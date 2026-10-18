@@ -1,3 +1,4 @@
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { useMemo } from "react";
 import type { ResourceContent, ResourceDiffProps } from "@/resources";
 import { diffContentStamp } from "../reviewComposerState";
@@ -25,14 +26,15 @@ function SvgContent({
 	tokens: SvgThemeTokens;
 	path: string;
 }) {
+	const { t } = useI18n();
 	const document = useMemo(() => buildSvgDocument(text, tokens), [text, tokens]);
-	return <SvgFrame title={`Vector diff of ${path}`} document={document} />;
+	return <SvgFrame title={t("Vector diff of {path}", { path: path })} document={document} />;
 }
 
 function caption(label: string, text: string | null): string {
-	if (text === null) return `${label}: No image`;
+	if (text === null) return translate("{label}: No image", { label: label });
 	const size = svgIntrinsicSize(text);
-	return `${label}: ${size ? `${size.width} × ${size.height}` : "Flexible size"} · ${svgByteLength(text)} B`;
+	return `${label}: ${size ? `${size.width} × ${size.height}` : translate("Flexible size")} · ${svgByteLength(text)} B`;
 }
 
 export default function SvgDiff({
@@ -44,6 +46,7 @@ export default function SvgDiff({
 	viewState,
 	onViewState,
 }: ResourceDiffProps) {
+	const { t } = useI18n();
 	const tokens = useSvgTheme(true);
 	const originalText = textOf(original);
 	const modifiedText = textOf(modified);
@@ -56,7 +59,7 @@ export default function SvgDiff({
 			originalText === null ? null : (
 				<SvgContent text={originalText} tokens={tokens} path={resource.path} />
 			),
-		caption: caption("Old", originalText),
+		caption: caption(t("Old"), originalText),
 		intrinsicSize: originalSize,
 		review: review?.base,
 	};
@@ -66,7 +69,7 @@ export default function SvgDiff({
 			modifiedText === null ? null : (
 				<SvgContent text={modifiedText} tokens={tokens} path={resource.path} />
 			),
-		caption: caption("New", modifiedText),
+		caption: caption(t("New"), modifiedText),
 		intrinsicSize: modifiedSize,
 		review: review?.worktree,
 	};
@@ -74,7 +77,7 @@ export default function SvgDiff({
 		<VisualDiff
 			prefix="svg"
 			noun="vector"
-			regionLabel="image region"
+			regionLabel={t("image region")}
 			original={originalSide}
 			modified={modifiedSide}
 			contentStamp={diffContentStamp(original, modified)}

@@ -1,5 +1,6 @@
 import { RiLinksLine as LinkIcon } from "@remixicon/react";
 import { numArg, resultText, strArg, type ToolRenderProps } from "@thinkrail/extension-api/web";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { WebResultBody } from "./WebResultBody";
 
 function detailString(result: unknown, key: string): string {
@@ -16,9 +17,9 @@ export function storedContentTarget(args: Record<string, unknown>, result: unkno
 	const url = strArg(args, "url") || detailString(result, "url");
 	if (url) return url;
 	const queryIndex = numArg(args, "queryIndex");
-	if (queryIndex !== null) return `query ${queryIndex}`;
+	if (queryIndex !== null) return translate("query {value}", { value: queryIndex });
 	const urlIndex = numArg(args, "urlIndex");
-	if (urlIndex !== null) return `URL ${urlIndex}`;
+	if (urlIndex !== null) return translate("URL {value}", { value: urlIndex });
 	return "";
 }
 
@@ -27,6 +28,7 @@ export function storedContentSummary({ args, result }: ToolRenderProps): string 
 }
 
 export function WebStoredContentCard({ toolCallId, args, result, status }: ToolRenderProps) {
+	const { t } = useI18n();
 	const responseId = strArg(args, "responseId");
 	const target = storedContentTarget(args, result);
 	const output = resultText(result);
@@ -47,8 +49,8 @@ export function WebStoredContentCard({ toolCallId, args, result, status }: ToolR
 				id={`${toolCallId}:content`}
 				output={output}
 				status={status}
-				runningLabel="Loading stored content…"
-				emptyLabel="(no stored content)"
+				runningLabel={t("Loading stored content…")}
+				emptyLabel={t("(no stored content)")}
 			/>
 		</div>
 	);

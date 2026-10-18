@@ -14,6 +14,7 @@ import {
 	DialogFooter,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { useCallback, useEffect, useInsertionEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useNow } from "@/components/useNow";
@@ -84,6 +85,7 @@ export default function ChatView({
 	workspaceId: string;
 	onOpenFile?: ((path: string) => void) | undefined;
 }) {
+	const { t } = useI18n();
 	const sessionExists = useAppStore((s) => s.sessions[sessionId] !== undefined);
 	const isStreaming = useAppStore((s) => s.sessions[sessionId]?.isStreaming ?? false);
 	const draft = useAppStore((s) => s.sessions[sessionId]?.draft ?? "");
@@ -391,7 +393,7 @@ export default function ChatView({
 					if (useAppStore.getState().sessions[sessionId]?.thinkingLevel === level) {
 						useAppStore.getState().setThinkingLevel(sessionId, previous);
 					}
-					toast.error(errorText(error), "Couldn't change the effort level");
+					toast.error(errorText(error), translate("Couldn't change the effort level"));
 				}),
 		[sessionId],
 	);
@@ -445,7 +447,7 @@ export default function ChatView({
 							useAppStore.getState().setThinkingLevel(sessionId, previous.level);
 						}
 					}
-					toast.error(errorText(error), `Couldn't switch to ${model.name}`);
+					toast.error(errorText(error), t("Couldn't switch to {value}", { value: model.name }));
 				},
 			)
 			.then(() => refreshStats());
@@ -622,7 +624,7 @@ export default function ChatView({
 			closeHistory();
 			useAppStore.getState().deleteChat(targetWorkspaceId, targetSessionId);
 		} catch (err) {
-			toast.error(errorText(err), "Couldn't delete the chat");
+			toast.error(errorText(err), t("Couldn't delete the chat"));
 		}
 	};
 
@@ -838,14 +840,16 @@ export default function ChatView({
 			) : null}
 			<Dialog open={stopAllOpen} onOpenChange={setStopAllOpen}>
 				<DialogContent onCloseAutoFocus={returnToResources}>
-					<DialogTitle>Stop all subagents?</DialogTitle>
+					<DialogTitle>{t("Stop all subagents?")}</DialogTitle>
 					<DialogDescription>
-						Stop {resources.groups.subagents.length} active subagents in this chat? The main chat
-						and future delegation are unaffected.
+						{t(
+							"Stop {count} active subagents in this chat? The main chat and future delegation are unaffected.",
+							{ count: resources.groups.subagents.length },
+						)}
 					</DialogDescription>
 					<DialogFooter>
 						<Button variant="ghost" onClick={() => setStopAllOpen(false)}>
-							Cancel
+							{t("Cancel")}
 						</Button>
 						<Button
 							data-testid="resources-stop-all-confirm"
@@ -859,7 +863,7 @@ export default function ChatView({
 								setStopAllOpen(false);
 							}}
 						>
-							Stop {resources.groups.subagents.length} subagents
+							{t("Stop {count} subagents", { count: resources.groups.subagents.length })}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

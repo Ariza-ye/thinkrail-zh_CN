@@ -1,3 +1,4 @@
+import { useI18n } from "@thinkrail/ui/i18n";
 import { type ReactNode, useMemo } from "react";
 import type { Components } from "react-markdown";
 import { Markdown } from "@/chat/Markdown";
@@ -64,20 +65,21 @@ export function notebookMarkdownComponents(
 		alt?: string | undefined;
 		title?: string | undefined;
 	}) {
+		const { t } = useI18n();
 		const source = notebookImageSource(src, ctx, bytesUrl);
 		if (source.kind === "image") return <img src={source.src} alt={alt ?? ""} title={title} />;
 		if (source.kind === "svg") {
 			return (
 				<NotebookFrame
-					title={title ?? alt ?? "Notebook SVG image"}
+					title={title ?? alt ?? t("Notebook SVG image")}
 					document={buildNotebookSvgDocument(source.svg)}
 				/>
 			);
 		}
 		return (
 			<span data-testid="notebook-disabled-image" className="text-text-muted">
-				{alt ? `${alt}: ` : "Image disabled: "}
-				{src ?? "missing URL"}
+				{alt ? `${alt}: ` : t("Image disabled: ")}
+				{src ?? t("missing URL")}
 			</span>
 		);
 	}
@@ -212,13 +214,14 @@ function codeFence(source: string): string {
 }
 
 export function NotebookOutputs({ cell }: { cell: NotebookCell }) {
+	const { t } = useI18n();
 	return cell.outputs.length > 0 ? (
 		<div className="flex flex-col gap-4 border-border-muted border-t p-8">
 			{cell.outputs.map((output, index) => (
 				<NotebookOutputItem
 					key={`${output.kind}:${index}`}
 					output={output}
-					title={`Output ${index + 1} of cell ${cell.index + 1}`}
+					title={t("Output {number} of cell {cell}", { number: index + 1, cell: cell.index + 1 })}
 				/>
 			))}
 		</div>

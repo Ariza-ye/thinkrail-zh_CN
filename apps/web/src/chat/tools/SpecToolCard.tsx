@@ -1,4 +1,5 @@
 import { resultText, strArg, type ToolRenderProps } from "@thinkrail/extension-api/web";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import type { ReactNode } from "react";
 import { Collapsible, countLines } from "./Collapsible";
 import { ToolFileLink } from "./ToolFileLink";
@@ -135,6 +136,7 @@ function LinkedResultText({
 	workspaceRoot?: string | undefined;
 	onOpenFile?: ((path: string) => void) | undefined;
 }): ReactNode {
+	useI18n();
 	return splitKnownPathReferences(text, paths).map((segment, index) =>
 		segment.path ? (
 			<ToolFileLink
@@ -160,7 +162,7 @@ export function specToolSummary({ toolName, args }: ToolRenderProps): string {
 		case "spec_create":
 			return strArg(args, "path");
 		case "spec_validate":
-			return "graph";
+			return translate("graph");
 		default:
 			return strArg(args, "id");
 	}
@@ -175,12 +177,13 @@ export function SpecToolCard({
 	workspaceRoot,
 	onOpenFile,
 }: ToolRenderProps) {
+	const { t } = useI18n();
 	const output = resultText(result);
 	if (status === "running") {
-		return <span className="text-text-muted tr-text-metadata">Inspecting specs…</span>;
+		return <span className="text-text-muted tr-text-metadata">{t("Inspecting specs…")}</span>;
 	}
 	if (!output) {
-		return <span className="text-text-muted tr-text-metadata italic">(no result)</span>;
+		return <span className="text-text-muted tr-text-metadata italic">{t("(no result)")}</span>;
 	}
 	const content = (
 		<pre

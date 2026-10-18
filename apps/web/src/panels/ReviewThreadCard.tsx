@@ -1,4 +1,5 @@
 import { RiSendPlaneLine as Send, RiDeleteBin6Line as Trash2 } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { useEffect, useRef, useState } from "react";
 import type { ReviewThread, ReviewThreadActions } from "../resources";
@@ -24,6 +25,7 @@ export function ReviewThreadCard({
 	actions: ReviewThreadActions;
 	onActivate?: (() => void) | undefined;
 }) {
+	const { t } = useI18n();
 	const [edit, changeEdit] = useReviewDraftState<ReviewTextState | undefined>(
 		`thread:${thread.id}`,
 		undefined,
@@ -99,11 +101,11 @@ export function ReviewThreadCard({
 				)}
 				{thread.status === "draft" && (
 					<span className="review-thread-actions">
-						<IconTooltip label="Send this comment to the file's review chat" wrapTrigger>
+						<IconTooltip label={t("Send this comment to the file's review chat")} wrapTrigger>
 							<button
 								type="button"
 								data-testid="review-thread-send"
-								aria-label="Send this comment to the file's review chat"
+								aria-label={t("Send this comment to the file's review chat")}
 								className="review-thread-action disabled:pointer-events-none"
 								disabled={busy || !draftText.trim()}
 								onClick={() =>
@@ -118,11 +120,11 @@ export function ReviewThreadCard({
 								<Send className="size-12" />
 							</button>
 						</IconTooltip>
-						<IconTooltip label="Delete draft" wrapTrigger>
+						<IconTooltip label={t("Delete draft")} wrapTrigger>
 							<button
 								type="button"
 								data-testid="review-thread-delete"
-								aria-label="Delete draft"
+								aria-label={t("Delete draft")}
 								className="review-thread-action disabled:pointer-events-none"
 								disabled={busy}
 								onClick={() => run(() => actions.onDeleteComment(thread.id))}

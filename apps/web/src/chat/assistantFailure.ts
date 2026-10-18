@@ -16,3 +16,15 @@ export function assistantFailureText(
 	}
 	return null;
 }
+
+export function assistantFailureUiMessage(
+	terminal: AssistantTerminal | null | undefined,
+): string | undefined {
+	if (
+		terminal?.stopReason === "length" ||
+		(terminal?.stopReason === "error" && !terminal.errorMessage)
+	) {
+		return assistantFailureText(terminal) ?? undefined;
+	}
+	return undefined;
+}

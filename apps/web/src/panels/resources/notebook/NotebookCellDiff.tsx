@@ -1,5 +1,6 @@
 import { parseDiffFromFile } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useMemo, useState } from "react";
 import type { Size } from "../regionReview";
 import { svgIntrinsicSize } from "../svg/svgDocument";
@@ -93,6 +94,7 @@ function NotebookImageOutputDiff({
 	modified: Extract<NotebookOutput, { kind: "image" }> | null;
 	stamp: string;
 }) {
+	const { t } = useI18n();
 	const [originalSize, setOriginalSize] = useState<Size | null>(() => imageSize(original));
 	const [modifiedSize, setModifiedSize] = useState<Size | null>(() => imageSize(modified));
 	useEffect(() => setOriginalSize(imageSize(original)), [original]);
@@ -100,24 +102,32 @@ function NotebookImageOutputDiff({
 	const originalSide: VisualDiffSide = {
 		present: original !== null,
 		content: original ? (
-			<OutputImage output={original} onSize={setOriginalSize} title="Original notebook output" />
+			<OutputImage
+				output={original}
+				onSize={setOriginalSize}
+				title={t("Original notebook output")}
+			/>
 		) : null,
-		caption: original ? `Old: ${original.mime}` : "Old: No output",
+		caption: original ? t("Old: {mime}", { mime: original.mime }) : t("Old: No output"),
 		intrinsicSize: originalSize,
 	};
 	const modifiedSide: VisualDiffSide = {
 		present: modified !== null,
 		content: modified ? (
-			<OutputImage output={modified} onSize={setModifiedSize} title="Modified notebook output" />
+			<OutputImage
+				output={modified}
+				onSize={setModifiedSize}
+				title={t("Modified notebook output")}
+			/>
 		) : null,
-		caption: modified ? `New: ${modified.mime}` : "New: No output",
+		caption: modified ? t("New: {mime}", { mime: modified.mime }) : t("New: No output"),
 		intrinsicSize: modifiedSize,
 	};
 	return (
 		<VisualDiff
 			prefix="image"
 			noun="output"
-			regionLabel="output region"
+			regionLabel={t("output region")}
 			original={originalSide}
 			modified={modifiedSide}
 			contentStamp={stamp}
@@ -127,15 +137,19 @@ function NotebookImageOutputDiff({
 }
 
 function OutputSide({ output, title }: { output: NotebookOutput | null; title: string }) {
+	const { t } = useI18n();
 	return (
 		<div className="flex min-w-0 flex-col gap-4">
 			<span className="tr-text-metadata text-text-muted">{title}</span>
 			<div className="min-h-40 border border-border-muted bg-container-content-bg">
 				{output ? (
-					<NotebookOutputItem output={output} title={`${title} notebook output`} />
+					<NotebookOutputItem
+						output={output}
+						title={t("{title} notebook output", { title: title })}
+					/>
 				) : (
 					<div className="flex min-h-40 items-center justify-center tr-text-ui text-text-muted">
-						No output
+						{t("No output")}
 					</div>
 				)}
 			</div>
@@ -158,6 +172,7 @@ export function NotebookOutputsDiff({
 	ignoreWhitespace: boolean;
 	stamp: string;
 }) {
+	const { t } = useI18n();
 	if (JSON.stringify(original.outputs) === JSON.stringify(modified.outputs)) {
 		return modified.outputs.length > 0 ? <NotebookOutputs cell={modified} /> : null;
 	}
@@ -184,8 +199,8 @@ export function NotebookOutputsDiff({
 				if (outputNeedsSideBySide(before) || outputNeedsSideBySide(after)) {
 					return (
 						<div key={`rich:${index}`} className="grid grid-cols-1 gap-8 md:grid-cols-2">
-							<OutputSide output={before} title="Old" />
-							<OutputSide output={after} title="New" />
+							<OutputSide output={before} title={t("Old")} />
+							<OutputSide output={after} title={t("New")} />
 						</div>
 					);
 				}

@@ -6,6 +6,7 @@ export type Messages = Readonly<Record<string, string>>;
 export type Translator = (message: string, params?: MessageParams) => string;
 
 let locale: Locale = "en";
+let revision = 0;
 let messages: Partial<Record<Locale, Messages>> = {};
 const listeners = new Set<() => void>();
 
@@ -17,6 +18,7 @@ export function formatMessage(message: string, params?: MessageParams): string {
 
 export function configureMessages(catalogs: Partial<Record<Locale, Messages>>): void {
 	messages = catalogs;
+	revision += 1;
 	for (const listener of listeners) listener();
 }
 
@@ -35,16 +37,27 @@ export function subscribeLocale(listener: () => void): () => void {
 	return () => listeners.delete(listener);
 }
 
+function translateForLocale(current: Locale, message: string, params?: MessageParams): string {
+	const catalog = messages[current];
+	const translated = catalog && Object.hasOwn(catalog, message) ? catalog[message] : undefined;
+	return formatMessage(translated ?? message, params);
+}
+
 export function translate(message: string, params?: MessageParams): string {
-	return formatMessage(messages[locale]?.[message] ?? message, params);
+	return translateForLocale(locale, message, params);
 }
 
 const translators: Record<Locale, Translator> = {
-	en: (message, params) => formatMessage(messages.en?.[message] ?? message, params),
-	"zh-CN": (message, params) => formatMessage(messages["zh-CN"]?.[message] ?? message, params),
+	en: (message, params) => translateForLocale("en", message, params),
+	"zh-CN": (message, params) => translateForLocale("zh-CN", message, params),
 };
 
+function localeSnapshot(): string {
+	return `${locale}:${revision}`;
+}
+
 export function useI18n(): { locale: Locale; t: Translator } {
-	const current = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
+	const snapshot = useSyncExternalStore(subscribeLocale, localeSnapshot, localeSnapshot);
+	const current: Locale = snapshot.startsWith("zh-CN:") ? "zh-CN" : "en";
 	return { locale: current, t: translators[current] };
 }

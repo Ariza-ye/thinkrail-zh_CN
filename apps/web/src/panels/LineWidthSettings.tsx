@@ -1,4 +1,5 @@
 import { type AppConfigUpdate, isLineWidth, LINE_WIDTH_COLUMNS } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import { useEffect, useState } from "react";
 import { toast, useAppStore } from "@/store";
@@ -46,6 +47,7 @@ function boundedConfig(kind: LineWidthKind, bounded: boolean): AppConfigUpdate {
 }
 
 export function LineWidthControl({ kind }: { kind: LineWidthKind }) {
+	const { t } = useI18n();
 	const value = useAppStore((state) =>
 		kind === "chat" ? state.chatLineWidth : state.fileLineWidth,
 	);
@@ -66,7 +68,7 @@ export function LineWidthControl({ kind }: { kind: LineWidthKind }) {
 	const commit = () => {
 		if (parsed === null || parsed === value || parsed === submitted) return;
 		setSubmitted(parsed);
-		void updateLineWidth(widthConfig(kind, parsed), copy.failure).then((saved) => {
+		void updateLineWidth(widthConfig(kind, parsed), t(copy.failure)).then((saved) => {
 			if (!saved) setSubmitted(null);
 		});
 	};
@@ -77,17 +79,20 @@ export function LineWidthControl({ kind }: { kind: LineWidthKind }) {
 			className={cn(SETTINGS_ROWS_CONTAINER, "border-border-muted border-b")}
 		>
 			<SettingsRow
-				label="Line width"
+				label={t("Line width")}
 				description={
 					<>
-						{copy.description}
+						{t(copy.description)}
 						{invalid ? (
 							<span
 								id={errorId}
 								data-testid={errorId}
 								className="block text-feedback-error tr-text-metadata"
 							>
-								Enter a whole number from {LINE_WIDTH_COLUMNS.min} to {LINE_WIDTH_COLUMNS.max}.
+								{t("Enter a whole number from {min} to {max}.", {
+									min: LINE_WIDTH_COLUMNS.min,
+									max: LINE_WIDTH_COLUMNS.max,
+								})}
 							</span>
 						) : null}
 					</>
@@ -100,7 +105,7 @@ export function LineWidthControl({ kind }: { kind: LineWidthKind }) {
 						step={1}
 						inputMode="numeric"
 						value={draft}
-						aria-label={`${kind === "chat" ? "Chat" : "File"} line width`}
+						aria-label={kind === "chat" ? t("Chat line width") : t("File line width")}
 						aria-invalid={invalid}
 						aria-describedby={invalid ? errorId : undefined}
 						data-testid={`${kind}-line-width-input`}
@@ -120,15 +125,17 @@ export function LineWidthControl({ kind }: { kind: LineWidthKind }) {
 				}
 			/>
 			<SettingsRow
-				label="Fit to pane"
-				description="Wrap lines shorter when the pane is narrow."
+				label={t("Fit to pane")}
+				description={t("Wrap lines shorter when the pane is narrow.")}
 				control={
 					<SettingsSwitch
 						checked={bounded}
-						label={`Fit ${kind} line width to pane`}
+						label={
+							kind === "chat" ? t("Fit chat line width to pane") : t("Fit file line width to pane")
+						}
 						testId={`${kind}-line-width-bounded`}
 						onChange={(next) => {
-							void updateLineWidth(boundedConfig(kind, next), copy.failure);
+							void updateLineWidth(boundedConfig(kind, next), t(copy.failure));
 						}}
 					/>
 				}

@@ -1,3 +1,4 @@
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import { useEffect, useRef, useState } from "react";
 import type { AnchorDraft, SurfaceReview } from "@/resources";
@@ -31,6 +32,7 @@ export function ReviewComposer({
 	onClose: () => void;
 	className?: string;
 }) {
+	const { t } = useI18n();
 	const [initial] = useState(() => ({
 		value: input?.value ?? reviewTextState(initialText),
 		restored: input?.restored === true || input?.value !== undefined,
@@ -74,12 +76,12 @@ export function ReviewComposer({
 	return (
 		<div data-testid="review-composer" className={cn("review-composer", className)}>
 			<span className="review-composer-label tr-code-text">{label}</span>
-			{notice ? <span className="tr-text-metadata text-text-muted">{notice}</span> : null}
+			{notice ? <span className="tr-text-metadata text-text-muted">{t(notice)}</span> : null}
 			<textarea
 				ref={inputRef}
 				data-testid="review-composer-input"
 				className="review-composer-input tr-text-ui"
-				placeholder="Leave a review comment…"
+				placeholder={t("Leave a review comment…")}
 				value={text}
 				disabled={busy}
 				onChange={(event) => {
@@ -107,7 +109,7 @@ export function ReviewComposer({
 					disabled={busy || !text.trim()}
 					onClick={() => submit(commenting.onSave)}
 				>
-					Save draft
+					{t("Save draft")}
 				</button>
 				<button
 					type="button"
@@ -116,7 +118,7 @@ export function ReviewComposer({
 					disabled={busy || !text.trim()}
 					onClick={() => submit(commenting.onSend)}
 				>
-					Send now
+					{t("Send now")}
 				</button>
 				<button
 					type="button"
@@ -124,7 +126,7 @@ export function ReviewComposer({
 					className="review-composer-btn review-composer-btn-quiet tr-text-action"
 					onClick={onClose}
 				>
-					Cancel
+					{t("Cancel")}
 				</button>
 			</div>
 		</div>

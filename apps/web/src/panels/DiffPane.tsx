@@ -4,6 +4,7 @@ import {
 	RiParagraph as Pilcrow,
 	RiArrowGoBackLine as Revert,
 } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useMemo, useState } from "react";
 import { copyText, isPhoneViewport } from "@/lib";
 import type { DiffTab } from "../store";
@@ -22,6 +23,7 @@ import { ToggleSegment } from "./ToggleSegment";
 import { useLiveTabContent } from "./useLiveTabContent";
 
 export function DiffPane({ tab }: { tab: DiffTab }) {
+	const { t } = useI18n();
 	const setTabRenderer = useAppStore((state) => state.setTabRenderer);
 	const setDiffTabView = useAppStore((state) => state.setDiffTabView);
 	const setDiffTabIgnoreWhitespace = useAppStore((state) => state.setDiffTabIgnoreWhitespace);
@@ -114,7 +116,7 @@ export function DiffPane({ tab }: { tab: DiffTab }) {
 			<div
 				data-testid="diff-view-toggle"
 				role="toolbar"
-				aria-label="Diff view mode"
+				aria-label={t("Diff view mode")}
 				className="flex h-32 shrink-0 items-center gap-4 border-border-default border-b bg-container-header-bg px-12"
 			>
 				<span
@@ -138,7 +140,7 @@ export function DiffPane({ tab }: { tab: DiffTab }) {
 				{hunkActions ? (
 					<HeaderIconButton
 						testid="diff-revert-file"
-						label="Revert file"
+						label={t("Revert file")}
 						onClick={() => void hunkActions.revertFile()}
 					>
 						<Revert className="size-14" />
@@ -147,7 +149,7 @@ export function DiffPane({ tab }: { tab: DiffTab }) {
 				{renderer.capabilities.whitespace ? (
 					<HeaderIconButton
 						testid="diff-toggle-whitespace"
-						label="Hide whitespace changes"
+						label={t("Hide whitespace changes")}
 						active={ignoreWhitespace}
 						onClick={() => setDiffTabIgnoreWhitespace(tab.id, !ignoreWhitespace)}
 					>
@@ -157,7 +159,7 @@ export function DiffPane({ tab }: { tab: DiffTab }) {
 				{renderer.capabilities.copy ? (
 					<HeaderIconButton
 						testid="diff-copy"
-						label="Copy file contents"
+						label={t("Copy file contents")}
 						onClick={() => void copy()}
 					>
 						{copied ? (
@@ -172,7 +174,7 @@ export function DiffPane({ tab }: { tab: DiffTab }) {
 							<ToggleSegment
 								key={candidate.id}
 								testid={rendererTestId(candidate.id)}
-								label={candidate.label}
+								label={t(candidate.label)}
 								active={candidate.id === renderer.id}
 								onClick={() => setTabRenderer(tab.workspaceId, tab.id, candidate.id)}
 							/>
@@ -182,13 +184,13 @@ export function DiffPane({ tab }: { tab: DiffTab }) {
 					<>
 						<ToggleSegment
 							testid="diff-toggle-split"
-							label="Split"
+							label={t("Split")}
 							active={view === "split"}
 							onClick={() => setDiffTabView(tab.id, "split")}
 						/>
 						<ToggleSegment
 							testid="diff-toggle-inline"
-							label="Inline"
+							label={t("Inline")}
 							active={view === "inline"}
 							onClick={() => setDiffTabView(tab.id, "inline")}
 						/>

@@ -1,5 +1,6 @@
 import { RiSearchLine as Search } from "@remixicon/react";
 import { resultText, strArg, type ToolRenderProps } from "@thinkrail/extension-api/web";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { WebResultBody } from "./WebResultBody";
 
 function firstQuery(args: Record<string, unknown>): string {
@@ -22,6 +23,7 @@ function providerOf(result: unknown): string {
 }
 
 export function WebSearchCard({ toolCallId, args, result, status }: ToolRenderProps) {
+	const { t } = useI18n();
 	const query = firstQuery(args);
 	const provider = providerOf(result);
 	const output = resultText(result);
@@ -33,14 +35,18 @@ export function WebSearchCard({ toolCallId, args, result, status }: ToolRenderPr
 				<span className="truncate text-primary" title={query}>
 					{query}
 				</span>
-				{provider ? <span className="shrink-0 text-text-muted">via {provider}</span> : null}
+				{provider ? (
+					<span className="shrink-0 text-text-muted">
+						{t("via")} {provider}
+					</span>
+				) : null}
 			</div>
 			<WebResultBody
 				id={`${toolCallId}:content`}
 				output={output}
 				status={status}
-				runningLabel="Searching…"
-				emptyLabel="No results."
+				runningLabel={t("Searching…")}
+				emptyLabel={t("No results.")}
 			/>
 		</div>
 	);

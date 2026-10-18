@@ -8,6 +8,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { translate } from "@thinkrail/ui/i18n";
 import type { ReactNode } from "react";
 
 export function ConfirmDialog({
@@ -15,8 +16,8 @@ export function ConfirmDialog({
 	onOpenChange,
 	title,
 	description,
-	confirmLabel = "Confirm",
-	cancelLabel = "Cancel",
+	confirmLabel = translate("Confirm"),
+	cancelLabel = translate("Cancel"),
 	destructive = false,
 	confirmTestId,
 	onConfirm,

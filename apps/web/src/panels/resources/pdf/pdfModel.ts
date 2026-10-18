@@ -1,4 +1,5 @@
 import type { ReviewAnchor } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import type { AnchorDraft, ReviewThread, SurfaceReview } from "@/resources";
 import { clampRegion, type Region, regionOfAnchor } from "../regionReview";
 
@@ -25,7 +26,7 @@ export function pdfRegionDraft(region: Region, page: number): AnchorDraft {
 	const normalized = clampRegion(region);
 	return {
 		selectors: [{ ...normalized, page }],
-		label: `p${page} region`,
+		label: translate("p{page} region", { page: page }),
 	};
 }
 

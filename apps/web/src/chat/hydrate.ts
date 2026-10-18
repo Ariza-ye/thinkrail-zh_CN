@@ -13,7 +13,7 @@ import {
 	isTodoReviewFixMessage,
 } from "@thinkrail/contracts";
 import { userText } from "../lib";
-import { assistantFailureText } from "./assistantFailure";
+import { assistantFailureText, assistantFailureUiMessage } from "./assistantFailure";
 import type { ChatTurn, ToolResultState } from "./types";
 
 export interface HydratedRuntime {
@@ -102,9 +102,9 @@ export function messagesToRuntime(
 	);
 	const persistedTerminal =
 		lastConversationMessage?.role === "assistant" ? lastConversationMessage : null;
-	const failure = assistantFailureText(
-		lastSettlement === undefined ? persistedTerminal : lastSettlement,
-	);
+	const terminal = lastSettlement === undefined ? persistedTerminal : lastSettlement;
+	const failure = assistantFailureText(terminal);
+	const uiMessage = assistantFailureUiMessage(terminal);
 	if (failure)
 		turns.push({
 			kind: "error",
@@ -112,6 +112,7 @@ export function messagesToRuntime(
 				? `${options.idScope}:error:${persistedTerminal?.timestamp ?? "settlement"}`
 				: crypto.randomUUID(),
 			text: failure,
+			...(uiMessage ? { uiMessage } : {}),
 			recovery: "try-again",
 		});
 

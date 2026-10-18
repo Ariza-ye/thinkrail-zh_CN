@@ -10,6 +10,7 @@ import {
 } from "@remixicon/react";
 import type { ComposerGrowthLimit, ThinkingLevel, WireModel } from "@thinkrail/contracts";
 import { Button } from "@thinkrail/ui/button";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { Popover, PopoverContent, PopoverTrigger } from "@thinkrail/ui/popover";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { cn } from "@thinkrail/ui/utils";
@@ -212,6 +213,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 	},
 	handleRef,
 ) {
+	const { t } = useI18n();
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const pickerRef = useRef<ModelEffortPickerHandle>(null);
 	const [caret, setCaret] = useState(0);
@@ -529,7 +531,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 							>
 								<Sparkles className="size-12 shrink-0" />
 								<span className="truncate">
-									No prompt templates yet — add starters in Settings → Templates
+									{t("No prompt templates yet — add starters in Settings → Templates")}
 								</span>
 							</button>
 						) : null
@@ -645,10 +647,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 							rows={1}
 							placeholder={
 								isStreaming
-									? "Steer the agent at its next step…"
+									? t("Steer the agent at its next step…")
 									: expanded
-										? "Message the agent…  (@ files · / commands)"
-										: "Message…"
+										? t("Message the agent…  (@ files · / commands)")
+										: t("Message…")
 							}
 							className={cn(
 								"absolute inset-0 size-full resize-none overflow-x-hidden overflow-y-auto rounded-sm bg-transparent px-12 py-8 tr-text-ui text-text-default outline-none placeholder:text-text-muted",
@@ -657,12 +659,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 						/>
 					</div>
 					<div className="col-start-3 row-start-2 flex shrink-0 items-center gap-4 self-end">
-						<IconTooltip label="Search history">
+						<IconTooltip label={t("Search history")}>
 							<Button
 								variant="ghost"
 								size="icon"
 								data-testid="history-open"
-								aria-label="Search history"
+								aria-label={t("Search history")}
 								onClick={openHistory}
 								className="rounded-full"
 							>
@@ -673,12 +675,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 							<button
 								type="button"
 								data-testid="chat-abort"
-								aria-label="Stop"
+								aria-label={t("Stop")}
 								onClick={onAbort}
 								className={STOP_PILL}
 							>
 								<StopFill className="size-12" />
-								<span className={WIDE_ONLY}>Stop</span>
+								<span className={WIDE_ONLY}>{t("Stop")}</span>
 							</button>
 						) : null}
 						<div
@@ -689,7 +691,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 							<button
 								type="button"
 								data-testid="chat-send"
-								aria-label={isStreaming ? "Steer" : "Send"}
+								aria-label={isStreaming ? t("Steer") : t("Send")}
 								onClick={() => submit(isStreaming ? "steer" : "send")}
 								disabled={!canSend}
 								className={cn(
@@ -699,19 +701,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 								)}
 							>
 								<ArrowUp className={cn("size-16", COMPACT_ONLY)} />
-								<span className={WIDE_ONLY}>{isStreaming ? "Steer" : "Send"}</span>
+								<span className={WIDE_ONLY}>{isStreaming ? t("Steer") : t("Send")}</span>
 								<kbd aria-hidden className={cn(KEYCAP, WIDE_ONLY)}>
 									<EnterKey className="size-12" />
 								</kbd>
 							</button>
 							{isStreaming ? (
 								<Popover open={sendMenuOpen} onOpenChange={setSendMenuOpen}>
-									<IconTooltip label="Send options" wrapTrigger>
+									<IconTooltip label={t("Send options")} wrapTrigger>
 										<PopoverTrigger asChild>
 											<button
 												type="button"
 												data-testid="send-menu"
-												aria-label="Send options"
+												aria-label={t("Send options")}
 												className={cn(
 													SEND_MORE,
 													canSend
@@ -739,14 +741,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 												>
 													<span className="flex w-full items-baseline justify-between gap-8">
 														<span className="text-text-default tr-text-ui group-disabled:text-control-disabled-text">
-															{mode.name}
+															{t(mode.name)}
 														</span>
 														<span className="shrink-0 text-text-muted tr-text-metadata group-disabled:text-control-disabled-text">
 															{mode.keys}
 														</span>
 													</span>
 													<span className="text-text-muted tr-text-metadata group-disabled:text-control-disabled-text">
-														{mode.meaning}
+														{t(mode.meaning)}
 													</span>
 												</button>
 											))}

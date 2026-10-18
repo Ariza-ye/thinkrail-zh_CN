@@ -10,6 +10,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@thinkrail/ui/dropdown-menu";
+import { useI18n } from "@thinkrail/ui/i18n";
 import type { MouseEvent, ReactNode } from "react";
 import { useState } from "react";
 import { copyText } from "@/lib";
@@ -29,6 +30,7 @@ export function ChangeRowActions({
 	onOpenTab: () => void;
 	children: (rowProps: { onContextMenu: (event: MouseEvent) => void }) => ReactNode;
 }) {
+	const { t } = useI18n();
 	const [open, setOpen] = useState(false);
 	const onContextMenu = (event: MouseEvent) => {
 		event.preventDefault();
@@ -46,7 +48,7 @@ export function ChangeRowActions({
 				{children({ onContextMenu })}
 				<DropdownMenuTrigger
 					data-testid="change-row-menu"
-					aria-label={`Actions for ${path}`}
+					aria-label={t("Actions for {path}", { path: path })}
 					className={`${ROW_MENU_SLOT} flex items-center justify-center rounded-sm text-text-muted opacity-0 outline-none transition hover:bg-container-elevated-bg hover:text-text-default focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary group-hover:opacity-100 data-[state=open]:opacity-100`}
 				>
 					<ChevronDown className="size-16" />
@@ -55,11 +57,11 @@ export function ChangeRowActions({
 			<DropdownMenuContent align="end" data-testid="change-row-actions">
 				<DropdownMenuItem data-testid="change-action-view" onSelect={onView}>
 					<FileDiff />
-					Review
+					{t("Review")}
 				</DropdownMenuItem>
 				<DropdownMenuItem data-testid="change-action-open-tab" onSelect={onOpenTab}>
 					<OpenAsTab />
-					Open as tab
+					{t("Open as tab")}
 				</DropdownMenuItem>
 				<DropdownMenuItem
 					data-testid="change-action-copy-path"
@@ -68,7 +70,7 @@ export function ChangeRowActions({
 					}}
 				>
 					<Copy />
-					Copy path
+					{t("Copy path")}
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>

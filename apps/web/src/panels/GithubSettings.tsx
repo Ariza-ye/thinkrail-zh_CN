@@ -1,6 +1,7 @@
 import { RiCheckLine as Check, RiRefreshLine as RefreshCw } from "@remixicon/react";
 import type { GithubAuthStatus } from "@thinkrail/contracts";
 import { Button } from "@thinkrail/ui/button";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import { useEffect, useState } from "react";
 import { getTransport } from "@/transport";
@@ -8,6 +9,7 @@ import { SettingsGroup } from "./SettingsGroup";
 import { SettingsNotice } from "./SettingsNotice";
 
 export function GithubSettings() {
+	const { t } = useI18n();
 	const [gh, setGh] = useState<GithubAuthStatus | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
 
@@ -43,21 +45,21 @@ export function GithubSettings() {
 			onClick={() => void refresh()}
 		>
 			<RefreshCw className={cn("size-14", refreshing && "animate-spin")} />
-			Refresh
+			{t("Refresh")}
 		</Button>
 	);
 
 	return (
 		<div data-testid="settings-github" className="flex flex-col">
 			<SettingsGroup
-				title="Local GitHub"
-				description="Authenticate the GitHub CLI to create workspaces from remote branches."
+				title={t("Local GitHub")}
+				description={t("Authenticate the GitHub CLI to create workspaces from remote branches.")}
 			>
 				<div data-testid="settings-gh-status" data-connected={connected}>
 					{connected ? (
 						<div className="flex items-center gap-8 rounded-sm bg-control-bg px-12 py-8">
 							<Check className="size-14 text-feedback-success" />
-							<span className="tr-text-ui text-feedback-success">Connected</span>
+							<span className="tr-text-ui text-feedback-success">{t("Connected")}</span>
 							{gh?.login ? (
 								<span className="min-w-0 truncate text-text-muted tr-text-metadata">
 									{gh.login}
@@ -68,8 +70,9 @@ export function GithubSettings() {
 					) : (
 						<SettingsNotice variant="warning" action={refreshButton}>
 							<p>
-								Not connected. Run <code className="tr-code-text">gh auth login</code> in a
-								terminal, then Refresh.
+								{t("Not connected. Run {command} in a terminal, then Refresh.", {
+									command: "gh auth login",
+								})}
 							</p>
 						</SettingsNotice>
 					)}

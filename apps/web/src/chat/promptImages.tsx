@@ -1,5 +1,6 @@
 import { RiCloseLine as X } from "@remixicon/react";
 import { REQUEST_IMAGE_BASE64_BUDGET } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import {
 	type ClipboardEvent,
@@ -166,6 +167,7 @@ export function PromptImageChips({
 	testId?: string;
 	className?: string;
 }) {
+	const { t } = useI18n();
 	const { images, pending, errors, removeImage, dismissError } = controller;
 	if (!leading && images.length === 0 && pending === 0 && errors.length === 0) return null;
 	return (
@@ -177,13 +179,16 @@ export function PromptImageChips({
 					data-testid="composer-image-error"
 					tone="error"
 					icon={false}
-					title={`Couldn't attach ${err.name} — ${err.reason}`}
-					label={`Couldn't attach ${err.name}`}
-					meta={`— ${err.reason}`}
+					title={t("Couldn't attach {value} — {value2}", {
+						value: err.name,
+						value2: t(err.reason),
+					})}
+					label={t("Couldn't attach {value}", { value: err.name })}
+					meta={t("— {reason}", { reason: t(err.reason) })}
 					trailing={
 						<button
 							type="button"
-							aria-label="Dismiss"
+							aria-label={t("Dismiss")}
 							onClick={() => dismissError(err.id)}
 							className="hover:opacity-80"
 						>
@@ -205,7 +210,7 @@ export function PromptImageChips({
 					trailing={
 						<button
 							type="button"
-							aria-label="Remove image"
+							aria-label={t("Remove image")}
 							onClick={() => removeImage(img.id)}
 							className="text-text-muted hover:text-text-default"
 						>
@@ -219,7 +224,7 @@ export function PromptImageChips({
 					data-testid="composer-image-pending"
 					label={
 						<span className="text-text-muted">
-							{pending === 1 ? "Attaching…" : `Attaching ${pending}…`}
+							{pending === 1 ? t("Attaching…") : t("Attaching {value}…", { value: pending })}
 						</span>
 					}
 				/>

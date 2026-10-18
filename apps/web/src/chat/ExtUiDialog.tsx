@@ -7,6 +7,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useState } from "react";
 import type { ExtUiDialogRequest } from "./types";
 
@@ -17,6 +18,7 @@ export function ExtUiDialog({
 	request: ExtUiDialogRequest;
 	onReply: (value: string | boolean | null) => void;
 }) {
+	const { t } = useI18n();
 	const [text, setText] = useState(request.kind === "editor" ? (request.prefill ?? "") : "");
 	const cancel = () => onReply(request.kind === "confirm" ? false : null);
 
@@ -83,24 +85,24 @@ export function ExtUiDialog({
 					{request.kind === "confirm" ? (
 						<>
 							<Button variant="outline" data-testid="ext-ui-cancel" onClick={() => onReply(false)}>
-								Cancel
+								{t("Cancel")}
 							</Button>
 							<Button data-testid="ext-ui-confirm" onClick={() => onReply(true)}>
-								OK
+								{t("OK")}
 							</Button>
 						</>
 					) : request.kind === "input" || request.kind === "editor" ? (
 						<>
 							<Button variant="outline" data-testid="ext-ui-cancel" onClick={cancel}>
-								Cancel
+								{t("Cancel")}
 							</Button>
 							<Button data-testid="ext-ui-submit" onClick={() => onReply(text)}>
-								Submit
+								{t("Submit")}
 							</Button>
 						</>
 					) : (
 						<Button variant="outline" data-testid="ext-ui-cancel" onClick={cancel}>
-							Cancel
+							{t("Cancel")}
 						</Button>
 					)}
 				</DialogFooter>

@@ -1,4 +1,5 @@
 import { RiSendPlaneLine as Send } from "@remixicon/react";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { useMemo, useState } from "react";
 import { useAppStore } from "../store";
 import { allDraftIds, fileDraftIds } from "./reviewModel";
@@ -13,12 +14,13 @@ export function SendReviewButton({
 	path: string | null;
 	testid?: string;
 }) {
+	const { t } = useI18n();
 	const comments = useAppStore((s) => s.reviewsByWorkspace[workspaceId]?.comments);
 	const draftIds = useMemo(() => fileDraftIds(comments, path), [comments, path]);
 	return (
 		<SendButtonBase
 			testid={testid}
-			label={`Send review (${draftIds.length})`}
+			label={t("Send review ({count})", { count: draftIds.length })}
 			count={draftIds.length}
 			send={() => sendReviewBatch(workspaceId, draftIds)}
 		/>
@@ -28,18 +30,19 @@ export function SendReviewButton({
 export function SendAllReviewsButton({
 	workspaceId,
 	testid = "review-send-all",
-	verb = "Send all",
+	verb = translate("Send all"),
 }: {
 	workspaceId: string;
 	testid?: string;
 	verb?: string;
 }) {
+	const { t } = useI18n();
 	const comments = useAppStore((s) => s.reviewsByWorkspace[workspaceId]?.comments);
 	const count = useMemo(() => allDraftIds(comments).length, [comments]);
 	return (
 		<SendButtonBase
 			testid={testid}
-			label={`${verb} (${count})`}
+			label={t("{verb} ({count})", { verb, count })}
 			count={count}
 			send={() => sendReviewBatch(workspaceId)}
 		/>

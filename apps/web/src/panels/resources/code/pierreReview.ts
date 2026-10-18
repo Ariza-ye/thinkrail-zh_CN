@@ -1,4 +1,5 @@
 import type { AnnotationSide, FileDiffMetadata, Hunk, SelectedLineRange } from "@pierre/diffs";
+import { translate } from "@thinkrail/ui/i18n";
 import { type RefObject, useEffect } from "react";
 import type { AnchorDraft, ResourceDiffProps, ReviewThread, SurfaceReview } from "@/resources";
 import type { PierreVirtualizer } from "./pierreVirtualizer";
@@ -24,7 +25,16 @@ export function draftLineLabel(startLine: number, endLine: number): string {
 }
 
 export function composerLineLabel(startLine: number, endLine: number): string {
-	return startLine === endLine ? `Line ${startLine}` : `Lines ${startLine}–${endLine}`;
+	return startLine === endLine
+		? translate("Line {startLine}", { startLine: startLine })
+		: translate("Lines {startLine}–{endLine}", { startLine: startLine, endLine: endLine });
+}
+
+export function composerDraftLabel(draft: AnchorDraft): string {
+	const range = draft.selectors.find((selector) => selector.kind === "lineRange");
+	return range?.kind === "lineRange"
+		? composerLineLabel(range.startLine, range.endLine)
+		: translate("Changed hunk");
 }
 
 export interface OpenComposer {

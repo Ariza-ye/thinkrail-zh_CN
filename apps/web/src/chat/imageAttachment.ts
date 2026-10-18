@@ -4,6 +4,7 @@ import {
 	IMAGE_MAX_BASE64_BYTES,
 	type ImageContent,
 } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 
 export const MAX_ATTACHMENT_EDGE = 1568;
 
@@ -42,7 +43,7 @@ function dataUrlToContent(dataUrl: string): ImageContent {
 function fileToRawContent(file: File): Promise<ImageContent> {
 	return new Promise((resolve, reject) => {
 		const reader = new FileReader();
-		reader.onerror = () => reject(reader.error ?? new Error("failed to read image"));
+		reader.onerror = () => reject(reader.error ?? new Error(translate("failed to read image")));
 		reader.onload = () =>
 			resolve({ ...dataUrlToContent(String(reader.result)), mimeType: file.type || "image/png" });
 		reader.readAsDataURL(file);

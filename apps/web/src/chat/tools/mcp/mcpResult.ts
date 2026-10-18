@@ -4,6 +4,7 @@ import type {
 	McpToolDetails,
 } from "@thinkrail/contracts";
 import { resultText } from "@thinkrail/extension-api/web";
+import { translate } from "@thinkrail/ui/i18n";
 
 export const MCP_TOOL_PREFIX = "mcp__";
 
@@ -146,7 +147,9 @@ const CLI_INSTRUCTION = /(?:^|\s)(?:Run \/mcp|pi mcp login)\b[^.\n]*\.?/gi;
 /** The failure text without pi's CLI instruction, for when the card offers the in-app action instead. */
 export function stripMcpCliInstruction(text: string): string {
 	const stripped = text
-		.replace(/\bRun \/login (\S+) to sign in\./gi, 'Sign in to provider "$1" in Settings.')
+		.replace(/\bRun \/login (\S+) to sign in\./gi, (_match, provider: string) =>
+			translate('Sign in to provider "{provider}" in Settings.', { provider }),
+		)
 		.replace(CLI_INSTRUCTION, "")
 		.replace(/[ \t]+\n/g, "\n")
 		.trim();

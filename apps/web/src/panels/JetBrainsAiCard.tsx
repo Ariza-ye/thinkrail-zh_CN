@@ -19,6 +19,7 @@ import {
 	type JbcentralStatus,
 } from "@thinkrail/contracts";
 import { Button } from "@thinkrail/ui/button";
+import { type Translator, translate, useI18n } from "@thinkrail/ui/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { copyText } from "@/lib";
 import { getTransport } from "@/transport";
@@ -45,6 +46,7 @@ function JbcentralQuotaSettings({
 	onEnabledChange,
 	onRefreshSecondsChange,
 }: JbcentralQuotaSettingsProps) {
+	const { t } = useI18n();
 	const savedText = String(refreshSeconds);
 	const [draft, setDraft] = useState(savedText);
 	const [submitted, setSubmitted] = useState<string | null>(null);
@@ -57,8 +59,13 @@ function JbcentralQuotaSettings({
 
 	const invalid = !isJbcentralQuotaRefreshSeconds(Number(draft));
 	const error = invalid
-		? `Enter a whole number from ${JBCENTRAL_QUOTA_REFRESH_SECONDS.min} to ${JBCENTRAL_QUOTA_REFRESH_SECONDS.max}.`
-		: saveError;
+		? t("Enter a whole number from {min} to {max}.", {
+				min: JBCENTRAL_QUOTA_REFRESH_SECONDS.min,
+				max: JBCENTRAL_QUOTA_REFRESH_SECONDS.max,
+			})
+		: saveError
+			? t(saveError)
+			: null;
 	const errorId = "jbcentral-quota-interval-error";
 
 	const commitInterval = () => {
@@ -78,10 +85,10 @@ function JbcentralQuotaSettings({
 			className="flex flex-col border-border-muted border-t"
 		>
 			<div className="flex items-center justify-between gap-12 border-border-muted border-b py-12">
-				<span className="text-text-default tr-text-ui">Show quota in top bar</span>
+				<span className="text-text-default tr-text-ui">{t("Show quota in top bar")}</span>
 				<SettingsSwitch
 					checked={enabled}
-					label="Show JetBrains AI quota in top bar"
+					label={t("Show JetBrains AI quota in top bar")}
 					testId="jbcentral-quota-toggle"
 					onChange={(next) => {
 						setSaveError(null);
@@ -94,7 +101,7 @@ function JbcentralQuotaSettings({
 
 			<div className="flex items-center justify-between gap-12 py-12">
 				<label htmlFor="jbcentral-quota-interval" className="text-text-default tr-text-ui">
-					Refresh every (sec)
+					{t("Refresh every (sec)")}
 				</label>
 				<input
 					id="jbcentral-quota-interval"
@@ -152,6 +159,7 @@ export function JetBrainsAiCard({
 	onChanged: () => void | Promise<void>;
 	quotaSettings?: JbcentralQuotaSettingsProps;
 }) {
+	const { t } = useI18n();
 	const [busyAction, setBusyAction] = useState<JbcentralAction | null>(null);
 	const [notice, setNotice] = useState<Notice | null>(null);
 	const [signingIn, setSigningIn] = useState(false);
@@ -236,10 +244,14 @@ export function JetBrainsAiCard({
 					{busyAction ? (
 						<Button size="sm" disabled data-testid="jetbrains-configuring">
 							<Loader2 className="size-14 animate-spin" />
-							{actionLabel(busyAction)}…
+							{actionLabel(busyAction, t)}…
 						</Button>
 					) : signedOut ? (
-						<SignInButton label="Sign in" signingIn={signingIn} onSignIn={() => void signIn()} />
+						<SignInButton
+							label={t("Sign in")}
+							signingIn={signingIn}
+							onSignIn={() => void signIn()}
+						/>
 					) : status.state === "load-failed" && retryAction ? (
 						<>
 							<Button
@@ -248,7 +260,7 @@ export function JetBrainsAiCard({
 								onClick={() => void runAction(retryAction)}
 							>
 								<RefreshCw className="size-14" />
-								Retry
+								{t("Retry")}
 							</Button>
 							{status.configured ? (
 								<ActionButton action="disconnect" onAction={() => void runAction("disconnect")} />
@@ -264,7 +276,7 @@ export function JetBrainsAiCard({
 							onClick={() => void onChanged()}
 						>
 							<RefreshCw className="size-14" />
-							Recheck
+							{t("Recheck")}
 						</Button>
 					) : null}
 				</div>
@@ -276,8 +288,8 @@ export function JetBrainsAiCard({
 				<div className="flex flex-col gap-4" data-testid="jetbrains-error">
 					<p className="text-feedback-error tr-text-metadata">
 						{notice.kind === "failed"
-							? failureText(notice.action, notice.reason)
-							: "ThinkRail couldn't reach the host. Recheck the connection and try again."}
+							? failureText(notice.action, notice.reason, t)
+							: t("ThinkRail couldn't reach the host. Recheck the connection and try again.")}
 					</p>
 					{!signedOut &&
 					notice.action === "connect" &&
@@ -289,12 +301,12 @@ export function JetBrainsAiCard({
 
 			{notice?.kind === "login-launched" ? (
 				<p className="text-text-muted tr-text-metadata" data-testid="jetbrains-login-launched">
-					Complete sign-in in the browser on the host, then Refresh.
+					{t("Complete sign-in in the browser on the host, then Refresh.")}
 				</p>
 			) : notice?.kind === "login-failed" ? (
 				<div className="flex flex-col gap-4" data-testid="jetbrains-login-failed">
 					<p className="text-feedback-error tr-text-metadata">
-						ThinkRail couldn't launch Central sign-in. Run this on the host instead:
+						{t("ThinkRail couldn't launch Central sign-in. Run this on the host instead:")}
 					</p>
 					<CopyableCommand command={LOGIN_CMD} />
 				</div>
@@ -306,6 +318,7 @@ export function JetBrainsAiCard({
 }
 
 function ActionButton({ action, onAction }: { action: JbcentralAction; onAction: () => void }) {
+	const { t } = useI18n();
 	const disconnect = action === "disconnect";
 	return (
 		<Button
@@ -321,7 +334,7 @@ function ActionButton({ action, onAction }: { action: JbcentralAction; onAction:
 			) : action === "start-proxy" ? (
 				<Play className="size-14" />
 			) : null}
-			{actionLabel(action)}
+			{actionLabel(action, t)}
 		</Button>
 	);
 }
@@ -335,6 +348,7 @@ function StatusBody({
 	install: JbcentralInstall;
 	onChanged: () => void | Promise<void>;
 }) {
+	const { t } = useI18n();
 	if (isSignedOut(status)) return <SignedOutNotice />;
 
 	switch (status.state) {
@@ -342,7 +356,7 @@ function StatusBody({
 			return (
 				<div className="flex flex-col gap-4" data-testid="jetbrains-needs-install">
 					<p className="text-text-muted tr-text-metadata">
-						Install the JetBrains Central CLI (central), then Recheck:
+						{t("Install the JetBrains Central CLI (central), then Recheck:")}
 					</p>
 					<CopyableCommand command={install.command} />
 					<Button
@@ -353,21 +367,23 @@ function StatusBody({
 						className="self-start"
 					>
 						<RefreshCw className="size-14" />
-						Recheck
+						{t("Recheck")}
 					</Button>
 				</div>
 			);
 		case "outdated":
 			return (
 				<p className="text-feedback-warning tr-text-metadata" data-testid="jetbrains-outdated">
-					Central {status.version} is older than the minimum ThinkRail supports. Update it before
-					connecting.
+					{t(
+						"Central {version} is older than the minimum ThinkRail supports. Update it before connecting.",
+						{ version: status.version },
+					)}
 				</p>
 			);
 		case "supported":
 			return (
 				<p className="text-feedback-success tr-text-metadata" data-testid="jetbrains-ready">
-					Central is ready. Connect to make its JetBrains AI models available to new chats.
+					{t("Central is ready. Connect to make its JetBrains AI models available to new chats.")}
 				</p>
 			);
 		case "configured":
@@ -377,7 +393,7 @@ function StatusBody({
 					data-testid="jetbrains-proxy-stopped"
 				>
 					<AlertTriangle className="mt-2 size-14 shrink-0" />
-					Central's proxy is not running. Start it to use JetBrains AI models.
+					{t("Central's proxy is not running. Start it to use JetBrains AI models.")}
 				</p>
 			) : (
 				<p
@@ -385,19 +401,23 @@ function StatusBody({
 					data-testid="jetbrains-connected"
 				>
 					<Check className="size-14 shrink-0" />
-					Connected — Central's JetBrains AI models are available to new chats.
+					{t("Connected — Central's JetBrains AI models are available to new chats.")}
 				</p>
 			);
 		case "malformed-version":
 			return (
 				<p className="text-feedback-error tr-text-metadata" data-testid="jetbrains-version-error">
-					ThinkRail couldn't verify this Central version safely. Reinstall Central, then Recheck.
+					{t(
+						"ThinkRail couldn't verify this Central version safely. Reinstall Central, then Recheck.",
+					)}
 				</p>
 			);
 		case "probe-failed":
 			return (
 				<p className="text-feedback-error tr-text-metadata" data-testid="jetbrains-version-error">
-					ThinkRail couldn't verify Central right now. Check the host installation, then Recheck.
+					{t(
+						"ThinkRail couldn't verify Central right now. Check the host installation, then Recheck.",
+					)}
 				</p>
 			);
 		case "configuring":
@@ -405,8 +425,10 @@ function StatusBody({
 				<p className="flex items-center gap-4 text-text-muted tr-text-metadata">
 					<Loader2 className="size-14 animate-spin" />
 					{status.action
-						? `Central is ${actionProgress(status.action)}. Keep ThinkRail open.`
-						: "ThinkRail is applying the latest Central configuration."}
+						? t("Central is {action}. Keep ThinkRail open.", {
+								action: actionProgress(status.action, t),
+							})
+						: t("ThinkRail is applying the latest Central configuration.")}
 				</p>
 			);
 		case "load-failed":
@@ -416,8 +438,9 @@ function StatusBody({
 					data-testid="jetbrains-load-failed"
 				>
 					<AlertTriangle className="mt-2 size-14 shrink-0" />
-					ThinkRail couldn't prepare the updated model runtime. The previous runtime remains
-					available; retry, or disconnect Central to rebuild without it.
+					{t(
+						"ThinkRail couldn't prepare the updated model runtime. The previous runtime remains available; retry, or disconnect Central to rebuild without it.",
+					)}
 				</p>
 			);
 	}
@@ -452,24 +475,26 @@ function SignInButton({
 }
 
 function SignInGuidance({ signingIn, onSignIn }: { signingIn: boolean; onSignIn: () => void }) {
+	const { t } = useI18n();
 	return (
 		<div className="flex flex-col gap-4" data-testid="jetbrains-signin-guidance">
 			<p className="text-text-muted tr-text-metadata">
-				If Central needs authentication, sign in and then retry Connect.
+				{t("If Central needs authentication, sign in and then retry Connect.")}
 			</p>
-			<SignInButton label="Sign in to JetBrains" signingIn={signingIn} onSignIn={onSignIn} />
+			<SignInButton label={t("Sign in to JetBrains")} signingIn={signingIn} onSignIn={onSignIn} />
 		</div>
 	);
 }
 
 function SignedOutNotice() {
+	const { t } = useI18n();
 	return (
 		<p
 			className="flex items-start gap-4 text-feedback-warning tr-text-metadata"
 			data-testid="jetbrains-signed-out"
 		>
 			<AlertTriangle className="mt-2 size-14 shrink-0" />
-			Central is signed out. Sign in to use its JetBrains AI models.
+			{t("Central is signed out. Sign in to use its JetBrains AI models.")}
 		</p>
 	);
 }
@@ -501,47 +526,62 @@ function needsRecheck(status: JbcentralStatus): boolean {
 	return status.state === "malformed-version" || status.state === "probe-failed";
 }
 
-function actionLabel(action: JbcentralAction): string {
+function actionLabel(action: JbcentralAction, translator: Translator = translate): string {
 	return action === "connect"
-		? "Connect"
+		? translator("Connect")
 		: action === "disconnect"
-			? "Disconnect"
+			? translator("Disconnect")
 			: action === "start-proxy"
-				? "Start proxy"
-				: "Update";
+				? translator("Start proxy")
+				: translator("Update");
 }
 
-function actionProgress(action: JbcentralAction): string {
+function actionProgress(action: JbcentralAction, translator: Translator = translate): string {
 	return action === "connect"
-		? "connecting"
+		? translator("connecting")
 		: action === "disconnect"
-			? "disconnecting"
+			? translator("disconnecting")
 			: action === "start-proxy"
-				? "starting the proxy"
-				: "updating";
+				? translator("starting the proxy")
+				: translator("updating");
 }
 
-function failureText(action: JbcentralAction, reason: JbcentralActionFailureReason): string {
+function failureText(
+	action: JbcentralAction,
+	reason: JbcentralActionFailureReason,
+	translator: Translator = translate,
+): string {
 	switch (reason) {
 		case "not-installed":
-			return "Central isn't available on the host yet. Install it and Recheck.";
+			return translator("Central isn't available on the host yet. Install it and Recheck.");
 		case "unsupported-version":
-			return "This Central version isn't supported by ThinkRail. Follow the version guidance and retry.";
+			return translator(
+				"This Central version isn't supported by ThinkRail. Follow the version guidance and retry.",
+			);
 		case "version-probe-failed":
-			return "ThinkRail couldn't verify Central safely. Check the host installation and Recheck.";
+			return translator(
+				"ThinkRail couldn't verify Central safely. Check the host installation and Recheck.",
+			);
 		case "central-action-failed":
 			return action === "start-proxy"
-				? "Central couldn't start the proxy. Check Central on the host and try again."
-				: `Central couldn't ${action}. Check Central on the host and try again.`;
+				? translator("Central couldn't start the proxy. Check Central on the host and try again.")
+				: translator("Central couldn't {action}. Check Central on the host and try again.", {
+						action: translator(action),
+					});
 		case "artifact-missing":
 		case "artifact-present":
-			return "Central finished, but ThinkRail couldn't confirm the configuration. Recheck and retry.";
+			return translator(
+				"Central finished, but ThinkRail couldn't confirm the configuration. Recheck and retry.",
+			);
 		case "candidate-failed":
-			return "ThinkRail couldn't prepare the updated model runtime. The previous runtime was retained.";
+			return translator(
+				"ThinkRail couldn't prepare the updated model runtime. The previous runtime was retained.",
+			);
 	}
 }
 
 function CopyableCommand({ command }: { command: string }) {
+	const { t } = useI18n();
 	const [copied, setCopied] = useState(false);
 	const copy = async () => {
 		if (!(await copyText(command))) return;
@@ -556,8 +596,8 @@ function CopyableCommand({ command }: { command: string }) {
 			<button
 				type="button"
 				data-testid="jetbrains-copy-cmd"
-				aria-label={`Copy: ${command}`}
-				title="Copy"
+				aria-label={t("Copy: {command}", { command })}
+				title={t("Copy")}
 				onClick={() => void copy()}
 				className="flex size-24 shrink-0 items-center justify-center rounded-sm text-text-muted outline-none transition-colors hover:bg-control-bg-hovered hover:text-text-default focus-visible:ring-2 focus-visible:ring-primary"
 			>

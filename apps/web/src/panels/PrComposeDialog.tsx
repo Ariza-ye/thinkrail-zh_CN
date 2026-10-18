@@ -11,6 +11,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { Textarea } from "@thinkrail/ui/textarea";
 import { useState } from "react";
 
@@ -32,21 +33,24 @@ function ComposeForm({
 	busy: boolean;
 	onSubmit: (title: string, body: string, titleEdited: boolean) => void;
 }) {
+	const { t } = useI18n();
 	const [title, setTitle] = useState(state.title);
 	const [body, setBody] = useState(state.body);
-	const action = updating ? "Push updates" : state.draft ? "Open draft PR" : "Open PR";
+	const action = updating ? t("Push updates") : state.draft ? t("Open draft PR") : t("Open PR");
 	return (
 		<>
 			<DialogHeader>
 				<DialogTitle>{action}</DialogTitle>
 				<DialogDescription>
 					{updating
-						? "Review the refreshed description before pushing — it overwrites the open PR's."
-						: "Review the title and description before the PR is created — both came from this plan."}
+						? t("Review the refreshed description before pushing — it overwrites the open PR's.")
+						: t(
+								"Review the title and description before the PR is created — both came from this plan.",
+							)}
 				</DialogDescription>
 			</DialogHeader>
 			<label className="flex flex-col gap-4">
-				<span className="tr-text-eyebrow text-text-subtle">Title</span>
+				<span className="tr-text-eyebrow text-text-subtle">{t("Title")}</span>
 				<input
 					type="text"
 					data-testid="open-pr-compose-title"
@@ -57,7 +61,7 @@ function ComposeForm({
 			</label>
 			<div className="flex min-h-0 flex-1 flex-col gap-4">
 				<label htmlFor="open-pr-compose-body" className="tr-text-eyebrow text-text-subtle">
-					Description
+					{t("Description")}
 				</label>
 				<Textarea
 					id="open-pr-compose-body"

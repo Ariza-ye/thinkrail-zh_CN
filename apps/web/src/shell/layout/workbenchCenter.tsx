@@ -1,4 +1,5 @@
 import { RiChatNewLine as MessageSquarePlus, RiCloseLine as X } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import {
 	type ImperativePanelGroupHandle,
 	ResizableHandle,
@@ -45,6 +46,7 @@ export const CenterGroupView = memo(function CenterGroupView({
 	renderEmptyCenter: WorkbenchProps["renderEmptyCenter"];
 	renderCenterActions: WorkbenchProps["renderCenterActions"];
 }) {
+	const { t } = useI18n();
 	const location: LayoutGroupLocation = { area: "center", groupId: group.id };
 	const [sizeRef, size] = useElementSize();
 	const splitGeometry = {
@@ -63,7 +65,7 @@ export const CenterGroupView = memo(function CenterGroupView({
 			data-testid="center-group"
 			data-group-id={group.id}
 			tabIndex={-1}
-			aria-label={group.tabs.length === 0 ? "Empty center group" : "Center group"}
+			aria-label={group.tabs.length === 0 ? t("Empty center group") : t("Center group")}
 			className="relative flex h-full min-h-0 min-w-0 flex-col bg-container-content-bg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
 			onFocusCapture={() => {
 				if (selected) shared.onFocusGroup(location, selected.id);
@@ -95,12 +97,12 @@ export const CenterGroupView = memo(function CenterGroupView({
 						{renderCenterActions(group.id)}
 						{group.tabs.length === 0 ? (
 							<IconTooltip
-								label={isLayoutUnavailable(groupRemoval) ? groupRemoval.reason : "Remove group"}
+								label={isLayoutUnavailable(groupRemoval) ? groupRemoval.reason : t("Remove group")}
 							>
 								<button
 									type="button"
 									data-testid="remove-layout-group"
-									aria-label="Remove group"
+									aria-label={t("Remove group")}
 									disabled={isLayoutUnavailable(groupRemoval)}
 									onClick={() => {
 										if (!isLayoutUnavailable(groupRemoval)) shared.onApply(groupRemoval);
@@ -111,11 +113,11 @@ export const CenterGroupView = memo(function CenterGroupView({
 								</button>
 							</IconTooltip>
 						) : null}
-						<IconTooltip label="New chat">
+						<IconTooltip label={t("New chat")}>
 							<button
 								type="button"
 								data-testid="new-chat"
-								aria-label="New chat"
+								aria-label={t("New chat")}
 								onClick={() => onNewChat(group.id)}
 								className="flex w-panel-header-row shrink-0 items-center justify-center text-text-muted hover:bg-control-bg-hovered hover:text-text-default"
 							>
@@ -152,14 +154,14 @@ export const CenterGroupView = memo(function CenterGroupView({
 							<CenterSplitTarget
 								groupId={group.id}
 								direction="left"
-								label="Split left"
+								label={t("Split left")}
 								edgeClassName="inset-y-1/4 left-4 w-1/5"
 								halfClassName="inset-y-0 left-0 w-1/2"
 							/>
 							<CenterSplitTarget
 								groupId={group.id}
 								direction="right"
-								label="Split right"
+								label={t("Split right")}
 								edgeClassName="inset-y-1/4 right-4 w-1/5"
 								halfClassName="inset-y-0 right-0 w-1/2"
 							/>
@@ -170,14 +172,14 @@ export const CenterGroupView = memo(function CenterGroupView({
 							<CenterSplitTarget
 								groupId={group.id}
 								direction="up"
-								label="Split up"
+								label={t("Split up")}
 								edgeClassName="inset-x-1/4 top-32 h-1/5"
 								halfClassName="inset-x-0 top-0 h-1/2"
 							/>
 							<CenterSplitTarget
 								groupId={group.id}
 								direction="down"
-								label="Split down"
+								label={t("Split down")}
 								edgeClassName="inset-x-1/4 bottom-4 h-1/5"
 								halfClassName="inset-x-0 bottom-0 h-1/2"
 							/>

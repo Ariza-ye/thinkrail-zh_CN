@@ -1,4 +1,5 @@
 import type { LineSpan } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { structuredPatch } from "diff";
 import type { AnchorDraft } from "@/resources";
 
@@ -109,7 +110,7 @@ export function createAskAgentRequest(block: ChangeBlock, modifiedText: string):
 					: `L${lineRange.startLine}–${lineRange.endLine}`
 				: "file",
 		},
-		initialText: "Please revise this change: ",
+		initialText: translate("Please revise this change: "),
 		...(block.modified.count === 0 ? { notice: "This comment refers to removed lines." } : {}),
 	};
 }

@@ -16,6 +16,7 @@ import {
 	CommandItem,
 	CommandList,
 } from "@thinkrail/ui/command";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { Popover, PopoverContent, PopoverTrigger } from "@thinkrail/ui/popover";
 import { cn } from "@thinkrail/ui/utils";
 import { useState } from "react";
@@ -38,8 +39,8 @@ import {
 import type { ModelPreferences } from "./useModelPreferences";
 
 function subLine(model: WireModel): string {
-	const parts = [`${formatContext(model.contextWindow)} context`];
-	if (model.reasoning) parts.push("reasoning");
+	const parts = [translate("{value} context", { value: formatContext(model.contextWindow) })];
+	if (model.reasoning) parts.push(translate("reasoning"));
 	return parts.join(" · ");
 }
 
@@ -78,6 +79,7 @@ export function ModelSelector({
 	disabled?: boolean;
 	preferences?: ModelPreferences;
 }) {
+	const { t } = useI18n();
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [expansion, setExpansion] = useState<GroupExpansion>(() => initialGroupExpansion(null, []));
@@ -131,7 +133,11 @@ export function ModelSelector({
 						type="button"
 						data-testid="model-favorite-toggle"
 						data-favorite={isPinned}
-						aria-label={isPinned ? `Unpin ${model.name}` : `Pin ${model.name}`}
+						aria-label={
+							isPinned
+								? t("Unpin {value}", { value: model.name })
+								: t("Pin {value}", { value: model.name })
+						}
 						aria-pressed={isPinned}
 						onClick={(event) => {
 							event.stopPropagation();
@@ -199,11 +205,15 @@ export function ModelSelector({
 			</PopoverTrigger>
 			<PopoverContent align="start" container={container} className="w-340 p-0">
 				<Command className="min-h-0 flex-1 bg-transparent" filter={pickerFilter(groups, groupRow)}>
-					<CommandInput placeholder="Search models…" value={query} onValueChange={setQuery} />
+					<CommandInput placeholder={t("Search models…")} value={query} onValueChange={setQuery} />
 					<CommandList className="max-h-340 min-h-0 flex-1 pb-24">
-						{emptyState === "no-match" ? <CommandEmpty>No models found.</CommandEmpty> : null}
+						{emptyState === "no-match" ? (
+							<CommandEmpty>{t("No models found.")}</CommandEmpty>
+						) : null}
 						{emptyState === "no-models" ? (
-							<p className="px-8 py-12 text-center text-text-muted tr-text-ui">{NO_MODELS_HINT}</p>
+							<p className="px-8 py-12 text-center text-text-muted tr-text-ui">
+								{t(NO_MODELS_HINT)}
+							</p>
 						) : null}
 						{defaultOption !== undefined && onSelectDefault !== undefined && (
 							<CommandGroup>
@@ -232,7 +242,7 @@ export function ModelSelector({
 							</CommandGroup>
 						)}
 						{pinnedModels.length > 0 && (
-							<CommandGroup heading="Pinned">
+							<CommandGroup heading={t("Pinned")}>
 								{pinnedModels.map((m) => renderModel(m, "pinned"))}
 							</CommandGroup>
 						)}
@@ -254,7 +264,7 @@ export function ModelSelector({
 						className="pointer-events-auto inline-flex items-center gap-4 rounded-sm border border-control-border-default bg-control-bg px-8 py-4 tr-text-metadata text-text-default shadow-sm outline-none transition-colors hover:bg-control-bg-hovered focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default disabled:border-control-disabled-border disabled:bg-control-disabled-bg disabled:text-control-disabled-text"
 					>
 						<RefreshCw className={cn("size-12 shrink-0", refreshing && "animate-spin")} />
-						{refreshing ? "Updating…" : "Refresh"}
+						{refreshing ? t("Updating…") : t("Refresh")}
 					</button>
 				</div>
 			</PopoverContent>

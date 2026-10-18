@@ -1,4 +1,5 @@
 import type { GitDiffScope, ReviewAnchor } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { useMemo } from "react";
 import type { AnchorDraft, ReviewThread, ReviewThreadActions, SurfaceReview } from "@/resources";
 import { toast, useAppStore } from "../store";
@@ -43,7 +44,7 @@ export function useFileReview(
 				try {
 					await getTransport().request("review.commentDelete", { workspaceId, id });
 				} catch (error) {
-					toast.error(errorText(error), "Couldn't delete the draft");
+					toast.error(errorText(error), translate("Couldn't delete the draft"));
 					throw error;
 				}
 			},
@@ -51,7 +52,7 @@ export function useFileReview(
 				try {
 					await getTransport().request("review.commentUpdate", { workspaceId, id, body });
 				} catch (error) {
-					toast.error(errorText(error), "Couldn't update the comment");
+					toast.error(errorText(error), translate("Couldn't update the comment"));
 					throw error;
 				}
 			},
@@ -135,7 +136,7 @@ function sideCommenting(
 			draftNeedsRichAnchors(draft) &&
 			!supportsRichAnchors(useAppStore.getState().protocolVersion)
 		) {
-			return Promise.reject(new Error(RICH_ANCHOR_HOST_TOO_OLD));
+			return Promise.reject(new Error(translate(RICH_ANCHOR_HOST_TOO_OLD)));
 		}
 		return getTransport().request("review.commentAdd", {
 			workspaceId,
@@ -150,7 +151,7 @@ function sideCommenting(
 			try {
 				await add(draft, text);
 			} catch (error) {
-				toast.error(errorText(error), "Couldn't save the comment");
+				toast.error(errorText(error), translate("Couldn't save the comment"));
 				throw error;
 			}
 		},
@@ -159,7 +160,7 @@ function sideCommenting(
 			try {
 				comment = await add(draft, text);
 			} catch (error) {
-				toast.error(errorText(error), "Couldn't save the comment");
+				toast.error(errorText(error), translate("Couldn't save the comment"));
 				throw error;
 			}
 			await sendReviewComment(workspaceId, comment.id);

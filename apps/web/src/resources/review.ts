@@ -1,4 +1,5 @@
 import type { ReviewAnchor } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import type { ResourceIntent, ResourceRenderer } from "./types";
 
 export function anchorLabel(
@@ -14,9 +15,9 @@ export function anchorLabel(
 		if (structural.scheme === "json-pointer") return structural.ref;
 		if (structural.scheme === "ipynb-cell") {
 			const index = /^index:(\d+)$/.exec(structural.ref);
-			if (index) return `cell ${Number(index[1]) + 1}`;
+			if (index) return translate("cell {cell}", { cell: Number(index[1]) + 1 });
 			const ordinal = ipynbCellOrdinals?.get(structural.ref);
-			return `cell ${ordinal ?? structural.ref}`;
+			return translate("cell {cell}", { cell: ordinal ?? structural.ref });
 		}
 		return `${structural.scheme} ${structural.ref}`;
 	}
@@ -28,9 +29,11 @@ export function anchorLabel(
 	}
 	const region = anchor.selectors.find((selector) => selector.kind === "region");
 	if (region?.kind === "region") {
-		return region.page === undefined ? "region" : `p${region.page} region`;
+		return region.page === undefined
+			? translate("region")
+			: translate("p{page} region", { page: region.page });
 	}
-	return "file";
+	return translate("file");
 }
 
 export function isPlaceable(

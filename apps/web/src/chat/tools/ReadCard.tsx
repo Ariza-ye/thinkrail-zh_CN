@@ -6,6 +6,7 @@ import {
 	strArg,
 	type ToolRenderProps,
 } from "@thinkrail/extension-api/web";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { CodeBlock } from "./CodeBlock";
 import { Collapsible, countLines } from "./Collapsible";
 import { ToolFileLink } from "./ToolFileLink";
@@ -18,17 +19,21 @@ export function ReadCard({
 	workspaceRoot,
 	onOpenFile,
 }: ToolRenderProps) {
+	const { t } = useI18n();
 	const path = strArg(args, "path");
 	const offset = numArg(args, "offset");
-	const limit = numArg(args, "limit");
+	const limit = numArg(args, t("limit"));
 	const output = resultText(result);
 	const lang = languageFromPath(path);
 
 	let range = "";
 	if (offset != null && offset > 1) {
-		range = limit != null ? `lines ${offset}–${offset + limit - 1}` : `from line ${offset}`;
+		range =
+			limit != null
+				? t("lines {value}–{value2}", { value: offset, value2: offset + limit - 1 })
+				: t("from line {value}", { value: offset });
 	} else if (limit != null) {
-		range = `first ${limit} lines`;
+		range = t("first {value} lines", { value: limit });
 	}
 
 	return (
@@ -45,7 +50,7 @@ export function ReadCard({
 				{range ? <span className="shrink-0 text-text-muted">{range}</span> : null}
 			</div>
 			{status === "running" ? (
-				<span className="text-text-muted tr-text-metadata">Reading…</span>
+				<span className="text-text-muted tr-text-metadata">{t("Reading…")}</span>
 			) : status === "error" ? (
 				<pre className="overflow-auto px-8 py-4 text-feedback-error tr-code-text">{output}</pre>
 			) : output ? (
@@ -53,7 +58,7 @@ export function ReadCard({
 					<CodeBlock code={output} lang={lang} />
 				</Collapsible>
 			) : (
-				<span className="text-text-muted tr-text-metadata italic">(empty file)</span>
+				<span className="text-text-muted tr-text-metadata italic">{t("(empty file)")}</span>
 			)}
 		</div>
 	);

@@ -1,10 +1,12 @@
 import { RiAlertLine as TriangleAlert } from "@remixicon/react";
 import { Button } from "@thinkrail/ui/button";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useAppStore } from "@/store";
 import { getTransport } from "@/transport";
 
 export function ProviderWarningBanner() {
+	const { t } = useI18n();
 	const [hasProvider, setHasProvider] = useState<boolean | null>(null);
 	const settingsOpen = useAppStore((s) => s.settingsOpen);
 
@@ -30,7 +32,7 @@ export function ProviderWarningBanner() {
 		>
 			<TriangleAlert className="-mt-2 size-14 shrink-0 text-feedback-warning" aria-hidden />
 			<span className="min-w-0 flex-1 tr-text-ui text-text-default">
-				No model provider connected — the agent can't run.
+				{t("No model provider connected — the agent can't run.")}
 			</span>
 			<Button
 				variant="outline"
@@ -39,7 +41,7 @@ export function ProviderWarningBanner() {
 				onClick={() => useAppStore.getState().openSettings("providers")}
 				className="shrink-0"
 			>
-				Connect a provider
+				{t("Connect a provider")}
 			</Button>
 		</div>
 	);

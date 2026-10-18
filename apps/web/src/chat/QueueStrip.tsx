@@ -1,5 +1,6 @@
 import { RiPencilLine as Pencil, RiCloseLine as X } from "@remixicon/react";
 import type { QueueLane, SessionQueueState } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 
 export function QueueStrip({
 	queue,
@@ -10,19 +11,20 @@ export function QueueStrip({
 	onEdit: (kind: QueueLane, index: number) => void;
 	onRemove: (kind: QueueLane, index: number) => void;
 }) {
+	const { t } = useI18n();
 	const items = [
 		...queue.steering.map((text, index) => ({
 			kind: "steering" as const,
 			index,
-			label: "Steering",
-			hint: "delivers at the agent's next step",
+			label: t("Steering"),
+			hint: "{message} — delivers at the agent's next step",
 			text,
 		})),
 		...queue.followUp.map((text, index) => ({
 			kind: "followUp" as const,
 			index,
-			label: "Follow-up",
-			hint: "runs after the agent finishes",
+			label: t("Follow-up"),
+			hint: "{message} — runs after the agent finishes",
 			text,
 		})),
 	];
@@ -38,7 +40,7 @@ export function QueueStrip({
 					data-testid="queue-item"
 					data-kind={item.kind}
 					data-index={item.index}
-					title={`${item.text} — ${item.hint}`}
+					title={t(item.hint, { message: item.text })}
 					className="flex w-full items-center gap-8"
 				>
 					<span className="min-w-0 flex-1 truncate">
@@ -47,7 +49,7 @@ export function QueueStrip({
 					<button
 						type="button"
 						data-testid="queue-item-edit"
-						aria-label={`Edit queued message: ${item.text}`}
+						aria-label={t("Edit queued message: {value}", { value: item.text })}
 						onClick={() => onEdit(item.kind, item.index)}
 						className="flex size-20 shrink-0 items-center justify-center rounded-xs hover:bg-control-bg-hovered hover:text-text-default"
 					>
@@ -56,7 +58,7 @@ export function QueueStrip({
 					<button
 						type="button"
 						data-testid="queue-item-remove"
-						aria-label={`Remove queued message: ${item.text}`}
+						aria-label={t("Remove queued message: {value}", { value: item.text })}
 						onClick={() => onRemove(item.kind, item.index)}
 						className="flex size-20 shrink-0 items-center justify-center rounded-xs hover:bg-control-bg-hovered hover:text-text-default"
 					>

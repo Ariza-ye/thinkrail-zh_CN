@@ -1,5 +1,6 @@
 import type { DelegationRunStatus, TranscriptMessage } from "@thinkrail/contracts";
 import { Dialog, DialogContent, DialogTitle } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { isConnectedGeneration, useAppStore } from "@/store";
 import { errorText, getTransport, wsErrorCode } from "@/transport";
@@ -83,6 +84,7 @@ function useSubagentTranscript({ workspaceId, parentSessionId, childSessionId }:
 }
 
 export function SubagentTranscriptPane(scope: TranscriptScope) {
+	const { t } = useI18n();
 	const { messages, live, error, rows, messageActions, askContext } = useSubagentTranscript(scope);
 	return (
 		<ChatActionsContext.Provider value={null}>
@@ -97,10 +99,10 @@ export function SubagentTranscriptPane(scope: TranscriptScope) {
 							{error}
 						</span>
 					) : messages === null ? (
-						<span className="text-text-muted tr-text-metadata">Loading…</span>
+						<span className="text-text-muted tr-text-metadata">{t("Loading…")}</span>
 					) : rows.length === 0 ? (
 						<span className="text-text-muted tr-text-metadata italic">
-							Nothing in the transcript yet.
+							{t("Nothing in the transcript yet.")}
 						</span>
 					) : (
 						rows.map((row) => (
@@ -127,6 +129,7 @@ export function SubagentTranscriptDialog({
 	onOpenChange: (open: boolean) => void;
 	onCloseAutoFocus?: (event: Event) => void;
 }) {
+	const { t } = useI18n();
 	const status = useAppStore((state) => state.status);
 	return (
 		<Dialog open onOpenChange={onOpenChange}>
@@ -137,11 +140,11 @@ export function SubagentTranscriptDialog({
 			>
 				<div className="flex min-w-0 items-baseline gap-8 pr-8">
 					<DialogTitle className="shrink-0 tr-text-ui text-text-default">
-						Subagent transcript
+						{t("Subagent transcript")}
 					</DialogTitle>
 					<span className="min-w-0 truncate text-text-muted tr-text-metadata">
 						{scope.childSessionId}
-						{status !== "connected" ? " · stale" : ""}
+						{status !== "connected" ? t(" · stale") : ""}
 					</span>
 				</div>
 				<SubagentTranscriptPane key={scope.childSessionId} {...scope} />

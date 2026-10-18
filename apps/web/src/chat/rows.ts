@@ -41,7 +41,7 @@ export type ActivityStep = RoutineToolStep | ThinkingStep;
 export type ChatRow =
 	| { kind: "user"; id: string; message: UserMessage; attachmentNames?: string[] }
 	| { kind: "system"; id: string; text: string }
-	| { kind: "error"; id: string; text: string; recovery?: FailureRecovery }
+	| { kind: "error"; id: string; text: string; uiMessage?: string; recovery?: FailureRecovery }
 	| ({ kind: "compaction"; id: string } & CompactionState)
 	| {
 			kind: "retry";
@@ -181,6 +181,7 @@ export function deriveRows(
 						kind: "error",
 						id: turn.id,
 						text: turn.text,
+						...(turn.uiMessage ? { uiMessage: turn.uiMessage } : {}),
 						...(turn.recovery ? { recovery: turn.recovery } : {}),
 					});
 					break;

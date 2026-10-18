@@ -1,3 +1,4 @@
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useMemo } from "react";
 import type { ResourceContent, ResourceDiffProps } from "@/resources";
 import { diffContentStamp } from "../reviewComposerState";
@@ -15,30 +16,37 @@ function HtmlSide({ text, title }: { text: string; title: string }) {
 }
 
 export default function HtmlDiff({ resource, original, modified }: ResourceDiffProps) {
+	const { t } = useI18n();
 	const originalText = textOf(original);
 	const modifiedText = textOf(modified);
 	const originalSide: VisualDiffSide = {
 		present: originalText !== null,
 		content:
 			originalText === null ? null : (
-				<HtmlSide text={originalText} title={`Original preview of ${resource.path}`} />
+				<HtmlSide
+					text={originalText}
+					title={t("Original preview of {path}", { path: resource.path })}
+				/>
 			),
-		caption: originalText === null ? "Old: No document" : "Old document",
+		caption: originalText === null ? t("Old: No document") : t("Old document"),
 		intrinsicSize: null,
 	};
 	const modifiedSide: VisualDiffSide = {
 		present: modifiedText !== null,
 		content:
 			modifiedText === null ? null : (
-				<HtmlSide text={modifiedText} title={`Modified preview of ${resource.path}`} />
+				<HtmlSide
+					text={modifiedText}
+					title={t("Modified preview of {path}", { path: resource.path })}
+				/>
 			),
-		caption: modifiedText === null ? "New: No document" : "New document",
+		caption: modifiedText === null ? t("New: No document") : t("New document"),
 		intrinsicSize: null,
 	};
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="shrink-0 border-border-default border-b bg-feedback-info-subtle px-12 py-8 tr-text-metadata text-feedback-info">
-				Scripts and external resources are disabled.
+				{t("Scripts and external resources are disabled.")}
 			</div>
 			<div className="min-h-0 flex-1">
 				<VisualDiff
@@ -50,7 +58,7 @@ export default function HtmlDiff({ resource, original, modified }: ResourceDiffP
 					contentStamp={diffContentStamp(original, modified)}
 					initialMode="2-up"
 					modes={["2-up"]}
-					emptyLabel="No document"
+					emptyLabel={t("No document")}
 				/>
 			</div>
 		</div>

@@ -18,6 +18,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { type Translator, translate, useI18n } from "@thinkrail/ui/i18n";
 import { Textarea } from "@thinkrail/ui/textarea";
 import { cn } from "@thinkrail/ui/utils";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -101,15 +102,19 @@ function DialogBody({ children }: { children: ReactNode }) {
 	);
 }
 
-function runLabel(label: string): string {
-	return label === "command" ? "Runs on this host" : `Runs to fill ${label}`;
+function runLabel(label: string, translator: Translator = translate): string {
+	return label === "command"
+		? translator("Runs on this host")
+		: translator("Runs to fill {label}", { label });
 }
 
 function CommandSpeedHint() {
+	const { t } = useI18n();
 	return (
 		<p data-testid="mcp-command-hint" className="text-text-muted tr-text-metadata">
-			<code className="tr-code-text">!commands</code> run on the host each time a chat connects;
-			keep them fast (e.g. read a cached token).
+			{t(
+				"!commands run on the host each time a chat connects; keep them fast (e.g. read a cached token).",
+			)}
 		</p>
 	);
 }
@@ -176,19 +181,20 @@ export function McpRunReview({
 	reviews: readonly McpServerReview[];
 	modifiesData?: string | undefined;
 }) {
+	const { t } = useI18n();
 	return (
 		<div data-testid="mcp-run-review" className="flex flex-col gap-12">
 			{modifiesData ? (
 				<p className="flex items-start gap-8 text-feedback-warning tr-text-ui">
 					<TriangleAlert className="mt-2 size-14 shrink-0" />
-					This server can modify data in {modifiesData}.
+					{t("This server can modify data in {service}.", { service: t(modifiesData) })}
 				</p>
 			) : null}
 			{reviews.map((review) => (
 				<section key={review.name} className="flex flex-col gap-4" data-testid="mcp-run-server">
 					<h4 className="tr-title-compact text-text-default">{review.name}</h4>
 					{review.runs.length === 0 ? (
-						<p className="text-text-muted tr-text-metadata">Nothing runs on this host.</p>
+						<p className="text-text-muted tr-text-metadata">{t("Nothing runs on this host.")}</p>
 					) : (
 						<ul className="flex flex-col gap-4">
 							{review.runs.map((run) => (
@@ -197,7 +203,7 @@ export function McpRunReview({
 									data-testid="mcp-run-item"
 									className="flex flex-col gap-2"
 								>
-									<span className="text-text-muted tr-text-metadata">{runLabel(run.label)}</span>
+									<span className="text-text-muted tr-text-metadata">{runLabel(run.label, t)}</span>
 									<CodeBlock>{run.text}</CodeBlock>
 								</li>
 							))}
@@ -217,6 +223,7 @@ function ValueRows({
 	draft: McpFormDraft;
 	onChange: (draft: McpFormDraft) => void;
 }) {
+	const { t } = useI18n();
 	const http = draft.transport === "http";
 	const update = (id: string, patch: { name?: string; value?: string }) =>
 		onChange({
@@ -228,7 +235,7 @@ function ValueRows({
 			{draft.values.map((row) => (
 				<div key={row.id} className="flex items-center gap-4" data-testid="mcp-form-value">
 					<input
-						aria-label={http ? "Header name" : "Variable name"}
+						aria-label={http ? t("Header name") : t("Variable name")}
 						data-testid="mcp-form-value-name"
 						placeholder={http ? "Authorization" : "API_KEY"}
 						value={row.name}
@@ -236,7 +243,7 @@ function ValueRows({
 						className={cn(MCP_INPUT_CLASS, "w-[40%] tr-code-text")}
 					/>
 					<input
-						aria-label={http ? "Header value" : "Variable value"}
+						aria-label={http ? t("Header value") : t("Variable value")}
 						data-testid="mcp-form-value-value"
 						placeholder={http ? `Bearer \${TOKEN}` : `\${API_KEY}`}
 						value={row.value}
@@ -246,7 +253,7 @@ function ValueRows({
 					<Button
 						variant="ghost"
 						size="icon"
-						aria-label="Remove"
+						aria-label={t("Remove")}
 						onClick={() =>
 							onChange({ ...draft, values: draft.values.filter((other) => other.id !== row.id) })
 						}
@@ -268,7 +275,7 @@ function ValueRows({
 				}
 			>
 				<Plus className="size-14" />
-				{http ? "Add header" : "Add variable"}
+				{http ? t("Add header") : t("Add variable")}
 			</Button>
 		</div>
 	);
@@ -285,9 +292,10 @@ function McpForm({
 	warnings: string[];
 	onChange: (draft: McpFormDraft) => void;
 }) {
+	const { t } = useI18n();
 	return (
 		<div className="flex flex-col gap-12" data-testid="mcp-add-form">
-			<Field label="Name" error={issues?.name} hint="Letters, digits, - and _.">
+			<Field label={t("Name")} error={issues?.name} hint={t("Letters, digits, - and _.")}>
 				<input
 					data-testid="mcp-form-name"
 					value={draft.name}
@@ -296,19 +304,19 @@ function McpForm({
 					className={MCP_INPUT_CLASS}
 				/>
 			</Field>
-			<Field label="Transport">
+			<Field label={t("Transport")}>
 				<Segments
 					testId="mcp-form-transport"
 					value={draft.transport}
 					options={[
-						{ id: "stdio", label: "stdio command" },
-						{ id: "http", label: "HTTP URL" },
+						{ id: "stdio", label: t("stdio command") },
+						{ id: "http", label: t("HTTP URL") },
 					]}
 					onChange={(transport) => onChange({ ...draft, transport })}
 				/>
 			</Field>
 			{draft.transport === "http" ? (
-				<Field label="URL" error={issues?.url} hint="The server's streamable HTTP endpoint.">
+				<Field label="URL" error={issues?.url} hint={t("The server's streamable HTTP endpoint.")}>
 					<input
 						data-testid="mcp-form-url"
 						value={draft.url}
@@ -320,9 +328,9 @@ function McpForm({
 			) : (
 				<>
 					<Field
-						label="Command"
+						label={t("Command")}
 						error={issues?.command}
-						hint="One executable; it runs on the host and inherits the host environment."
+						hint={t("One executable; it runs on the host and inherits the host environment.")}
 					>
 						<input
 							data-testid="mcp-form-command"
@@ -332,7 +340,7 @@ function McpForm({
 							className={cn(MCP_INPUT_CLASS, "tr-code-text")}
 						/>
 					</Field>
-					<Field label="Arguments" hint="One per line — never split by a shell.">
+					<Field label={t("Arguments")} hint={t("One per line — never split by a shell.")}>
 						<Textarea
 							data-testid="mcp-form-args"
 							rows={3}
@@ -345,27 +353,27 @@ function McpForm({
 				</>
 			)}
 			<Field
-				label={draft.transport === "http" ? "Headers" : "Environment"}
+				label={draft.transport === "http" ? t("Headers") : t("Environment")}
 				error={issues?.values}
-				hint={
-					<>
-						Each value is a <code className="tr-code-text">{NAME_REFERENCE}</code> reference to the
-						host environment or a <code className="tr-code-text">!command</code> whose output is the
-						value — plain values are never saved.
-					</>
-				}
+				hint={t(
+					"Each value is a {reference} reference to the host environment or a !command whose output is the value — plain values are never saved.",
+					{ reference: NAME_REFERENCE },
+				)}
 			>
 				<ValueRows draft={draft} onChange={onChange} />
 			</Field>
-			<Field label="Exposure" hint={MCP_EXPOSURE_HINT[draft.exposure]}>
+			<Field label={t("Exposure")} hint={t(MCP_EXPOSURE_HINT[draft.exposure])}>
 				<Segments
 					testId="mcp-form-exposure"
 					value={draft.exposure}
-					options={MCP_EXPOSURES.map((id) => ({ id, label: mcpExposureLabel(id) }))}
+					options={MCP_EXPOSURES.map((id) => ({ id, label: mcpExposureLabel(id, t) }))}
 					onChange={(exposure) => onChange({ ...draft, exposure })}
 				/>
 			</Field>
-			<Field label="Description" hint="Optional — helps the model and tool search find it.">
+			<Field
+				label={t("Description")}
+				hint={t("Optional — helps the model and tool search find it.")}
+			>
 				<input
 					data-testid="mcp-form-description"
 					value={draft.description}
@@ -393,13 +401,16 @@ function McpImport({
 	existing: readonly McpServerSummary[];
 	onChange: (text: string) => void;
 }) {
-	const parsed = text.trim() ? parseMcpServersJson(text) : null;
+	const { t } = useI18n();
+	const parsed = text.trim() ? parseMcpServersJson(text, t) : null;
 	const names = parsed?.ok ? parsed.servers.map((server) => server.name) : [];
 	return (
 		<div className="flex flex-col gap-12" data-testid="mcp-add-json">
 			<Field
-				label="mcpServers JSON"
-				hint='Paste one or many servers — { "mcpServers": { … } } or just the map, as other MCP clients write it.'
+				label={t("mcpServers JSON")}
+				hint={t(
+					'Paste one or many servers — { "mcpServers": { … } } or just the map, as other MCP clients write it.',
+				)}
 			>
 				<Textarea
 					data-testid="mcp-json-input"
@@ -424,7 +435,7 @@ function McpImport({
 			{parsed?.ok ? (
 				<ul className="flex flex-col gap-4" data-testid="mcp-json-preview">
 					{parsed.servers.map((server) => {
-						const issues = importIssues(server, scope, existing, names);
+						const issues = importIssues(server, scope, existing, names, t);
 						const facts = mcpApprovalFacts(server.entry);
 						const values = [...facts.env, ...facts.headers].map((fact) => fact.name);
 						return (
@@ -443,7 +454,7 @@ function McpImport({
 								</span>
 								{values.length > 0 ? (
 									<span className="text-text-muted tr-text-metadata">
-										{typeof server.entry.url === "string" ? "Headers" : "Environment"}:{" "}
+										{typeof server.entry.url === "string" ? t("Headers") : t("Environment")}:{" "}
 										{values.join(", ")}
 									</span>
 								) : null}
@@ -472,9 +483,10 @@ function PresetList({
 	disabled: boolean;
 	onAdd: (preset: McpPreset) => void;
 }) {
+	const { t } = useI18n();
 	return (
 		<section className="flex flex-col gap-8" data-testid="mcp-presets">
-			<h4 className="tr-text-eyebrow text-text-muted">Presets</h4>
+			<h4 className="tr-text-eyebrow text-text-muted">{t("Presets")}</h4>
 			<ul className="flex flex-col gap-4">
 				{presets.map((preset) => (
 					<li
@@ -484,8 +496,8 @@ function PresetList({
 						className="flex items-center gap-8 rounded-sm border border-border-default bg-control-bg px-12 py-8"
 					>
 						<span className="flex min-w-0 flex-1 flex-col gap-2">
-							<span className="tr-title-compact text-text-default">{preset.title}</span>
-							<span className="text-text-muted tr-text-metadata">{preset.description}</span>
+							<span className="tr-title-compact text-text-default">{t(preset.title)}</span>
+							<span className="text-text-muted tr-text-metadata">{t(preset.description)}</span>
 						</span>
 						<Button
 							variant="outline"
@@ -495,7 +507,7 @@ function PresetList({
 							onClick={() => onAdd(preset)}
 						>
 							<Plus className="size-14" />
-							{existing.some((server) => server.name === preset.name) ? "Added" : "Add"}
+							{existing.some((server) => server.name === preset.name) ? t("Added") : t("Add")}
 						</Button>
 					</li>
 				))}
@@ -513,16 +525,19 @@ function GithubRecipe({
 	disabled: boolean;
 	onUse: () => void;
 }) {
+	const { t } = useI18n();
 	return (
 		<div
 			data-testid="mcp-github-recipe"
 			className="flex items-center gap-8 rounded-sm border border-border-default px-12 py-8"
 		>
 			<span className="flex min-w-0 flex-1 flex-col gap-2">
-				<span className="tr-title-compact text-text-default">GitHub (read-only)</span>
+				<span className="tr-title-compact text-text-default">{t("GitHub (read-only)")}</span>
 				<span className="text-text-muted tr-text-metadata">
-					Not a preset: a recipe for Paste JSON that sends your GitHub CLI token (
-					<code className="tr-code-text">gh auth token</code>) and fails while gh is logged out.
+					{t(
+						"Not a preset: a recipe for Paste JSON that sends your GitHub CLI token ({command}) and fails while gh is logged out.",
+						{ command: "gh auth token" },
+					)}
 				</span>
 			</span>
 			<Button
@@ -532,7 +547,7 @@ function GithubRecipe({
 				disabled={disabled || added}
 				onClick={onUse}
 			>
-				{added ? "Added" : "Use recipe"}
+				{added ? t("Added") : t("Use recipe")}
 			</Button>
 		</div>
 	);
@@ -581,6 +596,7 @@ export function McpAddDialog({
 	onAdd: McpAddServers;
 	onEnableInProject: (name: string) => Promise<void>;
 }) {
+	const { t } = useI18n();
 	const [tier, setTier] = useState(initialTier);
 	const [selectedScope, setSelectedScope] = useState<McpServerScope>("user");
 	const scope: McpServerScope = projectScopeAvailable ? selectedScope : "user";
@@ -599,14 +615,14 @@ export function McpAddDialog({
 		);
 	}, [projectScopeAvailable]);
 
-	const issues = validateMcpDraft(draft, scope, existing);
+	const issues = validateMcpDraft(draft, scope, existing, t);
 	const warnings = [
-		...mcpDraftWarnings(draft),
-		...[mcpNameWarning(draft.name.trim(), scope, existing)].filter(
+		...mcpDraftWarnings(draft, t),
+		...[mcpNameWarning(draft.name.trim(), scope, existing, t)].filter(
 			(warning): warning is string => !!warning,
 		),
 	];
-	const parsed = json.trim() ? parseMcpServersJson(json) : null;
+	const parsed = json.trim() ? parseMcpServersJson(json, t) : null;
 	const parsedServers = parsed?.ok ? parsed.servers : [];
 	const importable = parsedServers.filter(
 		(server) =>
@@ -615,6 +631,7 @@ export function McpAddDialog({
 				scope,
 				existing,
 				parsedServers.map((other) => other.name),
+				t,
 			).length === 0,
 	);
 
@@ -678,11 +695,13 @@ export function McpAddDialog({
 				className="flex max-h-[85vh] max-w-[36rem] flex-col"
 			>
 				<DialogHeader>
-					<DialogTitle>{reviewing ? "Confirm what will run" : "Add MCP servers"}</DialogTitle>
+					<DialogTitle>{reviewing ? t("Confirm what will run") : t("Add MCP servers")}</DialogTitle>
 					<DialogDescription>
 						{reviewing
-							? "Saving lets chats in scope run these on this host and stores the entry as shown."
-							: "Servers run on the host that runs ThinkRail and inherit its environment."}
+							? t(
+									"Saving lets chats in scope run these on this host and stores the entry as shown.",
+								)
+							: t("Servers run on the host that runs ThinkRail and inherit its environment.")}
 					</DialogDescription>
 				</DialogHeader>
 				<DialogBody>
@@ -711,8 +730,8 @@ export function McpAddDialog({
 									testId="mcp-add-tier"
 									value={tier}
 									options={[
-										{ id: "form", label: "Form" },
-										{ id: "json", label: "Paste JSON" },
+										{ id: "form", label: t("Form") },
+										{ id: "json", label: t("Paste JSON") },
 									]}
 									onChange={setTier}
 								/>
@@ -720,10 +739,10 @@ export function McpAddDialog({
 									testId="mcp-add-scope"
 									value={scope}
 									options={[
-										{ id: "user", label: "User — all projects" },
+										{ id: "user", label: t("User — all projects") },
 										{
 											id: "project",
-											label: "Project — .pi/mcp.json",
+											label: t("Project — .pi/mcp.json"),
 											disabled: !projectScopeAvailable,
 										},
 									]}
@@ -732,7 +751,7 @@ export function McpAddDialog({
 							</div>
 							{!projectScopeAvailable ? (
 								<p className="text-text-muted tr-text-metadata">
-									Project servers load only after you trust this project.
+									{t("Project servers load only after you trust this project.")}
 								</p>
 							) : null}
 							{tier === "form" ? (
@@ -761,24 +780,24 @@ export function McpAddDialog({
 					{step.kind === "review" ? (
 						<>
 							<Button variant="outline" disabled={saving} onClick={() => setStep({ kind: "edit" })}>
-								Back
+								{t("Back")}
 							</Button>
 							<Button
 								data-testid="mcp-add-confirm"
 								disabled={saving}
 								onClick={() => void save(step.servers, step.scope, step.from, step.optInPerProject)}
 							>
-								{step.servers.length > 1 ? "Add servers" : "Add server"}
+								{step.servers.length > 1 ? t("Add servers") : t("Add server")}
 							</Button>
 						</>
 					) : (
 						<>
 							<Button variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>
-								Cancel
+								{t("Cancel")}
 							</Button>
 							{tier === "form" ? (
 								<Button data-testid="mcp-add-submit" disabled={saving} onClick={submitForm}>
-									Add server
+									{t("Add server")}
 								</Button>
 							) : (
 								<Button
@@ -792,10 +811,13 @@ export function McpAddDialog({
 									}
 								>
 									{importable.length < parsedServers.length
-										? `Add ${importable.length} of ${parsedServers.length} servers`
+										? t("Add {count} of {total} servers", {
+												count: importable.length,
+												total: parsedServers.length,
+											})
 										: importable.length > 1
-											? `Add ${importable.length} servers`
-											: "Add server"}
+											? t("Add {count} servers", { count: importable.length })
+											: t("Add server")}
 								</Button>
 							)}
 						</>
@@ -814,6 +836,7 @@ export interface McpEditTarget {
 function editErrors(
 	text: string,
 	written: McpServerEntryInput,
+	translator: Translator = translate,
 ): { entry: McpServerEntryInput | null; errors: string[] } {
 	let parsed: unknown;
 	try {
@@ -821,14 +844,18 @@ function editErrors(
 	} catch (error) {
 		return {
 			entry: null,
-			errors: [`Not valid JSON: ${error instanceof Error ? error.message : String(error)}`],
+			errors: [
+				translator("Not valid JSON: {error}", {
+					error: error instanceof Error ? error.message : String(error),
+				}),
+			],
 		};
 	}
-	const errors = mcpEntryErrors(parsed);
+	const errors = mcpEntryErrors(parsed, translator);
 	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
 		return { entry: null, errors };
 	}
-	const edited = mcpEditedEntry(parsed as McpServerEntryInput, written);
+	const edited = mcpEditedEntry(parsed as McpServerEntryInput, written, translator);
 	return { entry: edited.entry, errors: [...errors, ...edited.issues] };
 }
 
@@ -841,6 +868,7 @@ export function McpEditDialog({
 	onClose: () => void;
 	onSave: (entry: McpServerEntryInput) => Promise<string | null>;
 }) {
+	const { t } = useI18n();
 	const shown = useMemo(
 		() => JSON.stringify(hideMcpLiterals(target.entry), null, 2),
 		[target.entry],
@@ -852,7 +880,7 @@ export function McpEditDialog({
 	} | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const { entry, errors } = editErrors(text, target.entry);
+	const { entry, errors } = editErrors(text, target.entry, t);
 	const { name } = target.summary;
 
 	const commit = async (next: McpServerEntryInput) => {
@@ -879,9 +907,11 @@ export function McpEditDialog({
 				className="flex max-h-[85vh] max-w-[36rem] flex-col"
 			>
 				<DialogHeader>
-					<DialogTitle>{review ? "Confirm what will run" : `Edit ${name}`}</DialogTitle>
+					<DialogTitle>
+						{review ? t("Confirm what will run") : t("Edit {name}", { name })}
+					</DialogTitle>
 					<DialogDescription>
-						Saving rewrites this entry in the repository's .pi/mcp.json.
+						{t("Saving rewrites this entry in the repository's .pi/mcp.json.")}
 					</DialogDescription>
 				</DialogHeader>
 				<DialogBody>
@@ -891,10 +921,10 @@ export function McpEditDialog({
 						<div className="flex flex-col gap-8">
 							{shown.includes(MCP_HIDDEN_VALUE) ? (
 								<p data-testid="mcp-edit-hidden" className="text-text-muted tr-text-metadata">
-									Plain values show as <code className="tr-code-text">{MCP_HIDDEN_VALUE}</code>.
-									Leave one in place to keep the file's value, or replace it with a{" "}
-									<code className="tr-code-text">{NAME_REFERENCE}</code> reference or a{" "}
-									<code className="tr-code-text">!command</code>.
+									{t(
+										"Plain values show as {hidden}. Leave one in place to keep the file's value, or replace it with a {reference} reference or a !command.",
+										{ hidden: MCP_HIDDEN_VALUE, reference: NAME_REFERENCE },
+									)}
 								</p>
 							) : null}
 							<Textarea
@@ -921,27 +951,27 @@ export function McpEditDialog({
 					{review ? (
 						<>
 							<Button variant="outline" disabled={saving} onClick={() => setReview(null)}>
-								Back
+								{t("Back")}
 							</Button>
 							<Button
 								data-testid="mcp-edit-confirm"
 								disabled={saving}
 								onClick={() => void commit(review.entry)}
 							>
-								Save
+								{t("Save")}
 							</Button>
 						</>
 					) : (
 						<>
 							<Button variant="outline" disabled={saving} onClick={onClose}>
-								Cancel
+								{t("Cancel")}
 							</Button>
 							<Button
 								data-testid="mcp-edit-save"
 								disabled={saving || !entry || errors.length > 0}
 								onClick={submit}
 							>
-								Save
+								{t("Save")}
 							</Button>
 						</>
 					)}
@@ -975,6 +1005,7 @@ export function McpApproveDialog({
 	onClose: () => void;
 	onApprove: () => Promise<string | null>;
 }) {
+	const { t } = useI18n();
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const { summary, entry } = target;
@@ -994,11 +1025,17 @@ export function McpApproveDialog({
 				className="flex max-h-[85vh] max-w-[32rem] flex-col"
 			>
 				<DialogHeader>
-					<DialogTitle>Review {summary.name}</DialogTitle>
+					<DialogTitle>
+						{t("Review")} {summary.name}
+					</DialogTitle>
 					<DialogDescription>
 						{summary.approval?.state === "changed"
-							? "This repository entry changed since you approved it. Approve it again to let chats use it."
-							: "This repository defines the server in .pi/mcp.json. Approve it to let chats in this project start it."}
+							? t(
+									"This repository entry changed since you approved it. Approve it again to let chats use it.",
+								)
+							: t(
+									"This repository defines the server in .pi/mcp.json. Approve it to let chats in this project start it.",
+								)}
 					</DialogDescription>
 				</DialogHeader>
 				<DialogBody>
@@ -1010,43 +1047,43 @@ export function McpApproveDialog({
 						<dl className="flex flex-col gap-12" data-testid="mcp-approve-facts">
 							{summary.replacesGlobal ? (
 								<p className="text-feedback-warning tr-text-ui">
-									It replaces your user-level {summary.name} in this project.
+									{t("It replaces your user-level {name} in this project.", { name: summary.name })}
 								</p>
 							) : null}
 							{facts.overrides.length > 0 ? (
-								<FactRow label="Changes your user-level server's settings">
+								<FactRow label={t("Changes your user-level server's settings")}>
 									<CodeBlock>{facts.overrides.join("\n")}</CodeBlock>
 								</FactRow>
 							) : null}
 							{facts.defines === "command" ? (
-								<FactRow label={runLabel("command")}>
+								<FactRow label={runLabel("command", t)}>
 									<CodeBlock testId="mcp-approve-run">{summary.endpoint}</CodeBlock>
 								</FactRow>
 							) : null}
 							{facts.runs.map((run) => (
-								<FactRow key={`${run.label}:${run.text}`} label={runLabel(run.label)}>
+								<FactRow key={`${run.label}:${run.text}`} label={runLabel(run.label, t)}>
 									<CodeBlock testId="mcp-approve-run">{run.text}</CodeBlock>
 								</FactRow>
 							))}
 							{facts.defines === "url" ? (
-								<FactRow label="Connects to">
+								<FactRow label={t("Connects to")}>
 									<CodeBlock>{summary.endpoint}</CodeBlock>
 								</FactRow>
 							) : null}
 							{facts.cwd ? (
-								<FactRow label="Working directory">
+								<FactRow label={t("Working directory")}>
 									<CodeBlock>{facts.cwd}</CodeBlock>
 								</FactRow>
 							) : null}
 							{facts.env.length > 0 ? (
-								<FactRow label="Environment variables">
+								<FactRow label={t("Environment variables")}>
 									<CodeBlock testId="mcp-approve-env">
 										{facts.env.map((fact) => `${fact.name}=${fact.value}`).join("\n")}
 									</CodeBlock>
 								</FactRow>
 							) : null}
 							{facts.headers.length > 0 ? (
-								<FactRow label="Headers">
+								<FactRow label={t("Headers")}>
 									<CodeBlock testId="mcp-approve-headers">
 										{facts.headers.map((fact) => `${fact.name}: ${fact.value}`).join("\n")}
 									</CodeBlock>
@@ -1063,14 +1100,14 @@ export function McpApproveDialog({
 				</DialogBody>
 				<DialogFooter>
 					<Button variant="outline" disabled={saving} onClick={onClose}>
-						Cancel
+						{t("Cancel")}
 					</Button>
 					<Button
 						data-testid="mcp-approve-confirm"
 						disabled={saving || !facts || !summary.approval}
 						onClick={() => void approve()}
 					>
-						Approve
+						{t("Approve")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -1087,6 +1124,7 @@ export function McpDetailsDialog({
 	view: McpRowView;
 	onClose: () => void;
 }) {
+	const { t } = useI18n();
 	const { summary } = row;
 	return (
 		<Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -1102,54 +1140,61 @@ export function McpDetailsDialog({
 				</DialogHeader>
 				<DialogBody>
 					<dl className="flex flex-col gap-12">
-						<FactRow label="Status">
+						<FactRow label={t("Status")}>
 							{view.label}
 							{view.reason ? ` — ${view.reason}` : ""}
 						</FactRow>
-						<FactRow label={summary.transport === "http" ? "URL" : "Command"}>
+						<FactRow label={summary.transport === "http" ? "URL" : t("Command")}>
 							<CodeBlock testId="mcp-details-endpoint">{summary.endpoint}</CodeBlock>
 						</FactRow>
-						<FactRow label="Defined in">
+						<FactRow label={t("Defined in")}>
 							<CodeBlock>{summary.source}</CodeBlock>
 						</FactRow>
-						<FactRow label="Scope">
-							{SCOPE_LABEL[summary.scope]}
-							{summary.replacesGlobal ? " — replaces your user-level server here" : ""}
+						<FactRow label={t("Scope")}>
+							{t(SCOPE_LABEL[summary.scope])}
+							{summary.replacesGlobal ? t(" — replaces your user-level server here") : ""}
 						</FactRow>
-						<FactRow label="Effective exposure">
+						<FactRow label={t("Effective exposure")}>
 							<span data-testid="mcp-details-exposure">
-								{mcpExposureLabel(summary.effectiveExposure)}
+								{mcpExposureLabel(summary.effectiveExposure, t)}
 							</span>
 						</FactRow>
 						{summary.exposure !== summary.effectiveExposure ? (
-							<FactRow label="Configured exposure">{mcpConfiguredExposureText(summary)}</FactRow>
+							<FactRow label={t("Configured exposure")}>
+								{mcpConfiguredExposureText(summary, t)}
+							</FactRow>
 						) : null}
 						{summary.projectOverride ? (
-							<FactRow label="This project's setting">
+							<FactRow label={t("This project's setting")}>
 								{[
 									summary.projectOverride.enabled === undefined
 										? null
 										: summary.projectOverride.enabled
-											? "enabled"
-											: "disabled",
-									summary.projectOverride.exposure ?? null,
+											? t("enabled")
+											: t("disabled"),
+									summary.projectOverride.exposure
+										? mcpExposureLabel(summary.projectOverride.exposure, t)
+										: null,
 								]
 									.filter(Boolean)
 									.join(", ")}
 							</FactRow>
 						) : null}
 						{row.sessions.total > 0 ? (
-							<FactRow label="Live chats">
-								{row.sessions.total} · connected in {row.sessions.connected}
+							<FactRow label={t("Live chats")}>
+								{t("{total} · connected in {connected}", {
+									total: row.sessions.total,
+									connected: row.sessions.connected,
+								})}
 							</FactRow>
 						) : null}
 						{summary.configError ? (
-							<FactRow label="Config error">
+							<FactRow label={t("Config error")}>
 								<CodeBlock>{summary.configError}</CodeBlock>
 							</FactRow>
 						) : null}
 						{row.detail && row.detail !== summary.configError ? (
-							<FactRow label="Last report from pi">
+							<FactRow label={t("Last report from pi")}>
 								<CodeBlock testId="mcp-details-detail">{row.detail}</CodeBlock>
 							</FactRow>
 						) : null}
@@ -1157,7 +1202,7 @@ export function McpDetailsDialog({
 				</DialogBody>
 				<DialogFooter>
 					<Button variant="outline" onClick={onClose}>
-						Close
+						{t("Close")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -1179,6 +1224,7 @@ export function McpLogDialog({
 	read: McpLogRead;
 	onClose: () => void;
 }) {
+	const { t } = useI18n();
 	const { name } = row.summary;
 	return (
 		<Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -1187,21 +1233,21 @@ export function McpLogDialog({
 				className="flex max-h-[85vh] max-w-[40rem] flex-col"
 			>
 				<DialogHeader>
-					<DialogTitle>{name} log</DialogTitle>
+					<DialogTitle>{t("{name} log", { name })}</DialogTitle>
 					<DialogDescription>
-						What pi last reported for this server, and the messages the server sent pi.
+						{t("What pi last reported for this server, and the messages the server sent pi.")}
 					</DialogDescription>
 				</DialogHeader>
 				<DialogBody>
 					<dl className="flex flex-col gap-12">
 						{row.detail ? (
-							<FactRow label="Last report from pi">
+							<FactRow label={t("Last report from pi")}>
 								<CodeBlock testId="mcp-log-report">{row.detail}</CodeBlock>
 							</FactRow>
 						) : null}
-						<FactRow label="Server messages">
+						<FactRow label={t("Server messages")}>
 							{read.state === "reading" ? (
-								<span className="text-text-muted tr-text-metadata">Reading the log…</span>
+								<span className="text-text-muted tr-text-metadata">{t("Reading the log…")}</span>
 							) : read.state === "failed" ? (
 								<span role="alert" className="text-feedback-error tr-text-metadata">
 									{read.error}
@@ -1215,7 +1261,7 @@ export function McpLogDialog({
 										<CodeBlock testId="mcp-log-text">{read.log.text}</CodeBlock>
 									) : (
 										<span data-testid="mcp-log-empty" className="text-text-muted tr-text-metadata">
-											{name} has sent pi no log messages.
+											{t("{name} has sent pi no log messages.", { name })}
 										</span>
 									)}
 								</span>
@@ -1225,7 +1271,7 @@ export function McpLogDialog({
 				</DialogBody>
 				<DialogFooter>
 					<Button variant="outline" onClick={onClose}>
-						Close
+						{t("Close")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

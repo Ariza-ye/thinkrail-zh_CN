@@ -51,6 +51,9 @@ create the tools it needs based on how you actually work.
   connect any provider through `pi`'s own auth. ThinkRail has no accounts of its own.
 - **Desktop app or browser.** A native desktop app, or the `thinkrail` CLI that opens the same app in your
   browser. Both embed the same engine host; app state lives under `~/.thinkrail`.
+- **English and 简体中文.** The interface follows your system language by default. Switch instantly in
+  **Settings → Appearance → Interface language**; the choice is remembered on this client. Your chats,
+  code, file names, and model output are never translated.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/readme-assets/specs-dark.png">

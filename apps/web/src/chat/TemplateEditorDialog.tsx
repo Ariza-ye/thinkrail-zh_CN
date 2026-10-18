@@ -7,6 +7,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { Textarea } from "@thinkrail/ui/textarea";
 import { cn } from "@thinkrail/ui/utils";
 import type { ReactNode } from "react";
@@ -14,8 +15,6 @@ import { useEffect, useState } from "react";
 import { assembleTemplate, stripFrontmatter } from "@/prompt";
 import { useAppStore } from "@/store";
 import { errorText, getTransport } from "@/transport";
-
-const SYNTAX_HINT = `$1, $ARGUMENTS, \${1:-default} — pi prompt-template syntax`;
 
 const INPUT_CLASS =
 	"w-full rounded-sm border border-control-border-default bg-control-bg px-12 py-8 tr-text-ui text-text-default outline-none transition-colors placeholder:text-text-muted focus-visible:border-control-border-active disabled:bg-control-disabled-bg disabled:text-control-disabled-text";
@@ -41,6 +40,7 @@ export function TemplateEditorDialog({
 	initialScope?: TemplateScope;
 	initialBody?: string;
 }) {
+	const { t } = useI18n();
 	const [name, setName] = useState("");
 	const [scope, setScope] = useState<TemplateScope>("global");
 	const [description, setDescription] = useState("");
@@ -97,11 +97,11 @@ export function TemplateEditorDialog({
 		if (saving) return;
 		const finalName = template ? template.name : name.trim();
 		if (!isValidTemplateName(finalName)) {
-			setError('Name can\'t be empty, start with ".", or contain "/", "\\", or a null byte.');
+			setError(t('Name can\'t be empty, start with ".", or contain "/", "\\", or a null byte.'));
 			return;
 		}
 		if (scope === "project" && !workspaceId) {
-			setError("Open a workspace first — a project-scoped template needs one.");
+			setError(t("Open a workspace first — a project-scoped template needs one."));
 			return;
 		}
 		setSaving(true);
@@ -126,36 +126,38 @@ export function TemplateEditorDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent data-testid="template-editor-dialog" className="max-w-[36rem] gap-12">
 				<DialogHeader>
-					<DialogTitle>{editing ? `Edit ${template.name}` : "New template"}</DialogTitle>
+					<DialogTitle>
+						{editing ? t("Edit {value}", { value: template.name }) : t("New template")}
+					</DialogTitle>
 				</DialogHeader>
 
 				<div className="flex max-h-[60vh] flex-col gap-12 overflow-y-auto">
-					<Field id="template-name" label="Name">
+					<Field id="template-name" label={t("Name")}>
 						<input
 							id="template-name"
 							data-testid="template-name-input"
 							value={name}
 							disabled={editing}
 							onChange={(e) => setName(e.target.value)}
-							placeholder="standup"
+							placeholder={t("standup")}
 							spellCheck={false}
 							className={INPUT_CLASS}
 						/>
 					</Field>
 
 					<div className="flex flex-col gap-4">
-						<span className="tr-title-compact text-text-default">Scope</span>
+						<span className="tr-title-compact text-text-default">{t("Scope")}</span>
 						<div className="flex gap-8">
 							<ScopeOption
 								id="global"
-								label="Global"
+								label={t("Global")}
 								active={scope === "global"}
 								disabled={editing}
 								onSelect={() => setScope("global")}
 							/>
 							<ScopeOption
 								id="project"
-								label="This project"
+								label={t("This project")}
 								active={scope === "project"}
 								disabled={editing || !workspaceId}
 								onSelect={() => setScope("project")}
@@ -163,49 +165,53 @@ export function TemplateEditorDialog({
 						</div>
 						{!workspaceId && !editing ? (
 							<p className="text-text-muted tr-text-metadata">
-								Open a workspace to save a project-scoped template.
+								{t("Open a workspace to save a project-scoped template.")}
 							</p>
 						) : null}
 					</div>
 
-					<Field id="template-description" label="Description">
+					<Field id="template-description" label={t("Description")}>
 						<input
 							id="template-description"
 							data-testid="template-description-input"
 							disabled={loading}
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
-							placeholder="What this template is for"
+							placeholder={t("What this template is for")}
 							spellCheck={false}
 							className={INPUT_CLASS}
 						/>
 					</Field>
 
-					<Field id="template-argument-hint" label="Argument hint">
+					<Field id="template-argument-hint" label={t("Argument hint")}>
 						<input
 							id="template-argument-hint"
 							data-testid="template-argument-hint-input"
 							disabled={loading}
 							value={argumentHint}
 							onChange={(e) => setArgumentHint(e.target.value)}
-							placeholder="[file] [scope]"
+							placeholder={t("[file] [scope]")}
 							spellCheck={false}
 							className={INPUT_CLASS}
 						/>
 					</Field>
 
-					<Field id="template-body" label="Body">
+					<Field id="template-body" label={t("Body")}>
 						<Textarea
 							id="template-body"
 							data-testid="template-body-input"
 							disabled={loading}
 							value={body}
 							onChange={(e) => setBody(e.target.value)}
-							placeholder="Prompt body…"
+							placeholder={t("Prompt body…")}
 							spellCheck={false}
 							rows={8}
 						/>
-						<p className="text-text-muted tr-text-metadata">{SYNTAX_HINT}</p>
+						<p className="text-text-muted tr-text-metadata">
+							{t("{syntax} — pi prompt-template syntax", {
+								syntax: "$1, $ARGUMENTS, $" + "{1:-default}",
+							})}
+						</p>
 					</Field>
 
 					{error ? (
@@ -221,14 +227,14 @@ export function TemplateEditorDialog({
 						variant="outline"
 						onClick={() => onOpenChange(false)}
 					>
-						Cancel
+						{t("Cancel")}
 					</Button>
 					<Button
 						data-testid="template-save"
 						disabled={saving || loading || (!editing && !name.trim())}
 						onClick={() => void save()}
 					>
-						Save
+						{t("Save")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -237,6 +243,7 @@ export function TemplateEditorDialog({
 }
 
 function Field({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+	useI18n();
 	return (
 		<div className="flex flex-col gap-4 tr-text-ui">
 			<label htmlFor={id} className="tr-text-emphasis text-text-default">
@@ -260,6 +267,7 @@ function ScopeOption({
 	disabled: boolean;
 	onSelect: () => void;
 }) {
+	useI18n();
 	return (
 		<button
 			type="button"

@@ -2,16 +2,26 @@ import * as ToastPrimitive from "@radix-ui/react-toast";
 import { RiCloseLine as X } from "@remixicon/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
+import { useI18n } from "./i18n";
 import { cn } from "./utils";
 
-const ToastProvider = ToastPrimitive.Provider;
+function ToastProvider({
+	label = "Notification",
+	...props
+}: React.ComponentProps<typeof ToastPrimitive.Provider>) {
+	const { t } = useI18n();
+	return <ToastPrimitive.Provider label={t(label)} {...props} />;
+}
 
 function ToastViewport({
 	className,
+	label = "Notifications ({hotkey})",
 	...props
 }: React.ComponentProps<typeof ToastPrimitive.Viewport>) {
+	const { t } = useI18n();
 	return (
 		<ToastPrimitive.Viewport
+			label={t(label)}
 			className={cn(
 				"fixed inset-x-0 bottom-0 z-[100] flex max-h-screen w-full flex-col gap-8 p-12 outline-none sm:inset-x-auto sm:right-0 sm:bottom-0 sm:w-[380px] sm:max-w-[100vw]",
 				className,
@@ -65,9 +75,10 @@ function ToastAction({ className, ...props }: React.ComponentProps<typeof ToastP
 }
 
 function ToastClose({ className, ...props }: React.ComponentProps<typeof ToastPrimitive.Close>) {
+	const { t } = useI18n();
 	return (
 		<ToastPrimitive.Close
-			aria-label="Dismiss"
+			aria-label={t("Dismiss")}
 			className={cn(
 				"ml-auto flex size-24 shrink-0 items-center justify-center rounded-sm text-text-muted outline-none transition-colors hover:bg-control-bg-hovered hover:text-text-default focus-visible:ring-2 focus-visible:ring-primary",
 				className,

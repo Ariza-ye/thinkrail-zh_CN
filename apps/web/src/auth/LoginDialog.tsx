@@ -13,6 +13,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useRef } from "react";
 import type { LoginState } from "./loginState";
 
@@ -29,6 +30,7 @@ export function LoginDialog({
 	onCancel: () => void;
 	onClose: () => void;
 }) {
+	const { t } = useI18n();
 	const promptRef = useRef<HTMLInputElement>(null);
 
 	const openedUrlRef = useRef<string | null>(null);
@@ -64,10 +66,10 @@ export function LoginDialog({
 				<DialogHeader>
 					<DialogTitle>
 						{state.status === "success"
-							? `${providerName} connected`
+							? t("{providerName} connected", { providerName: providerName })
 							: state.status === "error"
-								? "Couldn't connect"
-								: `Connect ${providerName}`}
+								? t("Couldn't connect")
+								: t("Connect {providerName}", { providerName: providerName })}
 					</DialogTitle>
 					{state.instructions && state.status === "active" ? (
 						<DialogDescription>{state.instructions}</DialogDescription>
@@ -80,7 +82,7 @@ export function LoginDialog({
 						data-testid="login-success"
 					>
 						<Check className="size-16 shrink-0" />
-						{providerName} is connected.
+						{t("{providerName} is connected.", { providerName })}
 					</p>
 				) : state.status === "error" ? (
 					<p
@@ -88,7 +90,7 @@ export function LoginDialog({
 						data-testid="login-error"
 					>
 						<TriangleAlert className="mt-2 size-16 shrink-0" />
-						<span className="min-w-0 break-words">{state.error ?? "Login failed."}</span>
+						<span className="min-w-0 break-words">{state.error ?? t("Login failed.")}</span>
 					</p>
 				) : (
 					<div className="flex flex-col gap-12">
@@ -99,7 +101,7 @@ export function LoginDialog({
 									onClick={() => window.open(state.url, "_blank", "noopener,noreferrer")}
 								>
 									<ExternalLink className="size-16" />
-									Open sign-in page
+									{t("Open sign-in page")}
 								</Button>
 								<code className="select-all break-all rounded-sm bg-control-bg px-8 py-4 tr-code-text text-text-muted">
 									{state.url}
@@ -113,7 +115,7 @@ export function LoginDialog({
 								data-testid="login-device-code"
 							>
 								<span className="text-text-muted tr-text-metadata">
-									Enter this code at{" "}
+									{t("Enter this code at")}{" "}
 									<a
 										href={state.deviceCode.verificationUri}
 										target="_blank"
@@ -172,7 +174,7 @@ export function LoginDialog({
 										className="min-w-0 flex-1 rounded-sm border border-control-border-default bg-control-bg px-8 py-4 tr-text-ui text-text-default outline-none placeholder:text-text-muted focus-visible:border-control-border-active"
 									/>
 									<Button data-testid="login-submit" onClick={submitPrompt}>
-										Submit
+										{t("Submit")}
 									</Button>
 								</div>
 							</div>
@@ -194,7 +196,7 @@ export function LoginDialog({
 								data-testid="login-working"
 							>
 								<Loader2 className="size-16 shrink-0 animate-spin" />
-								Working…
+								{t("Working…")}
 							</p>
 						) : null}
 					</div>
@@ -203,11 +205,11 @@ export function LoginDialog({
 				<DialogFooter>
 					{terminal ? (
 						<Button variant="outline" data-testid="login-close" onClick={onClose}>
-							Done
+							{t("Done")}
 						</Button>
 					) : (
 						<Button variant="outline" data-testid="login-cancel" onClick={onCancel}>
-							Cancel
+							{t("Cancel")}
 						</Button>
 					)}
 				</DialogFooter>

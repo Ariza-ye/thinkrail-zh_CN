@@ -1,3 +1,4 @@
+import { translate } from "@thinkrail/ui/i18n";
 export const MIN_IMAGE_ZOOM = 0.1;
 export const MAX_IMAGE_ZOOM = 8;
 
@@ -24,7 +25,7 @@ export function imageSourceUrl(url: string, hash: string): string {
 }
 
 export function formatByteLength(bytes: number | undefined): string {
-	if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return "Unknown size";
+	if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return translate("Unknown size");
 	if (bytes < 1024) return `${bytes} B`;
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
 	return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;

@@ -1,4 +1,5 @@
 import type { SessionCompletion } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 
 /** Why a worktree's attention dot lit up, captured when the event is enqueued. */
 export type AttentionReason =
@@ -33,19 +34,19 @@ const APP_NAME = "ThinkRail";
 const AGGREGATE_TAG = "thinkrail-attention";
 
 export function reasonLabel(reason: AttentionReason): string {
-	if (reason.kind === "needs-input") return "Waiting for your input";
+	if (reason.kind === "needs-input") return translate("Waiting for your input");
 	const completion = reason.completion;
 	switch (completion.outcome) {
 		case "succeeded":
-			return "The agent finished";
+			return translate("The agent finished");
 		case "interrupted":
-			return "The run was interrupted";
+			return translate("The run was interrupted");
 		case "cancelled":
-			return "The run was cancelled";
+			return translate("The run was cancelled");
 		case "failed":
 			return completion.failure === "length"
-				? "Stopped — the context is full"
-				: "The agent run failed";
+				? translate("Stopped — the context is full")
+				: translate("The agent run failed");
 	}
 }
 
@@ -73,7 +74,7 @@ export function formatNotification(events: readonly AttentionEvent[]): Notificat
 	}
 	return {
 		title: APP_NAME,
-		body: truncate(`${events.length} worktrees need your attention`),
+		body: truncate(translate("{count} worktrees need your attention", { count: events.length })),
 		tag: AGGREGATE_TAG,
 		target: { kind: "switcher" },
 	};

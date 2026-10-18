@@ -25,6 +25,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@thinkrail/ui/dropdown-menu";
+import { type Translator, translate, useI18n } from "@thinkrail/ui/i18n";
 import { Switch } from "@thinkrail/ui/switch";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { cn } from "@thinkrail/ui/utils";
@@ -123,10 +124,21 @@ type Settled<T> = { ok: true; value: T } | { ok: false; error: string };
 interface RowError {
 	text: string;
 	state?: McpRowState;
+	addedEnableUnconfirmed?: boolean;
 }
 
-function rowErrorText(error: RowError | undefined, state: McpRowState): string | undefined {
-	return error && (error.state === undefined || error.state === state) ? error.text : undefined;
+function rowErrorText(
+	error: RowError | undefined,
+	state: McpRowState,
+	translator: Translator = translate,
+): string | undefined {
+	if (!error || (error.state !== undefined && error.state !== state)) return undefined;
+	return error.addedEnableUnconfirmed
+		? translator(
+				"Added, couldn't confirm enabling for this project; use its switch to retry. {error}",
+				{ error: error.text },
+			)
+		: error.text;
 }
 
 function without<T>(record: Record<string, T>, key: string): Record<string, T> {
@@ -185,7 +197,7 @@ export async function approveMcpServer(
 	summary: McpServerSummary,
 ): Promise<McpListResult> {
 	const fingerprint = summary.approval?.fingerprint;
-	if (!fingerprint) throw new Error("Nothing to approve.");
+	if (!fingerprint) throw new Error(translate("Nothing to approve."));
 	return refreshOnFailure(workspaceId, () =>
 		requestMcpList("mcp.approve", { workspaceId, name: summary.name, fingerprint }),
 	);
@@ -237,6 +249,7 @@ export function McpServerRowView({
 	error: string | undefined;
 	onCommand: (command: McpRowCommand) => void;
 }) {
+	const { t } = useI18n();
 	const { summary } = row;
 	const inert = readOnly || busy;
 	const settingsDisabled = inert || lockedSettings(row);
@@ -261,13 +274,16 @@ export function McpServerRowView({
 							{summary.name}
 						</span>
 						<span data-testid="mcp-server-scope" className={CHIP_CLASS}>
-							{SCOPE_LABEL[summary.scope]}
+							{t(SCOPE_LABEL[summary.scope])}
 						</span>
 						{summary.transport === "stdio" ? (
-							<IconTooltip label="Runs on host — inherits the host environment" wrapTrigger>
+							<IconTooltip label={t("Runs on host — inherits the host environment")} wrapTrigger>
 								<span data-testid="mcp-server-transport" className={CHIP_CLASS}>
 									stdio
-									<span className="sr-only"> — runs on host, inherits the host environment</span>
+									<span className="sr-only">
+										{" "}
+										{t("— runs on host, inherits the host environment")}
+									</span>
 								</span>
 							</IconTooltip>
 						) : (
@@ -306,7 +322,7 @@ export function McpServerRowView({
 							disabled={inert}
 							onClick={() => onCommand({ kind: secondary })}
 						>
-							{ACTION_LABEL[secondary]}
+							{t(ACTION_LABEL[secondary])}
 						</Button>
 					) : null}
 					{action ? (
@@ -318,24 +334,32 @@ export function McpServerRowView({
 							disabled={inert}
 							onClick={() => onCommand({ kind: action })}
 						>
-							{ACTION_LABEL[action]}
+							{t(ACTION_LABEL[action])}
 						</Button>
 					) : null}
 					<Switch
 						checked={summary.enabled}
-						label={`${summary.enabled ? "Disable" : "Enable"} ${summary.name}${summary.scope === "user" ? " in this project" : ""}`}
+						label={
+							summary.scope === "user"
+								? summary.enabled
+									? t("Disable {name} in this project", { name: summary.name })
+									: t("Enable {name} in this project", { name: summary.name })
+								: summary.enabled
+									? t("Disable {name}", { name: summary.name })
+									: t("Enable {name}", { name: summary.name })
+						}
 						testId="mcp-server-toggle"
 						disabled={settingsDisabled}
 						onCheckedChange={(enabled) => onCommand({ kind: "toggle", enabled })}
 					/>
 					<DropdownMenu>
-						<IconTooltip label={`More for ${summary.name}`}>
+						<IconTooltip label={t("More for {name}", { name: summary.name })}>
 							<DropdownMenuTrigger asChild>
 								<Button
 									variant="ghost"
 									size="icon"
 									data-testid="mcp-server-menu"
-									aria-label={`More for ${summary.name}`}
+									aria-label={t("More for {name}", { name: summary.name })}
 								>
 									<MoreVertical className="size-14" />
 								</Button>
@@ -349,14 +373,14 @@ export function McpServerRowView({
 										disabled={inert}
 										onSelect={() => onCommand({ kind: "sign-in" })}
 									>
-										Sign in
+										{t("Sign in")}
 									</DropdownMenuItem>
 									<DropdownMenuItem
 										data-testid="mcp-menu-sign-out"
 										disabled={inert}
 										onSelect={() => onCommand({ kind: "sign-out" })}
 									>
-										Sign out
+										{t("Sign out")}
 									</DropdownMenuItem>
 								</>
 							) : null}
@@ -366,7 +390,7 @@ export function McpServerRowView({
 									disabled={inert}
 									onSelect={() => onCommand({ kind: "test-connection" })}
 								>
-									Test connection
+									{t("Test connection")}
 								</DropdownMenuItem>
 							) : null}
 							{pendingProject ? (
@@ -375,14 +399,14 @@ export function McpServerRowView({
 									disabled={inert}
 									onSelect={() => onCommand({ kind: "review" })}
 								>
-									Review & approve
+									{t("Review & approve")}
 								</DropdownMenuItem>
 							) : summary.scope === "user" ? (
 								<DropdownMenuItem data-testid="mcp-menu-edit" disabled className="items-start">
 									<span className="flex min-w-0 flex-col gap-2">
-										<span>Edit</span>
+										<span>{t("Edit")}</span>
 										<span className="break-all text-text-muted tr-text-metadata">
-											Edit {summary.source} directly
+											{t("Edit {path} directly", { path: summary.source })}
 										</span>
 									</span>
 								</DropdownMenuItem>
@@ -392,7 +416,7 @@ export function McpServerRowView({
 									disabled={inert || row.state === "handled-elsewhere"}
 									onSelect={() => onCommand({ kind: "edit" })}
 								>
-									Edit
+									{t("Edit")}
 								</DropdownMenuItem>
 							)}
 							{summary.scope === "user" && summary.projectOverride ? (
@@ -401,14 +425,14 @@ export function McpServerRowView({
 									disabled={inert}
 									onSelect={() => onCommand({ kind: "share" })}
 								>
-									Share with repo
+									{t("Share with repo")}
 								</DropdownMenuItem>
 							) : null}
 							<DropdownMenuItem
 								data-testid="mcp-menu-details"
 								onSelect={() => onCommand({ kind: "details" })}
 							>
-								Details
+								{t("Details")}
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
@@ -417,7 +441,7 @@ export function McpServerRowView({
 								onSelect={() => onCommand({ kind: "remove" })}
 								className="text-feedback-error"
 							>
-								Remove
+								{t("Remove")}
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
@@ -444,6 +468,7 @@ function ExposureMenu({
 	disabled: boolean;
 	onChange: (exposure: McpEditableExposure) => void;
 }) {
+	const { t } = useI18n();
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
@@ -451,20 +476,22 @@ function ExposureMenu({
 					type="button"
 					data-testid="mcp-server-exposure"
 					data-exposure={summary.effectiveExposure}
-					aria-label={`Exposure: ${summary.effectiveExposure}`}
+					aria-label={t("Exposure: {exposure}", {
+						exposure: mcpExposureLabel(summary.effectiveExposure, t),
+					})}
 					disabled={disabled}
 					className={cn(
 						CHIP_CLASS,
 						"inline-flex items-center gap-2 outline-none hover:bg-control-bg-hovered hover:text-text-default focus-visible:ring-2 focus-visible:ring-primary disabled:text-control-disabled-text disabled:hover:bg-transparent",
 					)}
 				>
-					{mcpExposureLabel(summary.effectiveExposure)}
+					{mcpExposureLabel(summary.effectiveExposure, t)}
 					<ChevronDown className="size-12" />
 				</button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start" className="max-w-[20rem]">
 				<DropdownMenuLabel>
-					Exposure{summary.scope === "user" ? " in this project" : ""}
+					{summary.scope === "user" ? t("Exposure in this project") : t("Exposure")}
 				</DropdownMenuLabel>
 				<DropdownMenuRadioGroup
 					value={summary.effectiveExposure}
@@ -486,9 +513,9 @@ function ExposureMenu({
 								<span aria-hidden className="size-14 shrink-0" />
 							)}
 							<span className="flex flex-col gap-2">
-								<span>{mcpExposureLabel(exposure)}</span>
+								<span>{mcpExposureLabel(exposure, t)}</span>
 								<span className="text-text-muted tr-text-metadata">
-									{MCP_EXPOSURE_HINT[exposure]}
+									{t(MCP_EXPOSURE_HINT[exposure])}
 								</span>
 							</span>
 						</DropdownMenuRadioItem>
@@ -496,7 +523,7 @@ function ExposureMenu({
 				</DropdownMenuRadioGroup>
 				{summary.exposure === "codemode" ? (
 					<p className="px-8 py-4 text-text-muted tr-text-metadata">
-						Configured as codemode — treated as deferred (codemode not available yet).
+						{t("Configured as codemode — treated as deferred (codemode not available yet).")}
 					</p>
 				) : null}
 			</DropdownMenuContent>
@@ -505,18 +532,24 @@ function ExposureMenu({
 }
 
 function McpIntro({ projectName }: { projectName: string | undefined }) {
+	const { t } = useI18n();
 	return (
 		<div className="flex flex-col gap-4">
-			<h3 className="tr-title-section text-text-default">MCP servers</h3>
+			<h3 className="tr-title-section text-text-default">{t("MCP servers")}</h3>
 			<p className="text-text-muted tr-text-metadata">
-				Tools from Model Context Protocol servers for chats in {projectName ?? "this project"}. User
-				servers apply to every project; project servers live in this repository's .pi/mcp.json.
+				{t("Tools from Model Context Protocol servers for chats in {project}.", {
+					project: projectName ?? t("this project"),
+				})}{" "}
+				{t(
+					"User servers apply to every project; project servers live in this repository's .pi/mcp.json.",
+				)}
 			</p>
 		</div>
 	);
 }
 
 export function McpConfigFileErrors({ errors }: { errors: readonly McpConfigFileError[] }) {
+	const { t } = useI18n();
 	const bySource = new Map<string, string[]>();
 	for (const { source, message } of errors) {
 		bySource.set(source, [...(bySource.get(source) ?? []), message]);
@@ -534,14 +567,14 @@ export function McpConfigFileErrors({ errors }: { errors: readonly McpConfigFile
 				>
 					<TriangleAlert className="mt-2 size-14 shrink-0 text-feedback-error" />
 					<span className="flex min-w-0 flex-col gap-2">
-						<span className="break-all">Problem in {source}</span>
+						<span className="break-all">{t("Problem in {path}", { path: source })}</span>
 						{messages.map((message) => (
 							<span key={message} className="break-words text-text-muted">
 								{message}
 							</span>
 						))}
 						<span className="text-text-muted">
-							Edit the file directly to fix it; pi ignores what it can't read until then.
+							{t("Edit the file directly to fix it; pi ignores what it can't read until then.")}
 						</span>
 					</span>
 				</li>
@@ -551,13 +584,14 @@ export function McpConfigFileErrors({ errors }: { errors: readonly McpConfigFile
 }
 
 export function McpConfirmBanner() {
+	const { t } = useI18n();
 	return (
 		<p
 			data-testid="mcp-confirm-banner"
 			className="flex items-center gap-8 rounded-sm border border-border-default bg-feedback-info-subtle px-12 py-8 text-text-default tr-text-metadata"
 		>
 			<ShieldCheck className="size-14 shrink-0 text-feedback-info" />
-			ThinkRail asks before MCP calls that may change data (per chat); no saved rules yet.
+			{t("ThinkRail asks before MCP calls that may change data (per chat); no saved rules yet.")}
 		</p>
 	);
 }
@@ -573,20 +607,21 @@ export function McpEmptyState({
 	onImport: () => void;
 	onPreset: (preset: McpPreset) => void;
 }) {
+	const { t } = useI18n();
 	return (
 		<div
 			data-testid="mcp-empty"
 			className="flex flex-col items-start gap-12 rounded-sm border border-border-default bg-control-bg px-16 py-16"
 		>
-			<p className="tr-text-ui text-text-default">No MCP servers yet.</p>
+			<p className="tr-text-ui text-text-default">{t("No MCP servers yet.")}</p>
 			{MCP_PRESETS.length > 0 ? (
 				<ul className="flex w-full flex-col gap-4" data-testid="mcp-empty-presets">
 					{MCP_PRESETS.map((preset) => (
 						<li key={preset.id} className="flex items-center gap-8">
 							<span className="flex min-w-0 flex-1 flex-col">
-								<span className="tr-title-compact text-text-default">{preset.title}</span>
+								<span className="tr-title-compact text-text-default">{t(preset.title)}</span>
 								<span className="truncate text-text-muted tr-text-metadata">
-									{preset.description}
+									{t(preset.description)}
 								</span>
 							</span>
 							<Button
@@ -596,7 +631,7 @@ export function McpEmptyState({
 								onClick={() => onPreset(preset)}
 							>
 								<Plus className="size-14" />
-								Add
+								{t("Add")}
 							</Button>
 						</li>
 					))}
@@ -605,7 +640,7 @@ export function McpEmptyState({
 			<div className="flex flex-wrap gap-8">
 				<Button size="sm" data-testid="mcp-empty-add" disabled={disabled} onClick={onAdd}>
 					<Plus className="size-14" />
-					Add a server
+					{t("Add a server")}
 				</Button>
 				<Button
 					variant="outline"
@@ -614,24 +649,25 @@ export function McpEmptyState({
 					disabled={disabled}
 					onClick={onImport}
 				>
-					Import mcpServers JSON
+					{t("Import mcpServers JSON")}
 				</Button>
 			</div>
 			<p className="text-text-muted tr-text-metadata">
-				Servers run on the host that runs ThinkRail and inherit its environment.
+				{t("Servers run on the host that runs ThinkRail and inherit its environment.")}
 			</p>
 		</div>
 	);
 }
 
 export function McpSettings() {
+	const { t } = useI18n();
 	const workspace = useAppStore(selectActiveWorkspace);
 	if (!workspace) {
 		return (
 			<section data-testid="settings-mcp" className="flex flex-col gap-16">
 				<McpIntro projectName={undefined} />
 				<p data-testid="mcp-no-workspace" className="text-text-muted tr-text-ui">
-					Open a workspace to manage its MCP servers.
+					{t("Open a workspace to manage its MCP servers.")}
 				</p>
 			</section>
 		);
@@ -642,6 +678,7 @@ export function McpSettings() {
 type AddRequest = { tier: "form" | "json"; preset?: McpPreset; key: number };
 
 function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
+	const { t } = useI18n();
 	const workspaceId = workspace.id;
 	const project = useAppStore((s) => s.projects.find((p) => p.id === workspace.projectId));
 	const projection = useAppStore((s) => s.mcpByWorkspace[workspaceId]);
@@ -755,7 +792,7 @@ function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
 					const name = row.summary.name;
 					if (method === "mcp.logout") {
 						await getTransport().request(method, { workspaceId, name });
-						toast.success(`Signed out of ${name}.`);
+						toast.success(t("Signed out of {name}.", { name }));
 						return requestMcpList("mcp.list", { workspaceId });
 					}
 					const { loginId } = await getTransport().request(method, { workspaceId, name });
@@ -870,7 +907,7 @@ function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
 						onClick={() => setAdding({ tier: "form", key: Date.now() })}
 					>
 						<Plus className="size-14" />
-						Add server
+						{t("Add server")}
 					</Button>
 				) : null}
 			</div>
@@ -881,26 +918,27 @@ function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
 					className="flex items-start gap-8 rounded-sm border border-border-default border-l-[3px] border-l-feedback-warning bg-feedback-warning-subtle px-12 py-8 text-text-default tr-text-metadata"
 				>
 					<TriangleAlert className="mt-2 size-14 shrink-0 text-feedback-warning" />
-					{mcpHandledElsewhereText(handledElsewhere.by)}
+					{mcpHandledElsewhereText(handledElsewhere.by, t)}
 				</p>
 			) : null}
 			{!trusted ? (
 				<p data-testid="mcp-untrusted" className="text-text-muted tr-text-metadata">
-					This project isn't trusted, so servers its repository defines in .pi/mcp.json are not
-					listed. Trust it from the project's Home to review them.
+					{t(
+						"This project isn't trusted, so servers its repository defines in .pi/mcp.json are not listed. Trust it from the project's Home to review them.",
+					)}
 				</p>
 			) : null}
 			<McpConfigFileErrors errors={configErrors} />
 			{feedback ? (
 				<p role="status" data-testid="mcp-feedback" className="text-text-muted tr-text-metadata">
-					{feedback}
+					{t(feedback)}
 				</p>
 			) : null}
 			{servers === null ? (
 				readFailure ? (
 					<div className="flex flex-col items-start gap-8">
 						<p role="alert" data-testid="mcp-error" className="text-text-muted tr-text-ui">
-							Couldn't read MCP servers from the host: {readFailure}
+							{t("Couldn't read MCP servers from the host:")} {readFailure}
 						</p>
 						<Button
 							variant="outline"
@@ -908,11 +946,11 @@ function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
 							data-testid="mcp-retry"
 							onClick={() => setReadAttempt((attempt) => attempt + 1)}
 						>
-							Retry
+							{t("Retry")}
 						</Button>
 					</div>
 				) : (
-					<SkeletonRows rows={3} label="Loading MCP servers" />
+					<SkeletonRows rows={3} label={t("Loading MCP servers")} />
 				)
 			) : servers.length === 0 ? (
 				<McpEmptyState
@@ -927,10 +965,10 @@ function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
 						<McpServerRowView
 							key={row.key}
 							row={row}
-							view={mcpRowView(row, now)}
+							view={mcpRowView(row, now, t)}
 							readOnly={readOnly}
 							busy={!!busy[row.key] || loginBusy}
-							error={rowErrorText(rowErrors[row.key], row.state)}
+							error={rowErrorText(rowErrors[row.key], row.state, t)}
 							onCommand={(command) => onCommand(row, command)}
 						/>
 					))}
@@ -963,7 +1001,8 @@ function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
 							setRowErrors((previous) => ({
 								...previous,
 								[key]: {
-									text: `Added, couldn't confirm enabling for this project; use its switch to retry. ${outcome.error}`,
+									text: outcome.error,
+									addedEnableUnconfirmed: true,
 								},
 							}));
 						} else setFeedback(mcpSaveFeedback(outcome.value));
@@ -1003,7 +1042,7 @@ function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
 			{detailRow ? (
 				<McpDetailsDialog
 					row={detailRow}
-					view={mcpRowView(detailRow, now)}
+					view={mcpRowView(detailRow, now, t)}
 					onClose={() => setDetails(null)}
 				/>
 			) : null}
@@ -1015,13 +1054,15 @@ function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
 				onOpenChange={(open) => {
 					if (!open) setRemoving(null);
 				}}
-				title={`Remove ${removing?.summary.name ?? ""}?`}
+				title={t("Remove {name}?", { name: removing?.summary.name ?? "" })}
 				description={
 					removing
-						? `Deletes the entry from ${removing.summary.source}. Chats stop using it at their next idle reload.`
+						? t("Deletes the entry from {path}. Chats stop using it at their next idle reload.", {
+								path: removing.summary.source,
+							})
 						: undefined
 				}
-				confirmLabel="Remove"
+				confirmLabel={t("Remove")}
 				destructive
 				confirmTestId="mcp-remove-confirm"
 				onConfirm={() => {
@@ -1046,7 +1087,7 @@ function McpWorkspaceSettings({ workspace }: { workspace: Workspace }) {
 					onReply={(value) => {
 						getTransport()
 							.request("provider.loginReply", { loginId: mcpLogin.loginId, value })
-							.catch((err) => toast.error(errorText(err), "Couldn't submit"));
+							.catch((err) => toast.error(errorText(err), t("Couldn't submit")));
 						useAppStore.getState().clearLoginInput();
 					}}
 					onCancel={() => {

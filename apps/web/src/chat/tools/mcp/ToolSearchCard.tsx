@@ -1,5 +1,6 @@
 import { RiSearchLine } from "@remixicon/react";
 import { numArg, strArg, type ToolRenderProps } from "@thinkrail/extension-api/web";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { McpHeader, McpOutput, McpRunning } from "./McpCardParts";
 import { mcpText, readToolSearchLoaded, toolSearchDescriptions } from "./mcpResult";
 
@@ -8,8 +9,9 @@ export function toolSearchSummary({ args }: ToolRenderProps): string {
 }
 
 export function ToolSearchCard({ toolCallId, args, result, status }: ToolRenderProps) {
+	const { t } = useI18n();
 	const query = strArg(args, "query");
-	const limit = numArg(args, "limit");
+	const limit = numArg(args, t("limit"));
 	const text = mcpText(result);
 	const loaded = status === "done" ? readToolSearchLoaded(result) : null;
 	const descriptions = toolSearchDescriptions(text);
@@ -19,15 +21,23 @@ export function ToolSearchCard({ toolCallId, args, result, status }: ToolRenderP
 				<span className="min-w-0 truncate text-primary" title={query}>
 					{query}
 				</span>
-				{limit !== null ? <span className="shrink-0 text-text-subtle">limit {limit}</span> : null}
+				{limit !== null ? (
+					<span className="shrink-0 text-text-subtle">
+						{t("limit")} {limit}
+					</span>
+				) : null}
 			</McpHeader>
 			{status === "running" ? (
-				<McpRunning label="Searching tools…" />
+				<McpRunning label={t("Searching tools…")} />
 			) : loaded && loaded.length > 0 ? (
 				<div className="flex min-w-0 flex-col gap-2 tr-text-metadata">
 					<span className="text-text-muted">
-						Loaded {loaded.length} {loaded.length === 1 ? "tool" : "tools"}, available from the next
-						call
+						{t(
+							loaded.length === 1
+								? "Loaded {count} tool, available from the next call"
+								: "Loaded {count} tools, available from the next call",
+							{ count: loaded.length },
+						)}
 					</span>
 					<ul data-testid="tool-search-loaded" className="flex min-w-0 flex-col gap-4">
 						{loaded.map((name) => {

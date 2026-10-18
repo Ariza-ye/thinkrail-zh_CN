@@ -1,5 +1,6 @@
 import type { ChangeReceipt, GitDiffScope, ResourceMeta } from "@thinkrail/contracts";
 import { Button } from "@thinkrail/ui/button";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import {
 	type ComponentType,
 	type LazyExoticComponent,
@@ -57,7 +58,9 @@ export interface DiffSurfaceInput {
 }
 
 function fileRevertMessage(receipt: ChangeReceipt, base: string): string {
-	return receipt.trashed ? `Moved ${base} to the trash` : `Reverted ${base}`;
+	return receipt.trashed
+		? translate("Moved {base} to the trash", { base: base })
+		: translate("Reverted {base}", { base: base });
 }
 
 export interface DiffSurface {
@@ -112,7 +115,9 @@ function RendererDiff({
 	let Component = diffComponents.get(implementationKey);
 	if (!Component) {
 		if (!renderer.loadDiff) {
-			throw new Error(`Resource renderer has no diff loader: ${renderer.id}`);
+			throw new Error(
+				translate("Resource renderer has no diff loader: {renderer}", { renderer: renderer.id }),
+			);
 		}
 		Component = lazy(renderer.loadDiff);
 		diffComponents.set(implementationKey, Component);
@@ -203,12 +208,12 @@ export function useDiffSurface({
 			const code = wsErrorCode(error);
 			if (code === "STALE_VIEW") {
 				reload();
-				toast.info("This file changed since you opened it — review the new diff");
+				toast.info(translate("This file changed since you opened it — review the new diff"));
 				return;
 			}
 			if (code === "RECEIPT_UNKNOWN") {
 				reload();
-				toast.info("This change can no longer be undone — the host no longer holds it");
+				toast.info(translate("This change can no longer be undone — the host no longer holds it"));
 				return;
 			}
 			toast.error(errorText(error), title);
@@ -224,7 +229,7 @@ export function useDiffSurface({
 					expect: { modifiedHash: receipt.after.hash },
 				});
 			} catch (error) {
-				handleMutationError(error, "Couldn't undo the revert");
+				handleMutationError(error, translate("Couldn't undo the revert"));
 			}
 		},
 		[handleMutationError, workspaceId],
@@ -236,7 +241,7 @@ export function useDiffSurface({
 				message,
 				durationMs: 8000,
 				action: {
-					label: "Undo",
+					label: translate("Undo"),
 					onClick: () => {
 						void undoReceipt(receipt);
 					},
@@ -248,7 +253,10 @@ export function useDiffSurface({
 	const revertBlock = useCallback<HunkActions["revert"]>(
 		async (block) => {
 			if (!mutationExpect) {
-				handleMutationError(new Error("Change metadata is not ready"), "Couldn't revert the hunk");
+				handleMutationError(
+					new Error(translate("Change metadata is not ready")),
+					translate("Couldn't revert the hunk"),
+				);
 				return;
 			}
 			try {
@@ -259,16 +267,19 @@ export function useDiffSurface({
 					target: { kind: "range", original: block.original, modified: block.modified },
 					expect: mutationExpect,
 				});
-				showUndoToast(receipt, `Reverted hunk in ${base}`);
+				showUndoToast(receipt, translate("Reverted hunk in {base}", { base: base }));
 			} catch (error) {
-				handleMutationError(error, "Couldn't revert the hunk");
+				handleMutationError(error, translate("Couldn't revert the hunk"));
 			}
 		},
 		[base, handleMutationError, mutationExpect, showUndoToast, path, scope, workspaceId],
 	);
 	const revertFile = useCallback(async () => {
 		if (!mutationExpect) {
-			handleMutationError(new Error("Change metadata is not ready"), "Couldn't revert the file");
+			handleMutationError(
+				new Error(translate("Change metadata is not ready")),
+				translate("Couldn't revert the file"),
+			);
 			return;
 		}
 		try {
@@ -281,7 +292,7 @@ export function useDiffSurface({
 			});
 			showUndoToast(receipt, fileRevertMessage(receipt, base));
 		} catch (error) {
-			handleMutationError(error, "Couldn't revert the file");
+			handleMutationError(error, translate("Couldn't revert the file"));
 		}
 	}, [base, handleMutationError, mutationExpect, showUndoToast, path, scope, workspaceId]);
 	const askAgent = useCallback<HunkActions["askAgent"]>(
@@ -338,6 +349,7 @@ export function DiffSurfaceBody({
 	onSelectRenderer: (rendererId: string) => void;
 	bodyClassName?: string;
 }) {
+	const { t } = useI18n();
 	const { renderer, candidates, review, reviewable, hunkActions, placedThreadIds } = surface;
 	const reviews = reviewable ? [review.worktree, review.base] : [];
 	const tooExpensive = useMemo(
@@ -360,8 +372,9 @@ export function DiffSurfaceBody({
 				{tooExpensive && !showLargeDiff ? (
 					<div data-testid="diff-too-large" className="flex flex-col items-start gap-8 px-12 py-8">
 						<p className="tr-text-ui text-text-muted">
-							This diff is too expensive to show automatically. Rendering it can freeze the app for
-							a while.
+							{t(
+								"This diff is too expensive to show automatically. Rendering it can freeze the app for a while.",
+							)}
 						</p>
 						<div className="flex gap-8">
 							<Button
@@ -370,7 +383,7 @@ export function DiffSurfaceBody({
 								data-testid="diff-show-anyway"
 								onClick={() => setShowLargeDiff(true)}
 							>
-								Show diff anyway
+								{t("Show diff anyway")}
 							</Button>
 							{surface.modified.kind === "text" && reviewable ? (
 								<Button
@@ -379,7 +392,7 @@ export function DiffSurfaceBody({
 									data-testid="diff-open-file"
 									onClick={() => void openFileInTab(workspaceId, path, "keep")}
 								>
-									Open file
+									{t("Open file")}
 								</Button>
 							) : null}
 						</div>

@@ -1,3 +1,4 @@
+import { translate } from "@thinkrail/ui/i18n";
 import {
 	isPreviewCompatibleTabKind,
 	type LayoutAttention,
@@ -95,7 +96,7 @@ const LAYOUT_TOOL_NAMES: Record<LayoutToolId, string> = {
 };
 
 export function layoutTabName(tab: LayoutTab): string {
-	return tab.kind === "tool" ? LAYOUT_TOOL_NAMES[tab.tool] : tab.name;
+	return tab.kind === "tool" ? translate(LAYOUT_TOOL_NAMES[tab.tool]) : tab.name;
 }
 
 export function toolTab(tool: LayoutToolId): LayoutToolTab {
@@ -315,12 +316,13 @@ export function removeLayoutGroup(
 ): LayoutOperationResult {
 	if (location.area === "center") {
 		const groups = collectCenterGroups(document.center);
-		if (groups.length === 1) return { reason: "The final center group cannot be removed." };
+		if (groups.length === 1)
+			return { reason: translate("The final center group cannot be removed.") };
 		const sourceIndex = groups.findIndex((group) => group.id === location.groupId);
-		if (sourceIndex < 0) return { reason: "The center group no longer exists." };
+		if (sourceIndex < 0) return { reason: translate("The center group no longer exists.") };
 		const source = groups[sourceIndex];
 		const target = groups[sourceIndex > 0 ? sourceIndex - 1 : 1];
-		if (!source || !target) return { reason: "The center group no longer exists." };
+		if (!source || !target) return { reason: translate("The center group no longer exists.") };
 		const moved = updateCenterGroup(document.center, target.id, (group) =>
 			withGroupTabs(
 				group,
@@ -329,7 +331,7 @@ export function removeLayoutGroup(
 			),
 		);
 		const center = removeCenterGroup(moved, source.id);
-		if (!center) return { reason: "The final center group cannot be removed." };
+		if (!center) return { reason: translate("The final center group cannot be removed.") };
 		const focusTab = source.tabs[0] ?? target.tabs[0];
 		return {
 			document: { ...document, center },
@@ -339,12 +341,12 @@ export function removeLayoutGroup(
 	}
 	const region = document[location.area];
 	const sourceIndex = region.groups.findIndex((group) => group.id === location.groupId);
-	if (sourceIndex < 0) return { reason: "The auxiliary group no longer exists." };
+	if (sourceIndex < 0) return { reason: translate("The auxiliary group no longer exists.") };
 	const source = region.groups[sourceIndex];
-	if (!source) return { reason: "The auxiliary group no longer exists." };
+	if (!source) return { reason: translate("The auxiliary group no longer exists.") };
 	if (region.groups.length === 1) {
 		if (source.tabs.length > 0)
-			return { reason: "Move or hide this group's tabs before removing it." };
+			return { reason: translate("Move or hide this group's tabs before removing it.") };
 		const centerId = primaryCenterGroupId(document);
 		return {
 			document: {
@@ -361,7 +363,7 @@ export function removeLayoutGroup(
 				candidate !== undefined &&
 				source.tabs.every((tab) => canJoinAuxiliaryGroup(candidate, tab)),
 		);
-	if (!target) return { reason: "Move or hide this group's tabs before removing it." };
+	if (!target) return { reason: translate("Move or hide this group's tabs before removing it.") };
 	const groups = region.groups
 		.filter((group) => group.id !== source.id)
 		.map((group) =>
@@ -462,7 +464,8 @@ export function openCenterTab(
 	claimPreview = false,
 ): LayoutOperationResult {
 	const resolved = resolvePlacedResource(document, tab);
-	if (resolved.conflictingId) return { reason: "That tab id belongs to another resource." };
+	if (resolved.conflictingId)
+		return { reason: translate("That tab id belongs to another resource.") };
 	const previewCompatible = isPreviewCompatibleTabKind(tab.kind);
 	const effectiveIntent = intent === "preview" && !previewCompatible ? "keep" : intent;
 	const existingTab = resolved.placed;
@@ -481,7 +484,7 @@ export function openCenterTab(
 			: { document: nextDocument, focusGroupId: existing.groupId, focusTabId: existingTab.id };
 	}
 	const target = findCenterGroup(document.center, groupId);
-	if (!target) return { reason: "The destination group no longer exists." };
+	if (!target) return { reason: translate("The destination group no longer exists.") };
 	let tabs = target.tabs;
 	let previewTabId = target.previewTabId;
 	const claimsPreviewSlot = previewCompatible && (effectiveIntent === "preview" || claimPreview);
@@ -555,7 +558,7 @@ export function canPlaceLayoutTab(tab: LayoutTab, area: "center" | LayoutAuxilia
 export const SEPARATE_PANES_REASON = "Tools and terminals use separate panes.";
 
 export function describeLayoutGroup(tabs: readonly LayoutTab[], limit = 3): string {
-	if (tabs.length === 0) return "(empty)";
+	if (tabs.length === 0) return translate("(empty)");
 	const names = tabs.slice(0, limit).map((tab) => layoutTabName(tab));
 	const rest = tabs.length - names.length;
 	return `(${names.join(", ")}${rest > 0 ? `, +${rest}` : ""})`;
@@ -577,22 +580,23 @@ export function moveTabToGroup(
 	index?: number,
 ): LayoutOperationResult {
 	const resolved = resolvePlacedResource(document, tab);
-	if (resolved.conflictingId) return { reason: "That tab id belongs to another resource." };
+	if (resolved.conflictingId)
+		return { reason: translate("That tab id belongs to another resource.") };
 	const movingTab = resolved.placed ?? tab;
 	if (!canPlaceLayoutTab(movingTab, target.area))
-		return { reason: "That tab type cannot move to this region." };
+		return { reason: translate("That tab type cannot move to this region.") };
 	const source = findTabLocation(document, movingTab.id);
 	if (source?.area === target.area && source.groupId === target.groupId) {
 		const current =
 			target.area === "center"
 				? findCenterGroup(document.center, target.groupId)
 				: findAuxiliaryGroup(document, target.area, target.groupId);
-		if (!current) return { reason: "The destination group no longer exists." };
+		if (!current) return { reason: translate("The destination group no longer exists.") };
 		const tabs = current.tabs.filter((candidate) => candidate.id !== movingTab.id);
 		const insertion = Math.max(0, Math.min(index ?? tabs.length, tabs.length));
 		tabs.splice(insertion, 0, movingTab);
 		if (current.tabs.every((candidate, position) => candidate.id === tabs[position]?.id)) {
-			return { reason: "That tab is already at this position." };
+			return { reason: translate("That tab is already at this position.") };
 		}
 		if (target.area === "center") {
 			return {
@@ -626,7 +630,7 @@ export function moveTabToGroup(
 	if (target.area === "center") {
 		const group = findCenterGroup(without.center, target.groupId);
 		if (!group || movingTab.kind === "tool")
-			return { reason: "The destination group no longer exists." };
+			return { reason: translate("The destination group no longer exists.") };
 		const insertion = Math.max(0, Math.min(index ?? group.tabs.length, group.tabs.length));
 		const tabs = [...group.tabs];
 		tabs.splice(insertion, 0, movingTab);
@@ -649,11 +653,11 @@ export function moveTabToGroup(
 		movingTab.kind === "chat" ||
 		movingTab.kind === "document"
 	) {
-		return { reason: "The destination group no longer exists." };
+		return { reason: translate("The destination group no longer exists.") };
 	}
 	const group = groups[groupIndex];
-	if (!group) return { reason: "The destination group no longer exists." };
-	if (!canJoinAuxiliaryGroup(group, movingTab)) return { reason: SEPARATE_PANES_REASON };
+	if (!group) return { reason: translate("The destination group no longer exists.") };
+	if (!canJoinAuxiliaryGroup(group, movingTab)) return { reason: translate(SEPARATE_PANES_REASON) };
 	const insertion = Math.max(0, Math.min(index ?? group.tabs.length, group.tabs.length));
 	const tabs = [...group.tabs];
 	tabs.splice(insertion, 0, movingTab);
@@ -677,13 +681,17 @@ export function splitCenterGroup(
 	tab: LayoutCenterTab,
 ): LayoutOperationResult {
 	if (collectCenterGroups(document.center).length >= LAYOUT_LIMITS.maxCenterGroups) {
-		return { reason: `Center groups are limited to ${LAYOUT_LIMITS.maxCenterGroups}.` };
+		return {
+			reason: translate("Center groups are limited to {count}.", {
+				count: LAYOUT_LIMITS.maxCenterGroups,
+			}),
+		};
 	}
 	const source = findCenterGroup(document.center, groupId);
-	if (!source) return { reason: "The source group no longer exists." };
+	if (!source) return { reason: translate("The source group no longer exists.") };
 	const resolved = resolvePlacedResource(document, tab);
 	if (resolved.conflictingId || !resolved.placed || resolved.placed.kind === "tool") {
-		return { reason: "Only a placed center-compatible resource can create a split." };
+		return { reason: translate("Only a placed center-compatible resource can create a split.") };
 	}
 	const placedTab = resolved.placed;
 	const newGroup: LayoutCenterGroup = {
@@ -709,7 +717,7 @@ export function splitCenterGroup(
 				}
 			: removeTabEverywhere(document, placedTab.id);
 	const current = findCenterGroup(cleaned.center, groupId);
-	if (!current) return { reason: "The source group no longer exists." };
+	if (!current) return { reason: translate("The source group no longer exists.") };
 	const before = direction === "left" || direction === "up";
 	const split: LayoutCenterSplit = {
 		kind: "split",
@@ -758,14 +766,15 @@ export function createAuxiliaryGroup(
 	maxGroups: number,
 ): LayoutOperationResult {
 	const resolved = resolvePlacedResource(document, tab);
-	if (resolved.conflictingId) return { reason: "That tab id belongs to another resource." };
+	if (resolved.conflictingId)
+		return { reason: translate("That tab id belongs to another resource.") };
 	const placedTab = resolved.placed;
 	const movingTab = placedTab?.kind === "tool" || placedTab?.kind === "terminal" ? placedTab : tab;
 	if (!canCreateAuxiliaryGroup(document, region, movingTab, maxGroups)) {
-		return { reason: `This region is limited to ${maxGroups} groups.` };
+		return { reason: translate("This region is limited to {count} groups.", { count: maxGroups }) };
 	}
 	if (!canCreateAuxiliaryGroup(document, region, movingTab, maxGroups, insertAt)) {
-		return { reason: "That tab is already at this position." };
+		return { reason: translate("That tab is already at this position.") };
 	}
 	const removed = removeTabEverywhere(document, movingTab.id);
 	const retained = removed[region].groups;
@@ -806,7 +815,7 @@ export function setAuxiliaryGroupFolded(
 	folded: boolean,
 ): LayoutOperationResult {
 	if (!document[region].groups.some((group) => group.id === groupId)) {
-		return { reason: "The auxiliary group no longer exists." };
+		return { reason: translate("The auxiliary group no longer exists.") };
 	}
 	return {
 		document: {
@@ -1061,7 +1070,8 @@ export function revealTool(
 	}
 	if (groups.length > 0 && groups.length >= maxGroups) {
 		const group = groups.find((candidate) => canJoinAuxiliaryGroup(candidate, requestedTab));
-		if (!group) return { reason: "There is no auxiliary group available for this tool." };
+		if (!group)
+			return { reason: translate("There is no auxiliary group available for this tool.") };
 		return moveTabToGroup(
 			{
 				...document,
@@ -1369,7 +1379,7 @@ export function validateLayoutDocument(
 	maxBottomGroups = 3,
 ): string[] {
 	const errors: string[] = [];
-	if (document.version !== 2) errors.push("Unsupported layout version.");
+	if (document.version !== 2) errors.push(translate("Unsupported layout version."));
 	const groupIds = new Set<string>();
 	const tabIds = new Set<string>();
 	const resourceKeys = new Set<string>();
@@ -1377,27 +1387,31 @@ export function validateLayoutDocument(
 	let tabCount = 0;
 	const trackTab = (tab: LayoutTab, area: "center" | LayoutAuxiliaryRegion): void => {
 		tabCount += 1;
-		if (!canPlaceLayoutTab(tab, area)) errors.push(`Illegal ${area} tab: ${tab.id}`);
-		if (tabIds.has(tab.id)) errors.push(`Duplicate tab placement: ${tab.id}`);
+		if (!canPlaceLayoutTab(tab, area))
+			errors.push(translate("Illegal {area} tab: {id}", { area: area, id: tab.id }));
+		if (tabIds.has(tab.id)) errors.push(translate("Duplicate tab placement: {id}", { id: tab.id }));
 		tabIds.add(tab.id);
 		const key = layoutResourceIdentity(tab);
-		if (resourceKeys.has(key)) errors.push(`Duplicate canonical resource: ${tab.kind}`);
+		if (resourceKeys.has(key))
+			errors.push(translate("Duplicate canonical resource: {kind}", { kind: tab.kind }));
 		resourceKeys.add(key);
 		if (tab.kind === "tool") {
-			if (toolIds.has(tab.tool)) errors.push(`Duplicate singleton tool: ${tab.tool}`);
+			if (toolIds.has(tab.tool))
+				errors.push(translate("Duplicate singleton tool: {tool}", { tool: tab.tool }));
 			toolIds.add(tab.tool);
 		}
 	};
 	const visit = (node: LayoutCenterNode, depth: number): void => {
-		if (depth > LAYOUT_LIMITS.maxDepth) errors.push("Center split tree is too deep.");
-		if (groupIds.has(node.id)) errors.push(`Duplicate layout node id: ${node.id}`);
+		if (depth > LAYOUT_LIMITS.maxDepth) errors.push(translate("Center split tree is too deep."));
+		if (groupIds.has(node.id))
+			errors.push(translate("Duplicate layout node id: {id}", { id: node.id }));
 		groupIds.add(node.id);
 		if (node.kind === "split") {
 			if (
 				node.weights.some((weight) => !Number.isFinite(weight) || weight <= 0) ||
 				Math.abs(node.weights[0] + node.weights[1] - 1) > 1e-6
 			) {
-				errors.push(`Invalid split weights: ${node.id}`);
+				errors.push(translate("Invalid split weights: {id}", { id: node.id }));
 			}
 			visit(node.children[0], depth + 1);
 			visit(node.children[1], depth + 1);
@@ -1407,32 +1421,36 @@ export function validateLayoutDocument(
 		if (node.previewTabId) {
 			const preview = node.tabs.find((tab) => tab.id === node.previewTabId);
 			if (!preview || !isPreviewCompatibleTabKind(preview.kind)) {
-				errors.push(`Invalid preview resource: ${node.previewTabId}`);
+				errors.push(translate("Invalid preview resource: {id}", { id: node.previewTabId }));
 			}
 		}
 	};
 	visit(document.center, 1);
 	const centerGroups = collectCenterGroups(document.center);
-	if (centerGroups.length > LAYOUT_LIMITS.maxCenterGroups) errors.push("Too many center groups.");
+	if (centerGroups.length > LAYOUT_LIMITS.maxCenterGroups)
+		errors.push(translate("Too many center groups."));
 	for (const side of ["left", "right"] as const) {
 		const region = document[side];
 		if (!Number.isFinite(region.width) || region.width <= 0 || region.width >= 1) {
-			errors.push(`Invalid ${side} width.`);
+			errors.push(translate("Invalid {side} width.", { side: side }));
 		}
-		if (region.groups.length > maxSideGroups) errors.push(`Too many ${side} groups.`);
+		if (region.groups.length > maxSideGroups)
+			errors.push(translate("Too many {side} groups.", { side: side }));
 		if (region.groups.length > LAYOUT_LIMITS.maxSideGroupsSafety) {
-			errors.push(`Unsafe ${side} group count.`);
+			errors.push(translate("Unsafe {side} group count.", { side: side }));
 		}
-		if (region.visible && region.groups.length === 0) errors.push(`Visible ${side} side is empty.`);
+		if (region.visible && region.groups.length === 0)
+			errors.push(translate("Visible {side} side is empty.", { side: side }));
 		const weightTotal = region.groups.reduce((sum, group) => sum + group.weight, 0);
 		if (region.groups.length > 0 && Math.abs(weightTotal - 1) > 1e-6) {
-			errors.push(`Invalid normalized ${side} group weights.`);
+			errors.push(translate("Invalid normalized {side} group weights.", { side: side }));
 		}
 		for (const group of region.groups) {
-			if (groupIds.has(group.id)) errors.push(`Duplicate group id: ${group.id}`);
+			if (groupIds.has(group.id))
+				errors.push(translate("Duplicate group id: {id}", { id: group.id }));
 			groupIds.add(group.id);
 			if (!Number.isFinite(group.weight) || group.weight <= 0)
-				errors.push(`Invalid group weight: ${group.id}`);
+				errors.push(translate("Invalid group weight: {id}", { id: group.id }));
 			for (const tab of group.tabs) trackTab(tab, side);
 		}
 	}
@@ -1442,7 +1460,7 @@ export function validateLayoutDocument(
 		bottom.height <= 0 ||
 		bottom.height > LAYOUT_LIMITS.maxBottomHeight
 	) {
-		errors.push("Invalid bottom height.");
+		errors.push(translate("Invalid bottom height."));
 	}
 	if (
 		bottom.alignment !== "center" &&
@@ -1450,30 +1468,31 @@ export function validateLayoutDocument(
 		bottom.alignment !== "center-right" &&
 		bottom.alignment !== "full"
 	) {
-		errors.push("Invalid bottom alignment.");
+		errors.push(translate("Invalid bottom alignment."));
 	}
 	if (bottom.visible && bottom.groups.length === 0) {
-		errors.push("Visible bottom region requires a group.");
+		errors.push(translate("Visible bottom region requires a group."));
 	}
-	if (bottom.groups.length > maxBottomGroups) errors.push("Too many bottom groups.");
+	if (bottom.groups.length > maxBottomGroups) errors.push(translate("Too many bottom groups."));
 	if (bottom.groups.length > LAYOUT_LIMITS.maxSideGroupsSafety) {
-		errors.push("Unsafe bottom group count.");
+		errors.push(translate("Unsafe bottom group count."));
 	}
 	const bottomWeightTotal = bottom.groups.reduce((sum, group) => sum + group.weight, 0);
 	if (bottom.groups.length > 0 && Math.abs(bottomWeightTotal - 1) > 1e-6) {
-		errors.push("Invalid normalized bottom group weights.");
+		errors.push(translate("Invalid normalized bottom group weights."));
 	}
 	for (const group of bottom.groups) {
-		if (groupIds.has(group.id)) errors.push(`Duplicate group id: ${group.id}`);
+		if (groupIds.has(group.id))
+			errors.push(translate("Duplicate group id: {id}", { id: group.id }));
 		groupIds.add(group.id);
 		if (!Number.isFinite(group.weight) || group.weight <= 0) {
-			errors.push(`Invalid group weight: ${group.id}`);
+			errors.push(translate("Invalid group weight: {id}", { id: group.id }));
 		}
 		for (const tab of group.tabs) trackTab(tab, "bottom");
 	}
 	if (document.left.width + document.right.width >= 1) {
-		errors.push("Side widths leave no center region.");
+		errors.push(translate("Side widths leave no center region."));
 	}
-	if (tabCount > LAYOUT_LIMITS.maxTabs) errors.push("Too many layout tabs.");
+	if (tabCount > LAYOUT_LIMITS.maxTabs) errors.push(translate("Too many layout tabs."));
 	return errors;
 }

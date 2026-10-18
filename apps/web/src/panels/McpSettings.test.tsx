@@ -120,16 +120,20 @@ function menuItems(value: McpServerRow): string[] {
 			visit(child.props.children);
 		});
 	};
-	visit(
-		McpServerRowView({
-			row: value,
-			view: mcpRowView(value, 0),
-			readOnly: false,
-			busy: false,
-			error: undefined,
-			onCommand: () => {},
-		}),
-	);
+	function InspectRow() {
+		visit(
+			McpServerRowView({
+				row: value,
+				view: mcpRowView(value, 0),
+				readOnly: false,
+				busy: false,
+				error: undefined,
+				onCommand: () => {},
+			}),
+		);
+		return null;
+	}
+	renderToStaticMarkup(<InspectRow />);
 	return items;
 }
 

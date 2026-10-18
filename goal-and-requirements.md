@@ -76,6 +76,9 @@ What ThinkRail does, at product level; the linked spec owns the detail.
   ([[submodule-server-workspaces]]).
 - **Workbench** — a splittable layout of files, diffs, documents, chats, and terminals with movable side
   and bottom tool panels, kept local to each window ([[submodule-web-shell-layout]]).
+- **Interface languages** — English and Simplified Chinese, following the system by default and
+  switchable immediately in Settings with a client-local preference; user and agent content remain
+  unchanged ([[submodule-web-i18n]]).
 - **Chats** — concurrent `pi` sessions per workspace, each with its own model, pi-reported token/cost,
   steering and follow-ups mid-run, skill and prompt-template autocomplete, and history search
   ([[submodule-web-chat]], [[submodule-server-agent]]).

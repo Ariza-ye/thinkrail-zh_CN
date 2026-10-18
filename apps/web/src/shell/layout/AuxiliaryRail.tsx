@@ -1,3 +1,4 @@
+import { useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { cn } from "@thinkrail/ui/utils";
 import { Fragment, forwardRef, type ReactNode, useRef, useState } from "react";
@@ -95,6 +96,7 @@ export function AuxiliaryRail({
 	renderBoundary?: (paneIndex: number) => ReactNode;
 	trailing?: ReactNode;
 }) {
+	const { t } = useI18n();
 	const root = useRef<HTMLDivElement>(null);
 	const [focused, setFocused] = useState<string | null>(null);
 	const activeKey = entries.some((entry) => entry.key === focused)
@@ -117,7 +119,9 @@ export function AuxiliaryRail({
 		<div
 			ref={root}
 			role="toolbar"
-			aria-label={`${region[0]?.toUpperCase()}${region.slice(1)} tools`}
+			aria-label={t(
+				region === "left" ? "Left tools" : region === "right" ? "Right tools" : "Bottom tools",
+			)}
 			aria-orientation={horizontal ? "horizontal" : "vertical"}
 			data-testid={region === "bottom" ? "bottom-tool-rail" : `${region}-layout-rail`}
 			className={cn(

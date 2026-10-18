@@ -1,5 +1,6 @@
 import { RiPlugLine } from "@remixicon/react";
 import type { McpServerResourceSummary } from "@thinkrail/contracts";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import { useId } from "react";
 import { type McpStateTone, mcpStateTone, mcpStatusLabel } from "@/lib";
@@ -12,7 +13,10 @@ const DISABLE = { id: "disable", label: "Disable in this chat" } as const;
 export function mcpRowActions(
 	server: McpServerResourceSummary,
 ): { id: McpRowActionId; label: string }[] {
-	const actions = stateActions(server.state);
+	const actions = stateActions(server.state).map((action) => ({
+		...action,
+		label: translate(action.label),
+	}));
 	return server.registered ? actions.filter((action) => action.id !== DISABLE.id) : actions;
 }
 
@@ -75,6 +79,7 @@ function McpRow({
 	describedBy: string;
 	onAction: (id: McpRowActionId) => void;
 }) {
+	const { t } = useI18n();
 	const tone = mcpStateTone(server.state, server.toolCount);
 	const action = actions[mcpActionKey(server.name)];
 	return (
@@ -111,8 +116,8 @@ function McpRow({
 				</span>
 				<span className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-2 text-text-muted tr-text-metadata">
 					<span>
-						{server.transport === "http" ? "HTTP" : "stdio · runs on host"}
-						{server.state === "pending-reload" ? " · applies when the chat is idle" : ""}
+						{server.transport === "http" ? "HTTP" : t("stdio · runs on host")}
+						{server.state === "pending-reload" ? t(" · applies when the chat is idle") : ""}
 					</span>
 					{mcpRowActions(server).map((item) => (
 						<button
@@ -153,11 +158,16 @@ export function McpServerSection({
 	onReconnect: (name: string) => void;
 	onOpenSettings: () => void;
 }) {
+	const { t } = useI18n();
 	const hintId = useId();
 	return (
-		<section data-testid="resources-mcp" aria-label="MCP servers" className="flex flex-col gap-2">
+		<section
+			data-testid="resources-mcp"
+			aria-label={t("MCP servers")}
+			className="flex flex-col gap-2"
+		>
 			<div className="flex items-baseline gap-4 px-8 pt-8 pb-2 text-text-subtle">
-				<h3 className="tr-text-eyebrow">MCP servers</h3>
+				<h3 className="tr-text-eyebrow">{t("MCP servers")}</h3>
 				<span className="tr-text-metadata">· {servers.length}</span>
 				<span className="flex-1" />
 				<button
@@ -166,11 +176,13 @@ export function McpServerSection({
 					onClick={onOpenSettings}
 					className="rounded-xs px-4 text-primary tr-text-metadata outline-none hover:bg-control-bg focus-visible:ring-2 focus-visible:ring-primary"
 				>
-					Settings
+					{t("Settings")}
 				</button>
 			</div>
 			{servers.length === 0 ? (
-				<p className="px-8 py-4 text-text-subtle tr-text-metadata">No MCP servers in this chat.</p>
+				<p className="px-8 py-4 text-text-subtle tr-text-metadata">
+					{t("No MCP servers in this chat.")}
+				</p>
 			) : (
 				<>
 					<ul className="flex flex-col gap-2">
@@ -190,7 +202,7 @@ export function McpServerSection({
 						))}
 					</ul>
 					<p id={hintId} className="px-8 text-text-subtle tr-text-metadata">
-						Disabling applies when the chat is idle — restarts this chat's other servers.
+						{t("Disabling applies when the chat is idle — restarts this chat's other servers.")}
 					</p>
 				</>
 			)}

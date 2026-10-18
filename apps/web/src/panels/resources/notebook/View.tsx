@@ -1,4 +1,5 @@
 import { RiChatNewLine as MessageSquarePlus } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { useEffect, useMemo, useRef } from "react";
 import { anchorLabel, type ResourceViewProps, type ReviewThread } from "@/resources";
@@ -26,6 +27,7 @@ export default function NotebookView({
 	viewState,
 	onViewState,
 }: ResourceViewProps) {
+	const { t } = useI18n();
 	const text = content.kind === "text" ? content.text : "";
 	const document = useMemo(() => parseNotebook(text), [text]);
 	const composer = useStampedComposer<NotebookCell>(contentStamp(content));
@@ -103,11 +105,11 @@ export default function NotebookView({
 										{cell.type === "code" ? `[${cell.executionCount ?? " "}]` : cell.index + 1}
 									</span>
 									{review ? (
-										<IconTooltip label={`Comment on cell ${cell.index + 1}`}>
+										<IconTooltip label={t("Comment on cell {number}", { number: cell.index + 1 })}>
 											<button
 												type="button"
 												data-testid="notebook-comment-cell"
-												aria-label={`Comment on cell ${cell.index + 1}`}
+												aria-label={t("Comment on cell {number}", { number: cell.index + 1 })}
 												className="flex size-24 items-center justify-center rounded-sm text-text-muted outline-none hover:bg-control-bg-hovered hover:text-text-default focus-visible:ring-2 focus-visible:ring-primary"
 												onClick={() => composer.select(cell)}
 											>

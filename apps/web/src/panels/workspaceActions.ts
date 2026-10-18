@@ -3,6 +3,7 @@ import {
 	WORKSPACE_RENAME_PROTOCOL_VERSION,
 	type Workspace,
 } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import {
 	type FocusEvent,
 	type KeyboardEvent,
@@ -45,13 +46,13 @@ export function canSettleWorkspace(protocolVersion: number | null, workspace: Wo
 export function settleWorkspace(workspaceId: string): void {
 	void getTransport()
 		.request("workspace.settle", { id: workspaceId })
-		.catch((err) => toast.error(errorText(err, "Couldn't settle the workspace")));
+		.catch((err) => toast.error(errorText(err, translate("Couldn't settle the workspace"))));
 }
 
 export function unsettleWorkspace(workspaceId: string): void {
 	void getTransport()
 		.request("workspace.unsettle", { id: workspaceId })
-		.catch((err) => toast.error(errorText(err, "Couldn't keep the workspace active")));
+		.catch((err) => toast.error(errorText(err, translate("Couldn't keep the workspace active"))));
 }
 
 export function workspaceRenameValue(currentName: string, input: string): string | null {
@@ -233,7 +234,7 @@ export function useEditors(): EditorInfo[] {
 export function removeWorkspace(workspaceId: string): void {
 	void getTransport()
 		.request("workspace.remove", { id: workspaceId })
-		.catch((err) => toast.error(errorText(err, "Failed to remove workspace")));
+		.catch((err) => toast.error(errorText(err, translate("Failed to remove workspace"))));
 }
 
 export function openWorkspaceIn(workspace: Workspace, editor: EditorInfo): void {
@@ -244,17 +245,21 @@ export function openWorkspaceIn(workspace: Workspace, editor: EditorInfo): void 
 	}
 	void getTransport()
 		.request("workspace.openIn", { id: workspace.id, editor: editor.id })
-		.catch((err) => toast.error(errorText(err, `Failed to open in ${editor.label}`)));
+		.catch((err) =>
+			toast.error(
+				errorText(err, translate("Failed to open in {editor}", { editor: editor.label })),
+			),
+		);
 }
 
 export function revealWorkspace(workspace: Workspace): void {
 	void getTransport()
 		.request("workspace.reveal", { id: workspace.id })
-		.catch((err) => toast.error(errorText(err, "Failed to reveal workspace")));
+		.catch((err) => toast.error(errorText(err, translate("Failed to reveal workspace"))));
 }
 
 export function renameWorkspace(workspace: Workspace, name: string): void {
 	void getTransport()
 		.request("workspace.rename", { id: workspace.id, name })
-		.catch((err) => toast.error(errorText(err, "Failed to rename workspace")));
+		.catch((err) => toast.error(errorText(err, translate("Failed to rename workspace"))));
 }

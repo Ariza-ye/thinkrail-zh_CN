@@ -1,4 +1,5 @@
 import type { LayoutPreset } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { useEffect, useLayoutEffect } from "react";
 import { getStablePreferenceAdapter, type StablePreferenceAdapter } from "../../clientPreferences";
 import { type LayoutAttention, randomId, sameLayoutAttention } from "../../lib";
@@ -502,7 +503,7 @@ function persistCurrentLayout(): void {
 	try {
 		if (activeStablePreferences) {
 			if (encoded.length > NATIVE_LAYOUT_MAX_CHARACTERS) {
-				throw new Error("The local layout is too large to save in this native window");
+				throw new Error(translate("The local layout is too large to save in this native window"));
 			}
 			activeStablePreferences.setItem(NATIVE_LAYOUT_PREFERENCE_KEY, encoded);
 			return;
@@ -511,7 +512,7 @@ function persistCurrentLayout(): void {
 		if (!storage || !persistenceKey) return;
 		storage.local.setItem(persistenceKey, encoded);
 	} catch (error) {
-		toast.error(errorText(error), "Couldn't save the local layout");
+		toast.error(errorText(error), translate("Couldn't save the local layout"));
 	}
 }
 
@@ -563,7 +564,7 @@ function balancedFrame(): WorkbenchFrame {
 	const preset = BUILTIN_LAYOUT_PRESETS.find(
 		(candidate) => candidate.id === DEFAULT_LAYOUT_PRESET_ID,
 	);
-	if (!preset) throw new Error("The Balanced layout preset is missing");
+	if (!preset) throw new Error(translate("The Balanced layout preset is missing"));
 	return instantiateWorkbenchFrame(preset);
 }
 
@@ -641,10 +642,11 @@ export function workspaceProjectionReference(
 
 function installWorkspaceView(workspaceId: string): WorkspaceLayoutDocument {
 	const state = useAppStore.getState();
-	if (state.removedWorkspaceIds[workspaceId]) throw new Error("Workspace has been removed");
+	if (state.removedWorkspaceIds[workspaceId])
+		throw new Error(translate("Workspace has been removed"));
 	const existingDocument = state.layoutDocumentsByWorkspace[workspaceId];
 	if (existingDocument) return existingDocument;
-	if (!state.workbenchFrame) throw new Error("The local workbench frame is not ready");
+	if (!state.workbenchFrame) throw new Error(translate("The local workbench frame is not ready"));
 	const projection = emptyWorkspaceProjection(
 		state.workbenchFrame,
 		workspaceProjectionReference(workspaceId),
@@ -663,7 +665,7 @@ function installWorkspaceView(workspaceId: string): WorkspaceLayoutDocument {
 		preferences: state.localLayoutPreferences,
 	});
 	const installed = useAppStore.getState().layoutDocumentsByWorkspace[workspaceId];
-	if (!installed) throw new Error("The workspace layout could not be initialized");
+	if (!installed) throw new Error(translate("The workspace layout could not be initialized"));
 	return installed;
 }
 
@@ -672,7 +674,7 @@ export function ensureWorkspaceLayoutState(workspaceId: string): Promise<Workspa
 	if (existing) return existing;
 	const request = (async () => {
 		if (useAppStore.getState().removedWorkspaceIds[workspaceId]) {
-			throw new Error("Workspace has been removed");
+			throw new Error(translate("Workspace has been removed"));
 		}
 		await initializeLocalLayoutState();
 		return installWorkspaceView(workspaceId);
@@ -687,7 +689,7 @@ export function ensureWorkspaceLayoutState(workspaceId: string): Promise<Workspa
 
 export function applyLayoutPresetLocally(preset: LayoutPreset): void {
 	const state = useAppStore.getState();
-	if (!state.workbenchFrame) throw new Error("The local workbench frame is not ready");
+	if (!state.workbenchFrame) throw new Error(translate("The local workbench frame is not ready"));
 	const next = applyWorkbenchPreset(
 		{ frame: state.workbenchFrame, viewsByWorkspace: state.workspaceViewsByWorkspace },
 		preset,
@@ -792,8 +794,9 @@ export async function commitWorkspaceLayout(
 ): Promise<WorkspaceLayoutDocument> {
 	const { baseDocument } = options;
 	const state = useAppStore.getState();
-	if (state.removedWorkspaceIds[workspaceId]) throw new Error("Workspace has been removed");
-	if (!state.workbenchFrame) throw new Error("The local workbench frame is not ready");
+	if (state.removedWorkspaceIds[workspaceId])
+		throw new Error(translate("Workspace has been removed"));
+	if (!state.workbenchFrame) throw new Error(translate("The local workbench frame is not ready"));
 	const currentDocument = state.layoutDocumentsByWorkspace[workspaceId];
 	const effectiveDocument =
 		baseDocument && currentDocument
@@ -829,7 +832,7 @@ export async function commitWorkspaceLayout(
 	const committingAttention = attentionByWorkspace[workspaceId];
 	const committingDocument = documentsByWorkspace[workspaceId];
 	if (!committingAttention || !committingDocument)
-		throw new Error("The committed workspace projection is missing");
+		throw new Error(translate("The committed workspace projection is missing"));
 	const toolChanges = changedToolSelections(
 		state.layoutAttentionByWorkspace[workspaceId],
 		committingAttention,
@@ -867,7 +870,7 @@ export async function commitWorkspaceLayout(
 export function useLocalLayoutState(): void {
 	useEffect(() => {
 		void initializeLocalLayoutState().catch((error) => {
-			toast.error(errorText(error), "Couldn't load the local layout");
+			toast.error(errorText(error), translate("Couldn't load the local layout"));
 		});
 	}, []);
 }
@@ -876,7 +879,7 @@ export function useWorkspaceLayoutState(workspaceId: string): void {
 	useLayoutEffect(() => {
 		const report = (error: unknown) => {
 			if (!useAppStore.getState().removedWorkspaceIds[workspaceId]) {
-				toast.error(errorText(error), "Couldn't load the local layout");
+				toast.error(errorText(error), translate("Couldn't load the local layout"));
 			}
 		};
 		if (useAppStore.getState().layoutStateReady) {

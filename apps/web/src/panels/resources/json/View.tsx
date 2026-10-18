@@ -1,3 +1,4 @@
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useMemo, useRef } from "react";
 import type { ResourceViewProps, ReviewThread } from "@/resources";
 import { ReviewComposer } from "../../ReviewComposer";
@@ -20,7 +21,9 @@ function dialectNotice(path: string, dialect: JsonDialect): string | null {
 	if (dialect !== "jsonc") return null;
 	return path.toLowerCase().endsWith(".jsonc")
 		? null
-		: "Parsed as JSONC: this file uses comments or trailing commas, which strict JSON parsers reject.";
+		: translate(
+				"Parsed as JSONC: this file uses comments or trailing commas, which strict JSON parsers reject.",
+			);
 }
 
 export default function JsonView({
@@ -29,6 +32,7 @@ export default function JsonView({
 	review,
 	onPlacedThreadIds,
 }: ResourceViewProps) {
+	const { t } = useI18n();
 	const text = content.kind === "text" ? content.text : "";
 	const document = useMemo(() => scanJson(text), [text]);
 	const composer = useStampedComposer<JsonNode>(contentStamp(content));
@@ -81,7 +85,7 @@ export default function JsonView({
 				data-testid="json-invalid"
 				className="h-full overflow-auto bg-container-workspace-bg p-12 tr-text-ui text-text-muted"
 			>
-				Not valid JSON or JSONC — switch to Source to inspect the file.
+				{t("Not valid JSON or JSONC — switch to Source to inspect the file.")}
 			</div>
 		);
 	}

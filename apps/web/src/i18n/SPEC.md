@@ -22,8 +22,8 @@ messages are the fallback. No DOM observer translates arbitrary text.
 
 ## Behavior
 
-System mode resolves zh, zh-CN, zh-SG and zh-Hans to Simplified Chinese; other languages use English,
-including Traditional Chinese. Explicit English or Simplified Chinese overrides system changes.
+System mode uses the preferred system language's maximized script to resolve Simplified Chinese
+(including zh, zh-CN, zh-SG, zh-MY and zh-Hans); other languages use English, including Traditional Chinese. Explicit English or Simplified Chinese overrides system changes.
 Initialization precedes React and sets the document language. The native stable adapter, or browser
 localStorage, saves selection; inaccessible storage never prevents switching. Browser tabs converge
 through storage events. Subscribed UI updates without remounting editors, terminals or chats.

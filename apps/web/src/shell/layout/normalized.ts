@@ -1,3 +1,4 @@
+import { translate } from "@thinkrail/ui/i18n";
 import { isPreviewCompatibleTabKind, layoutResourceIdentity } from "../../lib";
 import type {
 	LayoutAuxiliaryRegion,
@@ -268,7 +269,7 @@ function compatibleLocation(
 	if (tab.kind !== "terminal") {
 		const center = locations.filter((location) => location.area === "center");
 		const selected = center[Math.min(oldLocation?.index ?? 0, center.length - 1)] ?? center[0];
-		if (!selected) throw new Error("The workbench frame requires a center group");
+		if (!selected) throw new Error(translate("The workbench frame requires a center group"));
 		return selected;
 	}
 	const terminalPanes = locations.filter((location) => terminalPane(nextFrame, location));
@@ -281,7 +282,7 @@ function compatibleLocation(
 	const fallback =
 		terminalPanes.find((location) => location.area === "bottom") ??
 		terminalPanes.find((location) => location.area === "center");
-	if (!fallback) throw new Error("The workbench frame requires a center group");
+	if (!fallback) throw new Error(translate("The workbench frame requires a center group"));
 	return fallback;
 }
 

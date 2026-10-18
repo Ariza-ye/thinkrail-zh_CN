@@ -1,4 +1,5 @@
 import { RiChatNewLine as MessageSquarePlus } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReviewThread, SurfaceReview } from "@/resources";
@@ -38,6 +39,7 @@ export function PreviewCommenting({
 	onViewState?: (state: unknown) => void;
 	children: (composer: ComposerInsert | null) => ReactNode;
 }) {
+	const { t } = useI18n();
 	const { elementRef: scrollerRef, attach: attachScroller } = useScrollViewState<HTMLDivElement>(
 		viewState,
 		onViewState,
@@ -160,9 +162,12 @@ export function PreviewCommenting({
 
 	const label = selection
 		? selection.startLine === selection.endLine
-			? `Line ${selection.startLine}`
-			: `Lines ${selection.startLine}–${selection.endLine}`
-		: "Whole file (couldn't locate the fragment)";
+			? t("Line {startLine}", { startLine: selection.startLine })
+			: t("Lines {startLine}–{endLine}", {
+					startLine: selection.startLine,
+					endLine: selection.endLine,
+				})
+		: t("Whole file (couldn't locate the fragment)");
 
 	const draft = selection
 		? {
@@ -197,8 +202,8 @@ export function PreviewCommenting({
 					ref={iconRef}
 					type="button"
 					data-testid="review-add-icon"
-					title="Comment on selection"
-					aria-label="Comment on selection"
+					title={t("Comment on selection")}
+					aria-label={t("Comment on selection")}
 					onMouseDown={(e) => e.preventDefault()}
 					onClick={openComposer}
 					className="review-add-icon review-add-icon-float"

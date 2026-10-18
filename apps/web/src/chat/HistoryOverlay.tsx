@@ -11,6 +11,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@thinkrail/ui/dropdown-menu";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useNow } from "@/components/useNow";
@@ -82,13 +83,14 @@ function DeleteChatButton({
 	isSelected: boolean;
 	onDeleteChat: (workspaceId: string, sessionId: string) => void;
 }) {
+	const { t } = useI18n();
 	if (!workspaceId) return null;
 	return (
-		<IconTooltip label="Move chat to trash">
+		<IconTooltip label={t("Move chat to trash")}>
 			<button
 				type="button"
 				data-testid="history-delete-chat"
-				aria-label="Move chat to trash"
+				aria-label={t("Move chat to trash")}
 				onClick={(event) => {
 					event.stopPropagation();
 					onDeleteChat(workspaceId, sessionId);
@@ -124,6 +126,7 @@ function PromptRow({
 	onOpenMessage: (target: ChatLocationRequest) => void;
 	onDeleteChat: (workspaceId: string, sessionId: string) => void;
 }) {
+	const { t } = useI18n();
 	const now = useNow();
 	const firstLine = hit.text.split("\n")[0] ?? hit.text;
 	const showChip = (scope.kind === "project" || scope.kind === "all") && !!hit.workspaceId;
@@ -149,7 +152,7 @@ function PromptRow({
 				</span>
 				{showChip ? (
 					<span className="shrink-0 rounded-full border border-border-default bg-container-workspace-bg px-4 text-text-muted tr-text-metadata">
-						{workspaceName ?? "workspace"}
+						{workspaceName ?? t("workspace")}
 					</span>
 				) : null}
 				<span className="shrink-0 text-text-muted tr-text-metadata">
@@ -164,11 +167,11 @@ function PromptRow({
 					{SAVE_SHORTCUT_LABEL}
 				</span>
 			) : null}
-			<IconTooltip label={`Save as template (${SAVE_SHORTCUT_LABEL})`}>
+			<IconTooltip label={t("Save as template ({value})", { value: SAVE_SHORTCUT_LABEL })}>
 				<button
 					type="button"
 					data-testid="history-save-template"
-					aria-label="Save as template"
+					aria-label={t("Save as template")}
 					onClick={(e) => {
 						e.stopPropagation();
 						onSaveAsTemplate();
@@ -190,11 +193,11 @@ function PromptRow({
 							⇧⏎
 						</span>
 					) : null}
-					<IconTooltip label="⇧⏎ go to chat">
+					<IconTooltip label={t("⇧⏎ go to chat")}>
 						<button
 							type="button"
 							data-testid="history-jump"
-							aria-label="Go to chat"
+							aria-label={t("Go to chat")}
 							onClick={(e) => {
 								e.stopPropagation();
 								onOpenMessage(target);
@@ -231,6 +234,7 @@ function MessageRow({
 	onPick: () => void;
 	onDeleteChat: (workspaceId: string, sessionId: string) => void;
 }) {
+	const { t } = useI18n();
 	const now = useNow();
 	const unmapped = !hit.workspaceId;
 	return (
@@ -252,13 +256,13 @@ function MessageRow({
 			>
 				<span className="flex items-center gap-4 text-text-muted tr-text-metadata">
 					<span className="truncate">
-						{hit.sessionTitle || hit.cwd.split("/").pop() || "session"}
+						{hit.sessionTitle || hit.cwd.split("/").pop() || t("session")}
 					</span>
 					<span>·</span>
-					<span>{hit.role}</span>
+					<span>{t(hit.role)}</span>
 					<span>·</span>
 					<span>{relativeTime(hit.timestamp, now)}</span>
-					{unmapped ? <span>· not a ThinkRail workspace</span> : null}
+					{unmapped ? <span>{t("· not a ThinkRail workspace")}</span> : null}
 				</span>
 				<span className="overflow-hidden whitespace-nowrap text-ellipsis">
 					<Highlight text={hit.snippet} query={query} />
@@ -281,10 +285,11 @@ function PromptPreviewFooter({
 	hit: PromptHit;
 	workspaceName: string | undefined;
 }) {
+	const { t } = useI18n();
 	const now = useNow();
 	const parts = [
 		hit.sessionTitle,
-		hit.workspaceId ? (workspaceName ?? "workspace") : undefined,
+		hit.workspaceId ? (workspaceName ?? t("workspace")) : undefined,
 		relativeTime(hit.timestamp, now),
 	].filter((part): part is string => !!part);
 	return <>{parts.join(" · ")}</>;
@@ -301,6 +306,7 @@ function HistoryPreview({
 	workspaceName: string | undefined;
 	className: string;
 }) {
+	useI18n();
 	const now = useNow();
 	return (
 		<div data-testid="history-preview" className={`flex flex-col overflow-hidden ${className}`}>
@@ -323,7 +329,7 @@ function HistoryPreview({
 }
 
 function messageCrumb(hit: MessageHit, now: number): string {
-	return `${hit.sessionTitle || hit.cwd.split("/").pop() || "session"} · ${hit.role} · ${relativeTime(hit.timestamp, now)}`;
+	return `${hit.sessionTitle || hit.cwd.split("/").pop() || translate("session")} · ${translate(hit.role)} · ${relativeTime(hit.timestamp, now)}`;
 }
 
 export interface HistoryOverlayProps {
@@ -355,6 +361,7 @@ export function HistoryOverlay({
 	onDeleteChat,
 	onSetScope,
 }: HistoryOverlayProps) {
+	const { t } = useI18n();
 	const { open, stage, query, scope, result, selected, error } = state;
 	const inputRef = useRef<HTMLInputElement>(null);
 	const resultsRef = useRef<HTMLDivElement>(null);
@@ -446,7 +453,7 @@ export function HistoryOverlay({
 
 	const resultsBody = error ? (
 		<div data-testid="history-error" className="p-12 text-center text-feedback-error tr-text-ui">
-			search unavailable
+			{t("search unavailable")}
 		</div>
 	) : !result ? null : (
 		<>
@@ -455,7 +462,7 @@ export function HistoryOverlay({
 					data-testid="history-indexing"
 					className="px-8 py-4 text-center text-text-muted tr-text-metadata"
 				>
-					indexing history…
+					{t("indexing history…")}
 				</div>
 			) : null}
 			{hasResults ? (
@@ -463,7 +470,7 @@ export function HistoryOverlay({
 					{result.prompts.length > 0 ? (
 						<div className="flex flex-col gap-2">
 							<div className="flex items-center justify-between px-8 py-2 tr-text-eyebrow text-text-muted">
-								<span>Prompts</span>
+								<span>{t("Prompts")}</span>
 								<span data-testid="history-counts">
 									{promptCount}/{result.promptTotal}
 								</span>
@@ -487,7 +494,7 @@ export function HistoryOverlay({
 					{stage === "zoomed" && result.messages.length > 0 ? (
 						<div className="flex flex-col gap-2">
 							<div className="flex items-center justify-between px-8 py-2 tr-text-eyebrow text-text-muted">
-								<span>Messages</span>
+								<span>{t("Messages")}</span>
 								<span data-testid="history-counts">
 									{messageCount}/{result.messageTotal}
 								</span>
@@ -509,7 +516,7 @@ export function HistoryOverlay({
 					) : null}
 				</div>
 			) : isEmpty ? (
-				<div className="p-12 text-center text-text-muted tr-text-ui">no matches</div>
+				<div className="p-12 text-center text-text-muted tr-text-ui">{t("no matches")}</div>
 			) : null}
 		</>
 	);
@@ -527,7 +534,7 @@ export function HistoryOverlay({
 					value={query}
 					onChange={(e) => onQueryChange(e.target.value)}
 					onKeyDown={onKeyDown}
-					placeholder="Search prompts and conversations…"
+					placeholder={t("Search prompts and conversations…")}
 					className="min-w-0 flex-1 bg-transparent tr-text-ui text-text-default outline-none placeholder:text-text-muted"
 				/>
 				<DropdownMenu open={scopeMenuOpen} onOpenChange={setScopeMenuOpen}>
@@ -536,7 +543,7 @@ export function HistoryOverlay({
 						data-scope={scope.kind}
 						className="flex shrink-0 items-center gap-4 rounded-full border border-border-default bg-container-workspace-bg px-8 py-2 text-text-muted tr-text-metadata outline-none hover:bg-control-bg-hovered"
 					>
-						<span>{SCOPE_LABELS[scope.kind]}</span>
+						<span>{t(SCOPE_LABELS[scope.kind])}</span>
 						<span className="text-text-muted">⌃R</span>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent
@@ -554,7 +561,7 @@ export function HistoryOverlay({
 								onSelect={() => onSetScope(kind)}
 							>
 								<Check className={kind === scope.kind ? "size-14" : "size-14 invisible"} />
-								<span>{SCOPE_MENU_LABELS[kind]}</span>
+								<span>{t(SCOPE_MENU_LABELS[kind])}</span>
 							</DropdownMenuItem>
 						))}
 					</DropdownMenuContent>
@@ -592,7 +599,7 @@ export function HistoryOverlay({
 					onClick={onToggleStage}
 					className="border-t border-border-default p-4 text-center text-text-muted tr-text-metadata hover:bg-control-bg-hovered"
 				>
-					{result.messageTotal} matches in conversations · ⇥ expand
+					{t("{count} matches in conversations · ⇥ expand", { count: result.messageTotal })}
 				</button>
 			) : null}
 		</div>

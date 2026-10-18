@@ -21,6 +21,7 @@ import {
 	WORKSPACE_SETTLE_PROTOCOL_VERSION,
 	type Workspace,
 } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import type { LoginState } from "../auth";
 import {
 	compactAge,
@@ -286,11 +287,11 @@ export type SettledReason =
 export function settledReasonLabel(reason: SettledReason, now: number): string {
 	switch (reason.kind) {
 		case "override":
-			return "by you";
+			return translate("by you");
 		case "review":
-			return reason.state;
+			return translate(reason.state === "merged" ? "merged" : "closed");
 		case "idle":
-			return `idle ${compactAge(reason.since, now)}`;
+			return translate("idle {age}", { age: compactAge(reason.since, now) });
 	}
 }
 
@@ -298,12 +299,14 @@ export function settledReasonTitle(reason: SettledReason, now: number): string {
 	switch (reason.kind) {
 		case "override":
 			return reason.since === undefined
-				? "Settled by you"
-				: `Settled by you ${relativeTime(reason.since, now)}`;
+				? translate("Settled by you")
+				: translate("Settled by you {time}", { time: relativeTime(reason.since, now) });
 		case "review":
-			return reason.state === "merged" ? "Pull request merged" : "Pull request closed";
+			return reason.state === "merged"
+				? translate("Pull request merged")
+				: translate("Pull request closed");
 		case "idle":
-			return `Idle for ${compactAge(reason.since, now)}`;
+			return translate("Idle for {age}", { age: compactAge(reason.since, now) });
 	}
 }
 
@@ -824,7 +827,7 @@ export function selectChatTitle(
 ): string {
 	const tabs = state.tabsByWorkspace[workspaceId] ?? [];
 	const chatTab = tabs.find((t) => t.kind === "chat" && t.sessionId === sessionId);
-	return (chatTab?.name ?? "Chat").trim() || "Chat";
+	return (chatTab?.name ?? translate("Chat")).trim() || translate("Chat");
 }
 
 export function selectCompactionTurnIds(

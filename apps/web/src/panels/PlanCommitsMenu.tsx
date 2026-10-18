@@ -10,6 +10,7 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@thinkrail/ui/dropdown-menu";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useNow } from "@/components/useNow";
 import { relativeTime } from "@/lib";
@@ -24,6 +25,7 @@ export function PlanCommitsMenu({
 	reloadSignal: number;
 	onOpenCommit: (sha: string) => void;
 }) {
+	const { t } = useI18n();
 	const now = useNow();
 	const [open, setOpen] = useState(false);
 	const [commits, setCommits] = useState<GitCommit[] | null>(null);
@@ -50,7 +52,7 @@ export function PlanCommitsMenu({
 			<DropdownMenuTrigger
 				data-testid="plan-commits-trigger"
 				data-open={open}
-				title="Commits on this branch"
+				title={t("Commits on this branch")}
 				className="flex h-24 shrink-0 items-center gap-4 rounded-sm px-4 tr-text-metadata text-text-subtle outline-none transition-colors hover:bg-control-bg-hovered hover:text-text-default focus-visible:ring-2 focus-visible:ring-primary data-[open=true]:bg-control-bg-selected data-[open=true]:text-text-default"
 			>
 				<GitCommitHorizontal className="size-12 shrink-0" />
@@ -60,7 +62,7 @@ export function PlanCommitsMenu({
 				<ChevronDown className="size-14 shrink-0" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent data-testid="plan-commits-menu" align="start" className="max-w-[24rem]">
-				<DropdownMenuLabel>Commits</DropdownMenuLabel>
+				<DropdownMenuLabel>{t("Commits")}</DropdownMenuLabel>
 				{commits.map((commit) => (
 					<DropdownMenuItem
 						key={commit.sha}

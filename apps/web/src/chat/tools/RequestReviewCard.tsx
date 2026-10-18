@@ -4,6 +4,7 @@ import {
 } from "@remixicon/react";
 import { isPlanReviewResult, type PlanReviewResult } from "@thinkrail/contracts";
 import type { ToolRenderProps } from "@thinkrail/extension-api/web";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import type { ReactNode } from "react";
 import { ReviewPackageComments } from "../ReviewPackageComments";
 import { reviewFixCommentsToItems } from "../reviewPackage";
@@ -25,19 +26,28 @@ export function requestReviewSummary({ result }: ToolRenderProps): string {
 	if (review.verdict === "approve") {
 		const open = review.blockedByOpenFindings ?? 0;
 		return open > 0
-			? `Approved “${review.itemTitle}” · ${open} still open`
-			: `Approved “${review.itemTitle}”`;
+			? translate("Approved “{value}” · {value2} still open", {
+					value: review.itemTitle,
+					value2: open,
+				})
+			: translate("Approved “{value}”", { value: review.itemTitle });
 	}
 	const n = review.findings.length;
-	return `Changes requested on “${review.itemTitle}” · ${n} ${n === 1 ? "finding" : "findings"}`;
+	return translate(
+		n === 1
+			? "Changes requested on “{title}” · {count} finding"
+			: "Changes requested on “{title}” · {count} findings",
+		{ title: review.itemTitle, count: n },
+	);
 }
 
 export function RequestReviewCard({ toolCallId, result, status }: ToolRenderProps): ReactNode {
+	const { t } = useI18n();
 	const review = readPlanReview(result);
 	if (!review) {
 		return (
 			<span className="tr-text-ui text-text-muted">
-				{status === "running" ? "Reviewing the change set…" : "No review verdict."}
+				{status === "running" ? t("Reviewing the change set…") : t("No review verdict.")}
 			</span>
 		);
 	}
@@ -54,12 +64,16 @@ export function RequestReviewCard({ toolCallId, result, status }: ToolRenderProp
 				)}
 				<div className="min-w-0 flex-1">
 					<span data-testid="request-review-verdict" className="block text-text-default">
-						{review.verdict === "approve" ? "Approved" : "Changes requested"}
+						{review.verdict === "approve" ? t("Approved") : t("Changes requested")}
 						<span className="text-text-muted"> — “{review.itemTitle}”</span>
 						{blocked > 0 ? (
 							<span data-testid="request-review-blocked" className="text-feedback-warning">
-								{" "}
-								· not settled, {blocked} finding{blocked === 1 ? "" : "s"} still open
+								{t(
+									blocked === 1
+										? " · not settled, {count} finding still open"
+										: " · not settled, {count} findings still open",
+									{ count: blocked },
+								)}
 							</span>
 						) : null}
 					</span>

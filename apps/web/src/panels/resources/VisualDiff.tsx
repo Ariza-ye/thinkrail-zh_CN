@@ -1,3 +1,4 @@
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { AnchorDraft, SurfaceReview } from "@/resources";
 import { ToggleSegment } from "../ToggleSegment";
@@ -100,7 +101,7 @@ export function VisualDiff({
 	initialMode,
 	onViewState,
 	modes = ALL_MODES,
-	emptyLabel = "No image",
+	emptyLabel = translate("No image"),
 }: {
 	prefix: "image" | "svg" | "html";
 	noun: string;
@@ -114,6 +115,7 @@ export function VisualDiff({
 	modes?: readonly VisualDiffMode[] | undefined;
 	emptyLabel?: string | undefined;
 }) {
+	const { t } = useI18n();
 	const [mode, setMode] = useState<VisualDiffMode>(initialMode);
 	const [activeSide, setActiveSide] = useState<"base" | "worktree">("worktree");
 	const [divider, setDivider] = useState(50);
@@ -171,7 +173,7 @@ export function VisualDiff({
 							<ToggleSegment
 								key={candidate.mode}
 								testid={`${prefix}-diff-${candidate.mode}`}
-								label={candidate.label}
+								label={t(candidate.label)}
 								active={mode === candidate.mode}
 								onClick={() => selectMode(candidate.mode)}
 							/>
@@ -181,13 +183,13 @@ export function VisualDiff({
 						<div data-testid={`${prefix}-diff-side`} className="ml-auto flex items-center gap-2">
 							<ToggleSegment
 								testid={`${prefix}-diff-side-base`}
-								label="Comment on old"
+								label={t("Comment on old")}
 								active={activeSide === "base"}
 								onClick={() => setActiveSide("base")}
 							/>
 							<ToggleSegment
 								testid={`${prefix}-diff-side-worktree`}
-								label="Comment on new"
+								label={t("Comment on new")}
 								active={activeSide === "worktree"}
 								onClick={() => setActiveSide("worktree")}
 							/>
@@ -199,16 +201,16 @@ export function VisualDiff({
 				{mode === "2-up" ? (
 					<div className="grid min-h-full grid-cols-1 gap-12 md:grid-cols-2">
 						<SideSurface
-							label="Old"
-							selectionKey={`${regionLabel}:base`}
+							label={t("Old")}
+							selectionKey={`${prefix}:base`}
 							side={original}
 							regionLabel={regionLabel}
 							contentStamp={contentStamp}
 							emptyLabel={emptyLabel}
 						/>
 						<SideSurface
-							label="New"
-							selectionKey={`${regionLabel}:worktree`}
+							label={t("New")}
+							selectionKey={`${prefix}:worktree`}
 							side={modified}
 							regionLabel={regionLabel}
 							contentStamp={contentStamp}
@@ -222,7 +224,7 @@ export function VisualDiff({
 							{...(active.present ? { review: active.review } : {})}
 							intrinsicSize={active.intrinsicSize}
 							contentStamp={contentStamp}
-							selectionKey={`${regionLabel}:${activeSide}`}
+							selectionKey={`${prefix}:${activeSide}`}
 							{...(inactive.present && inactive.review
 								? {
 										additionalReviews: [
@@ -255,7 +257,7 @@ export function VisualDiff({
 								{mode === "swipe" ? (
 									<button
 										type="button"
-										aria-label={`Move ${noun} comparison divider`}
+										aria-label={t("Move {noun} comparison divider", { noun: t(noun) })}
 										className="absolute inset-y-0 z-20 w-4 -translate-x-1/2 cursor-col-resize bg-primary outline-none focus-visible:ring-2 focus-visible:ring-primary"
 										style={{ left: `${divider}%` }}
 										onPointerDown={(event) => {
@@ -273,7 +275,7 @@ export function VisualDiff({
 						</RegionReviewSurface>
 						{mode === "onion" ? (
 							<label className="flex items-center gap-8 tr-text-metadata text-text-muted">
-								New {noun} opacity
+								{t("New {noun} opacity", { noun: t(noun) })}
 								<input
 									type="range"
 									min={0}

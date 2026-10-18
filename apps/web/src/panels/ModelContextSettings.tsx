@@ -9,6 +9,7 @@ import {
 	type WsMethodMap,
 } from "@thinkrail/contracts";
 import { Button } from "@thinkrail/ui/button";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast, useAppStore } from "@/store";
@@ -51,6 +52,7 @@ function ContextLimitControl({
 	revision: string;
 	onChange: (override: number | null) => void;
 }) {
+	const { t } = useI18n();
 	const id = useId();
 	const inputRef = useRef<HTMLInputElement>(null);
 	const restoreFocus = useRef<HTMLElement | null>(null);
@@ -103,7 +105,7 @@ function ContextLimitControl({
 
 				<div
 					role="radiogroup"
-					aria-label={`Context window for ${controlLabel}`}
+					aria-label={t("Context window for {name}", { name: controlLabel })}
 					className={cn(
 						"inline-flex h-32 shrink-0 overflow-hidden rounded-sm bg-control-bg",
 						showError && "ring-1 ring-feedback-error",
@@ -127,7 +129,10 @@ function ContextLimitControl({
 								value={preset.id}
 								checked={selected === preset.id}
 								disabled={disabled}
-								aria-label={`${preset.label} for ${controlLabel}`}
+								aria-label={t("{preset} for {name}", {
+									preset: t(preset.label),
+									name: controlLabel,
+								})}
 								className="peer sr-only inset-0"
 								onChange={(event) => {
 									if (disabled) return;
@@ -146,7 +151,7 @@ function ContextLimitControl({
 									"peer-disabled:text-control-disabled-text peer-disabled:hover:text-control-disabled-text",
 								)}
 							>
-								{preset.label}
+								{t(preset.label)}
 							</span>
 						</label>
 					))}
@@ -170,7 +175,7 @@ function ContextLimitControl({
 								value="custom"
 								checked={isCustomActive}
 								disabled={disabled}
-								aria-label={`Custom for ${controlLabel}`}
+								aria-label={t("Custom for {name}", { name: controlLabel })}
 								className="peer sr-only inset-0"
 								onChange={() => {
 									if (disabled) return;
@@ -188,7 +193,7 @@ function ContextLimitControl({
 									"peer-disabled:text-control-disabled-text peer-disabled:hover:text-control-disabled-text",
 								)}
 							>
-								Custom
+								{t("Custom")}
 							</span>
 						</label>
 
@@ -200,7 +205,7 @@ function ContextLimitControl({
 								value={draft.text}
 								disabled={disabled}
 								placeholder={RANGE}
-								aria-label={`Context tokens for ${controlLabel}`}
+								aria-label={t("Context tokens for {name}", { name: controlLabel })}
 								aria-invalid={showError}
 								aria-describedby={showError ? `${id}-error` : undefined}
 								data-testid={`${testId}-input`}
@@ -232,7 +237,7 @@ function ContextLimitControl({
 			</div>
 			{showError ? (
 				<p id={`${id}-error`} className="text-right tr-text-metadata text-feedback-error">
-					Enter a number within {RANGE} tokens.
+					{t("Enter a number within {range} tokens.", { range: RANGE })}
 				</p>
 			) : null}
 		</div>
@@ -254,6 +259,7 @@ export function ModelContextControls({
 	onChange: (target: ModelContextTarget, override: number | null) => void;
 	onRetry: () => void;
 }) {
+	const { t } = useI18n();
 	const [expanded, setExpanded] = useState(false);
 	const rowsId = useId();
 	if (!supported(protocolVersion)) return null;
@@ -266,29 +272,38 @@ export function ModelContextControls({
 	);
 	const sharedDescription = [
 		sharedOverride === undefined
-			? "Customized by model"
-			: `${shared.length} available model${shared.length === 1 ? "" : "s"}`,
-		...(external > 0 ? [`${external} kept at a limit set outside the ${RANGE} range`] : []),
+			? t("Customized by model")
+			: shared.length === 1
+				? t("{count} available model", { count: shared.length })
+				: t("{count} available models", { count: shared.length }),
+		...(external > 0
+			? [
+					t("{count} kept at a limit set outside the {range} range", {
+						count: external,
+						range: RANGE,
+					}),
+				]
+			: []),
 	].join(" · ");
 
 	return (
-		<SettingsGroup title="GPT context window" testId="settings-model-context">
+		<SettingsGroup title={t("GPT context window")} testId="settings-model-context">
 			{failed ? (
 				<div className="flex items-center gap-8 border-border-muted border-b py-12" role="alert">
-					<p className="tr-text-ui text-text-muted">Couldn't load pi context settings.</p>
+					<p className="tr-text-ui text-text-muted">{t("Couldn't load pi context settings.")}</p>
 					<Button variant="ghost" size="sm" disabled={pending} onClick={onRetry}>
-						Retry
+						{t("Retry")}
 					</Button>
 				</div>
 			) : settings === null ? (
 				<div className="flex items-center justify-between gap-12 border-border-muted border-b py-12">
-					<span className="tr-text-ui text-text-default">Global</span>
-					<span className="tr-text-metadata text-text-muted">Loading…</span>
+					<span className="tr-text-ui text-text-default">{t("Global")}</span>
+					<span className="tr-text-metadata text-text-muted">{t("Loading…")}</span>
 				</div>
 			) : settings.length === 0 ? (
 				<div className="flex items-center justify-between gap-12 border-border-muted border-b py-12">
-					<span className="tr-text-ui text-text-default">Global</span>
-					<span className="tr-text-metadata text-text-muted">No eligible models</span>
+					<span className="tr-text-ui text-text-default">{t("Global")}</span>
+					<span className="tr-text-metadata text-text-muted">{t("No eligible models")}</span>
 				</div>
 			) : (
 				<>
@@ -296,7 +311,7 @@ export function ModelContextControls({
 						{shared.length > 0 ? (
 							<ContextLimitControl
 								revision={revision}
-								label="Global"
+								label={t("Global")}
 								description={sharedDescription}
 								override={sharedOverride}
 								disabled={pending}
@@ -305,9 +320,9 @@ export function ModelContextControls({
 							/>
 						) : null}
 						<p className="rounded-sm bg-control-bg px-12 py-8 tr-text-metadata text-text-muted">
-							Default uses the model's catalog limit. Larger contexts may increase cost or quota
-							usage. Settings sync with pi CLI via models.json. New chats use updated limits;
-							existing chats may need a host restart.
+							{t(
+								"Default uses the model's catalog limit. Larger contexts may increase cost or quota usage. Settings sync with pi CLI via models.json. New chats use updated limits; existing chats may need a host restart.",
+							)}
 						</p>
 					</div>
 
@@ -320,7 +335,7 @@ export function ModelContextControls({
 							data-testid="model-context-customize"
 							className="flex w-full items-start gap-8 py-12 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary"
 						>
-							<span className="flex-1 tr-text-ui text-text-default">By each model</span>
+							<span className="flex-1 tr-text-ui text-text-default">{t("By each model")}</span>
 							<span className="mt-2 shrink-0">
 								{expanded ? (
 									<RiArrowDownSLine className="size-20 text-text-muted" aria-hidden="true" />
@@ -337,7 +352,17 @@ export function ModelContextControls({
 										revision={String(model.override)}
 										label={model.name}
 										controlLabel={`${model.name} (${model.provider})`}
-										description={`${model.provider} · ${tokens(model.contextWindow)} tokens${model.override === null ? " (pi default)" : ""}`}
+										description={
+											model.override === null
+												? t("{provider} · {count} tokens (pi default)", {
+														provider: model.provider,
+														count: tokens(model.contextWindow),
+													})
+												: t("{provider} · {count} tokens", {
+														provider: model.provider,
+														count: tokens(model.contextWindow),
+													})
+										}
 										override={model.override}
 										disabled={pending}
 										testId={`context-limit-${model.provider}-${model.id}`}
@@ -356,6 +381,7 @@ export function ModelContextControls({
 }
 
 export function ModelContextSettings() {
+	const { t } = useI18n();
 	const protocolVersion = useAppStore((state) => state.protocolVersion);
 	const providerVersion = useAppStore((state) => state.providerVersion);
 	const models = useAppStore((state) => state.models);
@@ -377,7 +403,9 @@ export function ModelContextSettings() {
 				next = await request();
 			} catch {}
 			if (next === undefined && change)
-				toast.error("Couldn't update pi context settings. Retry to check the saved configuration.");
+				toast.error(
+					t("Couldn't update pi context settings. Retry to check the saved configuration."),
+				);
 			if (current !== sequence.current) return;
 			if (next === undefined) setFailed(true);
 			else if (providerVersion === useAppStore.getState().providerVersion) {
@@ -386,7 +414,7 @@ export function ModelContextSettings() {
 			}
 			setPending(false);
 		},
-		[protocolVersion, providerVersion],
+		[protocolVersion, providerVersion, t],
 	);
 
 	useEffect(() => {

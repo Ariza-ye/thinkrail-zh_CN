@@ -1,3 +1,4 @@
+import { useI18n } from "@thinkrail/ui/i18n";
 import { SettingsSwitch } from "./SettingsSwitch";
 
 export const ANALYTICS_DESCRIPTION =
@@ -15,16 +16,19 @@ export function AnalyticsSharingSwitch({
 	onChange,
 	description,
 }: AnalyticsPreferenceProps & { description?: string }) {
+	const { t } = useI18n();
 	return (
 		<div className="flex items-center justify-between gap-12 rounded-sm bg-control-bg px-12 py-8">
 			<div className="flex flex-col gap-4">
-				<span className="tr-title-compact text-text-default">Share additional usage data</span>
+				<span className="tr-title-compact text-text-default">
+					{t("Share additional usage data")}
+				</span>
 				{description && <span>{description}</span>}
 			</div>
 			<SettingsSwitch
 				checked={enabled}
 				disabled={disabled}
-				label="Share additional usage data"
+				label={t("Share additional usage data")}
 				testId="analytics-toggle"
 				onChange={onChange}
 			/>
@@ -33,16 +37,17 @@ export function AnalyticsSharingSwitch({
 }
 
 export function AnalyticsPreferences(props: AnalyticsPreferenceProps) {
+	const { t } = useI18n();
 	return (
 		<div className="flex flex-col gap-16 tr-text-metadata text-text-muted">
 			<AnalyticsSharingSwitch
 				{...props}
-				description="Setup, agent runs, task completions, reviews, and pull-request outcomes."
+				description={t("Setup, agent runs, task completions, reviews, and pull-request outcomes.")}
 			/>
 			<p>
-				Reports use a random installation ID, app type, version and channel, OS, and architecture.
-				Custom providers and models are labeled “custom”. No prompts, code, transcripts, file paths,
-				credentials, or recordings.
+				{t(
+					"Reports use a random installation ID, app type, version and channel, OS, and architecture. Custom providers and models are labeled “custom”. No prompts, code, transcripts, file paths, credentials, or recordings.",
+				)}
 			</p>
 		</div>
 	);

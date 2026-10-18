@@ -1390,7 +1390,8 @@ Unknown custom messages retain their existing behavior.
   `markSkillsSynced` to clear only this chat).
   **No `index.ts` barrel** — chat pulls **shiki**, so per the code-splitting exception imports stay
   **per-file**; the registry is importable from `chat/toolRegistry` **without** pulling shiki.
-- **Allowed deps:** `contracts` (pi message/content-block types, **type-only**); the lifecycle-neutral
+- **Allowed deps:** `contracts` (pi message/content-block types, **type-only**); `ui` (shared
+  `i18n` runtime plus primitives); the lifecycle-neutral
   `prompt` module; `store` + `transport`
   (**app-integration files only** — a renderer that takes props must never reach for either. Today that
   is `ChatView.tsx`, **`ChatTranscript.tsx`** (the churn-isolated transcript child — the Virtuoso list, scroll

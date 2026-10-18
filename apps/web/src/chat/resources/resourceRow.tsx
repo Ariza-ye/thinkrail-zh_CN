@@ -10,6 +10,7 @@ import {
 	RiTimeLine,
 } from "@remixicon/react";
 import type { BackgroundCommandSummary, SubagentResourceSummary } from "@thinkrail/contracts";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import type { KeyboardEvent, ReactNode } from "react";
 
@@ -101,27 +102,29 @@ export function resourceActivity(resource: Resource): string {
 export function stateLabel(state: ResourceState, kind: Resource["kind"]): string {
 	switch (state) {
 		case "working":
-			return kind === "command" ? "Running" : "Working";
+			return kind === "command" ? translate("Running") : translate("Working");
 		case "queued":
-			return "Queued";
+			return translate("Queued");
 		case "stopping":
-			return "Stopping…";
+			return translate("Stopping…");
 		case "done":
-			return "Done";
+			return translate("Done");
 		case "failed":
-			return "Failed";
+			return translate("Failed");
 		case "stopped":
-			return "Stopped";
+			return translate("Stopped");
 	}
 }
 
 export function formatElapsed(ms: number): string {
 	const minutes = Math.max(0, Math.floor(ms / 60_000));
-	if (minutes < 1) return "<1 min";
-	if (minutes < 60) return `${minutes} min`;
+	if (minutes < 1) return translate("<1 min");
+	if (minutes < 60) return translate("{value} min", { value: minutes });
 	const hours = Math.floor(minutes / 60);
 	const rest = minutes % 60;
-	return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+	return rest === 0
+		? translate("{value} h", { value: hours })
+		: translate("{value} h {value2} min", { value: hours, value2: rest });
 }
 
 function runMs(resource: Resource, now: number): number | null {
@@ -160,6 +163,7 @@ const STATE_DOT: Record<ResourceState, string> = {
 };
 
 export function StateIcon({ state }: { state: ResourceState }) {
+	useI18n();
 	const className = cn("size-12 shrink-0", STATE_TEXT[state]);
 	switch (state) {
 		case "done":
@@ -182,6 +186,7 @@ export function StateIcon({ state }: { state: ResourceState }) {
 }
 
 export function StateText({ state, kind }: { state: ResourceState; kind: Resource["kind"] }) {
+	useI18n();
 	return (
 		<span className={cn("inline-flex items-center gap-4 whitespace-nowrap", STATE_TEXT[state])}>
 			<StateIcon state={state} />
@@ -191,6 +196,7 @@ export function StateText({ state, kind }: { state: ResourceState; kind: Resourc
 }
 
 export function ExitBadge({ exitCode }: { exitCode: number }) {
+	const { t } = useI18n();
 	return (
 		<span
 			className={cn(
@@ -200,7 +206,7 @@ export function ExitBadge({ exitCode }: { exitCode: number }) {
 					: "border-feedback-error-muted text-feedback-error",
 			)}
 		>
-			exit {exitCode}
+			{t("exit")} {exitCode}
 		</span>
 	);
 }
@@ -214,6 +220,7 @@ export function KindGlyph({
 	state: ResourceState;
 	className?: string;
 }) {
+	useI18n();
 	const Icon = resource.kind === "command" ? RiTerminalBoxLine : RiRobot2Line;
 	return (
 		<span
@@ -246,6 +253,7 @@ function RowActionButton({
 	onClick: () => void;
 	children: ReactNode;
 }) {
+	useI18n();
 	return (
 		<button
 			type="button"
@@ -305,6 +313,7 @@ export function ResourceRow({
 	onSelect,
 	onStop,
 }: ResourceRowProps) {
+	const { t } = useI18n();
 	const state = resourceState(resource);
 	const live = isLiveState(state);
 	const id = resourceId(resource);
@@ -343,7 +352,7 @@ export function ResourceRow({
 		<span className="hidden shrink-0 items-center gap-2 group-hover:inline-flex group-focus-within:inline-flex">
 			{live ? (
 				<RowActionButton
-					label={action?.pending ? "Stopping…" : "Stop"}
+					label={action?.pending ? t("Stopping…") : t("Stop")}
 					testId="resource-stop"
 					disabled={stopDisabled}
 					danger
@@ -414,7 +423,7 @@ export function ResourceRow({
 				<button
 					type="button"
 					data-testid="resource-inspect"
-					title={`Inspect ${name}`}
+					title={t("Inspect {value}", { value: name })}
 					onClick={onSelect}
 					className="flex min-w-0 items-baseline gap-8 rounded-xs text-left outline-none focus-visible:ring-2 focus-visible:ring-primary"
 				>

@@ -8,6 +8,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { translate } from "@thinkrail/ui/i18n";
 import type { ReactNode } from "react";
 
 export function NoticeDialog({
@@ -15,7 +16,7 @@ export function NoticeDialog({
 	onOpenChange,
 	title,
 	description,
-	dismissLabel = "OK",
+	dismissLabel = translate("OK"),
 	tone = "error",
 	testId = "notice-dialog",
 }: {

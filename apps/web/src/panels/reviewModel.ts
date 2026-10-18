@@ -1,4 +1,5 @@
 import type { GitDiffScope, ReviewAnchor, ReviewComment } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { anchorLabel, type ReviewThread } from "@/resources";
 
 export type ReviewSurface = { kind: "file" } | { kind: "diff"; scope?: GitDiffScope };
@@ -50,31 +51,50 @@ export function lineRef(comment: ReviewComment): string {
 	return comment.anchor ? anchorLabel(comment.anchor) : "";
 }
 
+const REVIEW_STATUS_LABELS: Record<string, string> = {
+	draft: "draft",
+	sent: "sent",
+	resolved: "resolved",
+	dismissed: "dismissed",
+};
+
+function reviewStatusLabel(status: string): string {
+	return translate(REVIEW_STATUS_LABELS[status] ?? status);
+}
+
 export function statusLabel(
 	comment: Pick<ReviewComment, "status" | "anchorState" | "stale">,
 ): string {
+	const status = reviewStatusLabel(comment.status);
 	if (comment.status !== "resolved" && comment.status !== "dismissed") {
-		if (comment.stale) return `${comment.status} · stale`;
-		if (comment.anchorState === "outdated") return `${comment.status} · outdated`;
+		if (comment.stale) return translate("{status} · stale", { status });
+		if (comment.anchorState === "outdated") return translate("{status} · outdated", { status });
 	}
-	return comment.status;
+	return status;
 }
 
-export function threadLabel(t: Pick<ReviewThread, "status" | "anchorState" | "stale">): string {
-	if (t.stale) return `${t.status} · stale`;
-	if (t.anchorState === "outdated") return `${t.status} · outdated`;
-	return t.status;
+export function threadLabel(
+	thread: Pick<ReviewThread, "status" | "anchorState" | "stale">,
+): string {
+	const status = reviewStatusLabel(thread.status);
+	if (thread.stale) return translate("{status} · stale", { status });
+	if (thread.anchorState === "outdated") return translate("{status} · outdated", { status });
+	return status;
 }
 
 export function outdatedReason(anchor: ReviewAnchor | null | undefined): string {
 	const kinds = new Set((anchor?.selectors ?? []).map((selector) => selector.kind));
 	if (kinds.has("textQuote")) {
-		return "The file changed or is gone, and this comment's text was not found again; it keeps its original snapshot.";
+		return translate(
+			"The file changed or is gone, and this comment's text was not found again; it keeps its original snapshot.",
+		);
 	}
 	if (kinds.has("region") || kinds.has("structural") || kinds.has("lineRange")) {
-		return "The file's bytes changed or it is gone; a position in an image, PDF or notebook cannot be re-verified, so the comment keeps its original snapshot.";
+		return translate(
+			"The file's bytes changed or it is gone; a position in an image, PDF or notebook cannot be re-verified, so the comment keeps its original snapshot.",
+		);
 	}
-	return "The file this comment was about is gone.";
+	return translate("The file this comment was about is gone.");
 }
 
 export type ReviewFlag = "draft" | "sent";

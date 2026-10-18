@@ -15,6 +15,7 @@ import {
 	RiUser3Line as UserRound,
 } from "@remixicon/react";
 import type { TodoGroupItem, TodoItem, TodoPlan, TodoStatus } from "@thinkrail/contracts";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { cn } from "@thinkrail/ui/utils";
 import { useState } from "react";
@@ -45,16 +46,16 @@ export function glanceIcon(glance: PlanGlance): {
 	if (glance === "waiting_question")
 		return {
 			Icon: MessageCircleQuestion,
-			label: "Needs your answer",
+			label: translate("Needs your answer"),
 			className: "text-primary",
 		};
 	if (glance === "waiting")
-		return { Icon: CirclePause, label: "Paused", className: "text-text-muted" };
-	return { Icon: CircleDot, label: STATUS_LABEL.in_progress, className: "text-primary" };
+		return { Icon: CirclePause, label: translate("Paused"), className: "text-text-muted" };
+	return { Icon: CircleDot, label: translate(STATUS_LABEL.in_progress), className: "text-primary" };
 }
 
 function statusLabel(status: TodoStatus, glance: PlanGlance): string {
-	return status === "in_progress" ? glanceIcon(glance).label : STATUS_LABEL[status];
+	return status === "in_progress" ? glanceIcon(glance).label : translate(STATUS_LABEL[status]);
 }
 
 export function StatusIcon({
@@ -70,6 +71,7 @@ export function StatusIcon({
 	reviewing?: boolean;
 	changesRequested?: boolean;
 }) {
+	useI18n();
 	if (reviewing)
 		return (
 			<LoaderCircle data-reviewing="true" className="size-12 shrink-0 animate-spin text-primary" />
@@ -97,6 +99,7 @@ export function TodoAddRow({
 	onAdd: (title: string) => Promise<void>;
 	onOpenPlan?: () => void;
 }) {
+	const { t } = useI18n();
 	const [draft, setDraft] = useState("");
 	const submit = async () => {
 		const title = draft.trim();
@@ -116,16 +119,16 @@ export function TodoAddRow({
 				onKeyDown={(e) => {
 					if (e.key === "Enter") void submit();
 				}}
-				placeholder="Queue a task for the agent"
+				placeholder={t("Queue a task for the agent")}
 				className="min-w-0 flex-1 bg-transparent tr-text-ui text-text-default outline-none placeholder:text-text-muted"
 			/>
 			{onOpenPlan ? (
-				<IconTooltip label="Open the plan as a page — review each step's changes">
+				<IconTooltip label={t("Open the plan as a page — review each step's changes")}>
 					<button
 						type="button"
 						data-testid="todo-open-plan"
 						onClick={onOpenPlan}
-						aria-label="Open the plan page"
+						aria-label={t("Open the plan page")}
 						className="flex size-24 shrink-0 items-center justify-center rounded-sm text-text-muted hover:bg-control-bg-hovered hover:text-text-default focus-visible:opacity-100"
 					>
 						<FileText className="size-14" />
@@ -147,6 +150,7 @@ function GroupBlock({
 	onOpenChanges?: ((target: ChangeTarget) => void) | undefined;
 	onRemove?: ((id: string) => Promise<void>) | undefined;
 }) {
+	const { t } = useI18n();
 	const status = group.status;
 	const { done, total } = groupProgress(group);
 	const empty = group.todos.length === 0;
@@ -177,7 +181,7 @@ function GroupBlock({
 					data-testid="todo-group-progress"
 					className="shrink-0 tr-text-eyebrow text-text-muted"
 				>
-					{empty ? "planning\u2026" : `${done}/${total}`}
+					{empty ? t("planning…") : `${done}/${total}`}
 				</span>
 			</div>
 			{empty ? (
@@ -186,7 +190,7 @@ function GroupBlock({
 					className="ml-12 flex items-center gap-8 border-border-default border-l pl-8 py-4 tr-text-metadata text-text-subtle"
 				>
 					<LoaderCircle className="size-12 shrink-0 animate-spin text-primary" />
-					The plan for this task is forming
+					{t("The plan for this task is forming")}
 				</p>
 			) : null}
 			<ul className="ml-12 flex flex-col border-border-default border-l pl-8">
@@ -215,6 +219,7 @@ function LooseList({
 	onOpenChanges?: ((target: ChangeTarget) => void) | undefined;
 	onRemove?: ((id: string) => Promise<void>) | undefined;
 }) {
+	useI18n();
 	if (items.length === 0) return null;
 	return (
 		<ul className="flex flex-col">
@@ -242,6 +247,7 @@ export function TodoRows({
 	onOpenChanges?: ((target: ChangeTarget) => void) | undefined;
 	onRemove?: ((id: string) => Promise<void>) | undefined;
 }) {
+	const { t } = useI18n();
 	const s = planSections(plan);
 	const hasTodo = s.pendingGroups.length > 0 || s.pendingLoose.length > 0;
 	const hasDone = s.doneGroups.length > 0 || s.doneLoose.length > 0;
@@ -252,12 +258,12 @@ export function TodoRows({
 				<GroupBlock key={group.id} group={group} {...rowProps} />
 			))}
 			<LooseList items={s.activeLoose} {...rowProps} />
-			{hasTodo ? <SectionLabel label="Up next" /> : null}
+			{hasTodo ? <SectionLabel label={t("Up next")} /> : null}
 			{s.pendingGroups.map((group) => (
 				<GroupBlock key={group.id} group={group} {...rowProps} />
 			))}
 			<LooseList items={s.pendingLoose} {...rowProps} />
-			{hasDone ? <SectionLabel label="Done" /> : null}
+			{hasDone ? <SectionLabel label={t("Done")} /> : null}
 			{s.doneGroups.map((group) => (
 				<DoneGroup key={group.id} group={group} {...rowProps} />
 			))}
@@ -275,6 +281,7 @@ function DoneGroup({
 	glance: PlanGlance;
 	onOpenChanges?: ((target: ChangeTarget) => void) | undefined;
 }) {
+	const { t } = useI18n();
 	const [expanded, setExpanded] = useState(false);
 	const Chevron = expanded ? ChevronDown : ChevronRight;
 	return (
@@ -290,8 +297,9 @@ function DoneGroup({
 				<Check className="size-12 shrink-0 text-primary" />
 				<span className="min-w-0 flex-1 truncate tr-text-ui text-text-muted">{group.title}</span>
 				<span className="shrink-0 tr-text-eyebrow text-text-muted">
-					{group.todos.length}
-					{group.todos.length === 1 ? " step" : " steps"}
+					{t(group.todos.length === 1 ? "{count} step" : "{count} steps", {
+						count: group.todos.length,
+					})}
 				</span>
 			</button>
 			{expanded ? (
@@ -312,6 +320,7 @@ function ChangeSetChip({
 	set: ItemChangeSet;
 	onOpen: (target: ChangeTarget) => void;
 }) {
+	const { t } = useI18n();
 	const [expanded, setExpanded] = useState(false);
 	const count = set.kind === "commit" ? set.files.length : set.paths.length;
 	const open = () => {
@@ -328,12 +337,12 @@ function ChangeSetChip({
 				onClick={open}
 				title={
 					set.kind === "commit"
-						? `Review this step's changes (commit ${set.sha.slice(0, 7)})`
-						: "Review this step's changed files"
+						? t("Review this step's changes (commit {value})", { value: set.sha.slice(0, 7) })
+						: t("Review this step's changed files")
 				}
 				className="tr-text-metadata text-text-subtle underline-offset-2 hover:text-text-default hover:underline"
 			>
-				{count} {count === 1 ? "file" : "files"}
+				{t(count === 1 ? "{count} file" : "{count} files", { count })}
 			</button>
 			{expanded && set.kind === "paths" ? (
 				<ul className="mt-4 flex flex-col gap-4">
@@ -367,6 +376,7 @@ function TodoRow({
 	onOpenChanges?: ((target: ChangeTarget) => void) | undefined;
 	onRemove?: ((id: string) => Promise<void>) | undefined;
 }) {
+	const { t } = useI18n();
 	const changeSet = onOpenChanges ? itemChangeSet(todo) : null;
 	const reviewed = reviewSettled(todo);
 	const reviewing = todo.review?.reviewing === true;
@@ -384,11 +394,11 @@ function TodoRow({
 				className="shrink-0"
 				title={
 					reviewing
-						? "Checking…"
+						? t("Checking…")
 						: changesRequested && todo.status === "done"
-							? "Needs a fix"
+							? t("Needs a fix")
 							: reviewed
-								? "Checked"
+								? t("Checked")
 								: statusLabel(todo.status, glance)
 				}
 			>
@@ -416,18 +426,18 @@ function TodoRow({
 			{todo.origin === "user" ? (
 				<span
 					data-testid="todo-origin-user"
-					title="Added by you — the agent won't drop it"
+					title={t("Added by you — the agent won't drop it")}
 					className="shrink-0 text-text-muted"
 				>
 					<UserRound className="size-14" />
 				</span>
 			) : null}
 			{onRemove && todo.status !== "done" && !reviewing ? (
-				<IconTooltip label="Remove from the queue">
+				<IconTooltip label={t("Remove from the queue")}>
 					<button
 						type="button"
 						data-testid="todo-remove"
-						aria-label="Remove from the queue"
+						aria-label={t("Remove from the queue")}
 						onClick={() => {
 							void onRemove(todo.id);
 						}}

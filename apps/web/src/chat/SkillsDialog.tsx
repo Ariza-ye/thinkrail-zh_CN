@@ -7,6 +7,7 @@ import {
 import type { Project, SkillCatalogEntry, Workspace } from "@thinkrail/contracts";
 import { Button } from "@thinkrail/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@thinkrail/ui/dialog";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { Switch } from "@thinkrail/ui/switch";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { cn } from "@thinkrail/ui/utils";
@@ -49,8 +50,8 @@ function groupCatalog(entries: SkillCatalogEntry[]): Group[] {
 			const meta = TIER_META[key];
 			return {
 				key,
-				label: meta?.label ?? key,
-				hint: group.isPlugin ? "Claude plugin" : (meta?.hint ?? ""),
+				label: meta ? translate(meta.label) : key,
+				hint: group.isPlugin ? translate("Claude plugin") : meta ? translate(meta.hint) : "",
 				isPlugin: group.isPlugin,
 				items: group.items,
 				rank: group.isPlugin ? 3 : (meta?.rank ?? 5),
@@ -82,6 +83,7 @@ export function SkillsDialog({
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
+	const { t } = useI18n();
 	const project = useAppStore((s) => s.projects.find((p) => p.id === projectId));
 	const [entries, setEntries] = useState<SkillCatalogEntry[] | null>(null);
 	const [busy, setBusy] = useState(false);
@@ -128,9 +130,9 @@ export function SkillsDialog({
 				sessionId: workspace.sessionId,
 			});
 			workspace.onReloaded?.(syncedTick);
-			toast.success("This chat now uses the updated skills.", "Skills reloaded");
+			toast.success(t("This chat now uses the updated skills."), t("Skills reloaded"));
 		} catch (err) {
-			toast.error(errorText(err), "Couldn't reload skills");
+			toast.error(errorText(err), t("Couldn't reload skills"));
 		} finally {
 			setBusy(false);
 		}
@@ -139,7 +141,7 @@ export function SkillsDialog({
 	const setGroupEnabled = (group: string, enabled: boolean) =>
 		void mutate(
 			() => getTransport().request("project.setGroupEnabled", { id: projectId, group, enabled }),
-			"Couldn't update group",
+			t("Couldn't update group"),
 		);
 
 	const setSkillEnabled = (name: string, enabled: boolean) =>
@@ -152,7 +154,7 @@ export function SkillsDialog({
 							override: enabled ? "on" : "off",
 						})
 					: getTransport().request("project.setSkillEnabled", { id: projectId, name, enabled }),
-			"Couldn't update skill",
+			t("Couldn't update skill"),
 		);
 
 	const disabledGroups = new Set(project?.disabledGroups ?? []);
@@ -198,8 +200,8 @@ export function SkillsDialog({
 					<SkillSwitch
 						checked={groupOn}
 						busy={busy}
-						blockedReason={lockedByMaster ? "Off — turn on All plugins first" : undefined}
-						label={`Enable ${group.label} skill group`}
+						blockedReason={lockedByMaster ? t("Off — turn on All plugins first") : undefined}
+						label={t("Enable {value} skill group", { value: group.label })}
 						testId="group-toggle"
 						onCheckedChange={(enabled) => setGroupEnabled(group.key, enabled)}
 					/>
@@ -214,8 +216,8 @@ export function SkillsDialog({
 								groupOn
 									? undefined
 									: lockedByMaster
-										? "Off — turn on All plugins first"
-										: `Off — turn on ${group.label} first`
+										? t("Off — turn on All plugins first")
+										: t("Off — turn on {value} first", { value: group.label })
 							}
 							onToggle={(enabled) => setSkillEnabled(entry.name, enabled)}
 							onAcknowledge={() =>
@@ -225,7 +227,7 @@ export function SkillsDialog({
 											id: projectId,
 											names: [entry.name],
 										}),
-									"Couldn't confirm skill",
+									t("Couldn't confirm skill"),
 								)
 							}
 						/>
@@ -239,13 +241,13 @@ export function SkillsDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent data-testid="skills-dialog" className="max-w-[560px] gap-12 p-12">
 				<div className="flex items-center justify-between gap-8 pr-[2rem]">
-					<DialogTitle className="tr-text-ui text-text-default">Skills</DialogTitle>
+					<DialogTitle className="tr-text-ui text-text-default">{t("Skills")}</DialogTitle>
 					{workspace ? (
 						<IconTooltip
 							label={
 								workspace.streaming
-									? "Available once the current turn finishes"
-									: "Apply to this chat"
+									? t("Available once the current turn finishes")
+									: t("Apply to this chat")
 							}
 							wrapTrigger
 						>
@@ -257,7 +259,7 @@ export function SkillsDialog({
 								onClick={() => void reload()}
 							>
 								<RefreshCw className="size-14" />
-								Reload
+								{t("Reload")}
 							</Button>
 						</IconTooltip>
 					) : null}
@@ -268,8 +270,7 @@ export function SkillsDialog({
 						data-testid="skills-stale"
 						className="rounded-sm border border-border-default bg-container-elevated-bg px-12 py-8 text-text-muted tr-text-metadata"
 					>
-						This worktree's skills changed on disk —{" "}
-						<span className="text-text-default">Reload</span> to apply them to this chat.
+						{t("This worktree's skills changed on disk — Reload to apply them to this chat.")}
 					</div>
 				) : null}
 
@@ -301,11 +302,11 @@ export function SkillsDialog({
 												"project.setTrust",
 												trustGrantParams(projectId, trustNotice),
 											),
-										"Couldn't trust project",
+										t("Couldn't trust project"),
 									)
 								}
 							>
-								Trust project
+								{t("Trust project")}
 							</Button>
 						</div>
 					</div>
@@ -315,7 +316,7 @@ export function SkillsDialog({
 					{entries === null ? (
 						<LoadingRegion rows={4} className="px-8 py-12" />
 					) : entries.length === 0 ? (
-						<p className="px-8 py-12 text-text-muted tr-text-ui">No skills discovered.</p>
+						<p className="px-8 py-12 text-text-muted tr-text-ui">{t("No skills discovered.")}</p>
 					) : (
 						<>
 							{leadingGroups.map(renderGroup)}
@@ -325,12 +326,12 @@ export function SkillsDialog({
 									className="sticky top-0 z-20 flex h-32 items-center gap-8 border-border-default border-y bg-container-header-bg px-8"
 								>
 									<span className="min-w-0 flex-1 tr-text-eyebrow text-text-default">
-										All plugins
+										{t("All plugins")}
 									</span>
 									<SkillSwitch
 										checked={!pluginsDisabled}
 										busy={busy}
-										label="Enable all plugins"
+										label={t("Enable all plugins")}
 										testId="all-plugins-toggle"
 										onCheckedChange={(enabled) => setGroupEnabled("@plugins", enabled)}
 									/>
@@ -360,10 +361,13 @@ function SkillSwitch({
 	testId: string;
 	onCheckedChange: (checked: boolean) => void;
 }) {
+	const { t } = useI18n();
 	const disabled = busy || blockedReason !== undefined;
 	const tooltip = busy
-		? "Saving skill settings…"
-		: (blockedReason ?? `${checked ? "On" : "Off"} — turn ${checked ? "off" : "on"}`);
+		? t("Saving skill settings…")
+		: (blockedReason ?? checked)
+			? t("On — turn off")
+			: t("Off — turn on");
 	return (
 		<IconTooltip label={tooltip} wrapTrigger={disabled}>
 			<Switch
@@ -392,6 +396,7 @@ function SkillRow({
 	onToggle: (enabled: boolean) => void;
 	onAcknowledge: () => void;
 }) {
+	const { t } = useI18n();
 	const loaded = entry.decision === "load";
 	return (
 		<div
@@ -409,16 +414,16 @@ function SkillRow({
 			{entry.decision === "pending-ack" ? (
 				<Button size="sm" data-testid="skill-ack" disabled={busy} onClick={onAcknowledge}>
 					<ShieldCheck className="size-14" />
-					Enable
+					{t("Enable")}
 				</Button>
 			) : (
 				<SkillSwitch
 					checked={entry.decision === "untrusted" || blockedReason ? false : loaded}
 					busy={busy}
 					blockedReason={
-						entry.decision === "untrusted" ? "Off — trust this project first" : blockedReason
+						entry.decision === "untrusted" ? t("Off — trust this project first") : blockedReason
 					}
-					label={`Enable skill ${entry.name}`}
+					label={t("Enable skill {value}", { value: entry.name })}
 					testId="skill-toggle"
 					onCheckedChange={onToggle}
 				/>

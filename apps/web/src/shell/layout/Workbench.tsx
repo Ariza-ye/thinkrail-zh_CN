@@ -8,6 +8,7 @@ import {
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
+import { useI18n } from "@thinkrail/ui/i18n";
 import {
 	type ImperativePanelGroupHandle,
 	ResizableHandle,
@@ -108,6 +109,7 @@ export function Workbench({
 	onNewTerminal,
 	onGestureCanceled,
 }: WorkbenchProps) {
+	const { t } = useI18n();
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 	const [draggingTab, setDraggingTab] = useState<LayoutTab | null>(null);
 	const tabSelectionEpoch = useRef(0);
@@ -413,7 +415,7 @@ export function Workbench({
 			case "split":
 				result =
 					tab.kind === "tool"
-						? { reason: "Tools stay in a side region." }
+						? { reason: t("Tools stay in a side region.") }
 						: splitCenterGroup(document, target.groupId, target.direction, tab);
 				break;
 			case "auxiliary-edge":
@@ -426,7 +428,7 @@ export function Workbench({
 								target.index,
 								target.region === "bottom" ? maxBottomGroups : maxSideGroups,
 							)
-						: { reason: "That tab type cannot move to an auxiliary region." };
+						: { reason: t("That tab type cannot move to an auxiliary region.") };
 				break;
 		}
 		if (isLayoutUnavailable(result)) return;

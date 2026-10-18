@@ -3,6 +3,7 @@ import {
 	RiAddLine as Plus,
 	RiArrowGoBackLine as RotateCcw,
 } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -46,6 +47,7 @@ export function installPanZoomGestures(
 }
 
 export function PanZoomView({ svg }: { svg: string }) {
+	const { t } = useI18n();
 	const [scale, setScale] = useState(1);
 	const scaleRef = useRef(1);
 	const scrollRef = useRef<HTMLDivElement>(null);
@@ -122,7 +124,7 @@ export function PanZoomView({ svg }: { svg: string }) {
 			<div className="absolute right-8 bottom-8 flex items-center gap-4 rounded-sm border border-border-default bg-container-elevated-bg p-4 tr-text-metadata shadow-[var(--shadow-lg)]">
 				<button
 					type="button"
-					aria-label="Zoom out"
+					aria-label={t("Zoom out")}
 					data-testid="mermaid-zoom-out"
 					onClick={() => setZoom(scaleRef.current / 1.25)}
 					className={btn}
@@ -137,7 +139,7 @@ export function PanZoomView({ svg }: { svg: string }) {
 				</span>
 				<button
 					type="button"
-					aria-label="Zoom in"
+					aria-label={t("Zoom in")}
 					data-testid="mermaid-zoom-in"
 					onClick={() => setZoom(scaleRef.current * 1.25)}
 					className={btn}
@@ -146,7 +148,7 @@ export function PanZoomView({ svg }: { svg: string }) {
 				</button>
 				<button
 					type="button"
-					aria-label="Reset zoom"
+					aria-label={t("Reset zoom")}
 					data-testid="mermaid-zoom-reset"
 					onClick={reset}
 					className={btn}

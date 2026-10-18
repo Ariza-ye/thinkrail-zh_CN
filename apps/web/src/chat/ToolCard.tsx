@@ -4,6 +4,7 @@ import {
 	RiLoader4Line as Loader2,
 	RiCloseLine as X,
 } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import { useFold } from "./foldState";
 import { ToolRendererBody } from "./ToolRendererBody";
@@ -29,6 +30,7 @@ export function ToolCard({
 	workspaceRoot?: string | undefined;
 	onOpenFile?: ((path: string) => void) | undefined;
 }) {
+	useI18n();
 	const status = tool?.status ?? (dead ? "error" : "running");
 	const isError = status === "error";
 	const renderProps = {

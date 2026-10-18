@@ -14,6 +14,7 @@ import {
 } from "@remixicon/react";
 import type { LayoutPreset } from "@thinkrail/contracts";
 import { Button } from "@thinkrail/ui/button";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { Popover, PopoverContent, PopoverTrigger } from "@thinkrail/ui/popover";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -58,7 +59,7 @@ async function updateCustomPresets(customLayoutPresets: LayoutPreset[]): Promise
 		});
 		return true;
 	} catch (error) {
-		toast.error(errorText(error), "Couldn't save custom layout presets");
+		toast.error(errorText(error), translate("Couldn't save custom layout presets"));
 		return false;
 	}
 }
@@ -86,6 +87,7 @@ function GroupLimitInput({
 	label: string;
 	limitKey: GroupLimitKey;
 }) {
+	const { t } = useI18n();
 	const saved = useAppStore((state) => state.localLayoutPreferences[limitKey]);
 	const savedText = String(saved);
 	const [draft, setDraft] = useState(savedText);
@@ -108,7 +110,7 @@ function GroupLimitInput({
 				step={1}
 				inputMode="numeric"
 				value={draft}
-				aria-label={label}
+				aria-label={t(label)}
 				aria-invalid={invalid}
 				aria-describedby={invalid ? errorId : undefined}
 				data-settings-draft-input
@@ -126,7 +128,7 @@ function GroupLimitInput({
 			/>
 			{invalid ? (
 				<span id={errorId} className="text-feedback-error tr-text-metadata">
-					Use {GROUP_LIMIT_MIN}–{GROUP_LIMIT_MAX}
+					{t("Use")} {GROUP_LIMIT_MIN}–{GROUP_LIMIT_MAX}
 				</span>
 			) : null}
 		</span>
@@ -134,6 +136,7 @@ function GroupLimitInput({
 }
 
 export function LayoutSettings() {
+	const { t } = useI18n();
 	const customLayoutPresets = useAppStore((state) => state.customLayoutPresets);
 	const preferences = useAppStore((state) => state.localLayoutPreferences);
 	const frame = useAppStore((state) => state.workbenchFrame);
@@ -168,11 +171,12 @@ export function LayoutSettings() {
 
 	const apply = (preset: LayoutPreset) => {
 		if (!activeWorkspaceId || !frame) return;
+		const presetName = PRESET_DESCRIPTIONS[preset.id] ? t(preset.name) : preset.name;
 		try {
 			applyLayoutPresetLocally(preset);
-			toast.success(`${preset.name} layout applied`);
+			toast.success(t("{preset} layout applied", { preset: presetName }));
 		} catch (error) {
-			toast.error(errorText(error), "Couldn't apply the layout");
+			toast.error(errorText(error), t("Couldn't apply the layout"));
 		}
 	};
 
@@ -214,18 +218,22 @@ export function LayoutSettings() {
 							{isEffectiveDefault && (
 								<div className="absolute top-12 right-12 flex items-center gap-4">
 									<span className="rounded-full bg-primary-subtle px-8 py-2 tr-text-label-pill text-primary">
-										{isStoredDefault ? "Default" : "Fallback"}
+										{isStoredDefault ? t("Default") : t("Fallback")}
 									</span>
 									<IconTooltip
 										label={
 											isStoredDefault
-												? "Reset to default rearranges this window into this layout. The default is remembered for this window only."
-												: "The chosen default no longer exists, so Reset to default uses this layout."
+												? t(
+														"Reset to default rearranges this window into this layout. The default is remembered for this window only.",
+													)
+												: t(
+														"The chosen default no longer exists, so Reset to default uses this layout.",
+													)
 										}
 									>
 										<button
 											type="button"
-											aria-label="About the default layout"
+											aria-label={t("About the default layout")}
 											className="rounded-sm p-2 text-text-muted transition-colors hover:text-text-default focus-visible:ring-2 focus-visible:ring-primary outline-none"
 										>
 											<RiQuestionLine className="size-14" />
@@ -245,19 +253,27 @@ export function LayoutSettings() {
 											if (event.key === "Enter") commitRename(preset.id);
 											if (event.key === "Escape") setRenaming(null);
 										}}
-										aria-label={`Rename ${preset.name}`}
+										aria-label={t("Rename {name}", { name: preset.name })}
 										data-settings-draft-input
 										maxLength={200}
 										className="min-w-0 flex-1 rounded-sm border border-control-border-default bg-control-bg px-4 py-2 tr-text-ui text-text-default outline-none focus:border-control-border-active"
 									/>
 								) : (
-									<span className="truncate tr-text-ui text-text-default">{preset.name}</span>
+									<span className="truncate tr-text-ui text-text-default">
+										{PRESET_DESCRIPTIONS[preset.id] ? t(preset.name) : preset.name}
+									</span>
 								)}
 							</div>
 
 							<p className="mt-2 tr-text-metadata text-text-muted">
-								{PRESET_DESCRIPTIONS[preset.id] ??
-									`${preset.left.groups.length} left · ${preset.right.groups.length} right · ${preset.bottom.groups.length} bottom`}
+								{(PRESET_DESCRIPTIONS[preset.id]
+									? t(PRESET_DESCRIPTIONS[preset.id] ?? "")
+									: undefined) ??
+									t("{left} left · {right} right · {bottom} bottom", {
+										left: preset.left.groups.length,
+										right: preset.right.groups.length,
+										bottom: preset.bottom.groups.length,
+									})}
 							</p>
 
 							<div className="mt-auto flex items-center justify-end gap-4 pt-12">
@@ -267,7 +283,7 @@ export function LayoutSettings() {
 											<>
 												<button
 													type="button"
-													aria-label={`Save ${preset.name} name`}
+													aria-label={t("Save {name} name", { name: preset.name })}
 													disabled={!renaming.name.trim() || saving}
 													onClick={() => commitRename(preset.id)}
 													className="rounded-sm p-4 text-primary hover:bg-control-bg-hovered disabled:text-control-disabled-text"
@@ -276,7 +292,7 @@ export function LayoutSettings() {
 												</button>
 												<button
 													type="button"
-													aria-label={`Cancel renaming ${preset.name}`}
+													aria-label={t("Cancel renaming {name}", { name: preset.name })}
 													onClick={() => setRenaming(null)}
 													className="rounded-sm p-4 text-text-muted hover:bg-control-bg-hovered"
 												>
@@ -286,7 +302,7 @@ export function LayoutSettings() {
 										) : (
 											<button
 												type="button"
-												aria-label={`Rename ${preset.name}`}
+												aria-label={t("Rename {name}", { name: preset.name })}
 												disabled={saving}
 												onClick={() => setRenaming({ id: preset.id, name: preset.name })}
 												className="rounded-sm p-4 text-text-muted hover:bg-control-bg-hovered hover:text-text-default disabled:text-control-disabled-text"
@@ -296,7 +312,7 @@ export function LayoutSettings() {
 										)}
 										<button
 											type="button"
-											aria-label={`Delete ${preset.name}`}
+											aria-label={t("Delete {name}", { name: preset.name })}
 											disabled={saving}
 											onClick={() => {
 												const customPresets = customLayoutPresets.filter(
@@ -338,7 +354,7 @@ export function LayoutSettings() {
 											})
 										}
 									>
-										Set default
+										{t("Set default")}
 									</Button>
 								)}
 								<Button
@@ -347,7 +363,7 @@ export function LayoutSettings() {
 									disabled={!canApply || isCurrentlyApplied}
 									onClick={() => setApplying(preset)}
 								>
-									Apply now…
+									{t("Apply now…")}
 								</Button>
 							</div>
 						</div>
@@ -368,17 +384,17 @@ export function LayoutSettings() {
 							disabled={!frame || customLayoutPresets.length >= MAX_CUSTOM_PRESETS || saving}
 							title={
 								customLayoutPresets.length >= MAX_CUSTOM_PRESETS
-									? `Limited to ${MAX_CUSTOM_PRESETS} custom presets.`
+									? t("Limited to {count} custom presets.", { count: MAX_CUSTOM_PRESETS })
 									: undefined
 							}
 							className="group flex flex-col rounded-sm bg-control-bg p-12 text-left transition-colors hover:bg-control-bg-hovered disabled:cursor-not-allowed disabled:bg-control-disabled-bg"
 						>
 							<Plus className="size-24 text-text-muted group-disabled:text-control-disabled-text" />
 							<p className="mt-8 tr-text-ui text-text-default group-disabled:text-control-disabled-text">
-								Add new layout
+								{t("Add new layout")}
 							</p>
 							<p className="mt-2 tr-text-metadata text-text-muted group-disabled:text-control-disabled-text">
-								Save your current panel arrangement as a reusable layout.
+								{t("Save your current panel arrangement as a reusable layout.")}
 							</p>
 						</button>
 					</PopoverTrigger>
@@ -409,8 +425,8 @@ export function LayoutSettings() {
 								ref={addLayoutInputRef}
 								value={name}
 								onChange={(event) => setName(event.target.value)}
-								placeholder="Layout name"
-								aria-label="Custom preset name"
+								placeholder={t("Layout name")}
+								aria-label={t("Custom preset name")}
 								maxLength={200}
 								className="w-full rounded-sm border border-control-border-default bg-control-bg px-8 py-4 tr-text-ui text-text-default outline-none placeholder:text-text-subtle focus:border-control-border-active"
 							/>
@@ -421,16 +437,16 @@ export function LayoutSettings() {
 									size="sm"
 									onClick={() => setAddLayoutOpen(false)}
 								>
-									Cancel
+									{t("Cancel")}
 								</Button>
 								<Button
 									type="submit"
 									variant="default"
 									size="sm"
-									aria-label="Save preset"
+									aria-label={t("Save preset")}
 									disabled={!name.trim() || saving}
 								>
-									Save
+									{t("Save")}
 								</Button>
 							</div>
 						</form>
@@ -440,8 +456,10 @@ export function LayoutSettings() {
 
 			<SettingsRow
 				className="mt-24"
-				label="Reset to default"
-				description={`Rearranges this window into ${selected.name}.`}
+				label={t("Reset to default")}
+				description={t("Rearranges this window into {name}.", {
+					name: PRESET_DESCRIPTIONS[selected.id] ? t(selected.name) : selected.name,
+				})}
 				control={
 					<Button
 						variant="outline"
@@ -450,7 +468,7 @@ export function LayoutSettings() {
 						disabled={!canApply}
 						onClick={() => setApplying(selected)}
 					>
-						Reset…
+						{t("Reset…")}
 					</Button>
 				}
 			/>
@@ -470,17 +488,17 @@ export function LayoutSettings() {
 							<RiArrowRightSLine className="size-16 text-text-muted" aria-hidden="true" />
 						)}
 					</span>
-					<span className="tr-text-ui text-text-default">Advanced</span>
+					<span className="tr-text-ui text-text-default">{t("Advanced")}</span>
 				</button>
 				{advancedOpen && (
 					<div className="pb-12">
 						<SettingsGroup
-							title="Group limits"
-							description="Maximum groups per region for new arrangements."
+							title={t("Group limits")}
+							description={t("Maximum groups per region for new arrangements.")}
 							testId="layout-group-limits"
 						>
 							<SettingsRow
-								label="Side groups"
+								label={t("Side groups")}
 								control={
 									<GroupLimitInput
 										id="layout-side-group-limit"
@@ -490,7 +508,7 @@ export function LayoutSettings() {
 								}
 							/>
 							<SettingsRow
-								label="Bottom groups"
+								label={t("Bottom groups")}
 								control={
 									<GroupLimitInput
 										id="layout-bottom-group-limit"
@@ -509,9 +527,9 @@ export function LayoutSettings() {
 				onOpenChange={(open) => {
 					if (!open) setApplying(null);
 				}}
-				title="Apply this layout?"
-				description="Rearranges panels in this window. Open files and terminals are preserved."
-				confirmLabel="Apply layout"
+				title={t("Apply this layout?")}
+				description={t("Rearranges panels in this window. Open files and terminals are preserved.")}
+				confirmLabel={t("Apply layout")}
 				confirmTestId="layout-apply-confirm"
 				onConfirm={() => {
 					if (applying) apply(applying);

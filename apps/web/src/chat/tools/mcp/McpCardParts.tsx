@@ -1,11 +1,13 @@
 import { RiLoader4Line as Loader2 } from "@remixicon/react";
 import { parseToolResultContent } from "@thinkrail/extension-api/web";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import { Fragment, type ReactNode } from "react";
 import { Collapsible, countLines } from "../Collapsible";
 import { mcpArgEntries } from "./mcpResult";
 
 export function McpHeader({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+	useI18n();
 	return (
 		<div data-testid="mcp-card-header" className="flex min-w-0 items-center gap-4 tr-text-metadata">
 			{icon}
@@ -15,6 +17,7 @@ export function McpHeader({ icon, children }: { icon: ReactNode; children: React
 }
 
 export function McpServerTool({ server, tool }: { server: string; tool: string }) {
+	useI18n();
 	return (
 		<>
 			{server ? (
@@ -33,6 +36,7 @@ export function McpServerTool({ server, tool }: { server: string; tool: string }
 }
 
 export function McpArgs({ id, args }: { id: string; args: Record<string, unknown> }) {
+	useI18n();
 	const entries = mcpArgEntries(args);
 	if (entries.length === 0) return null;
 	const lines = entries.reduce((total, entry) => total + Math.max(1, countLines(entry.value)), 0);
@@ -54,6 +58,7 @@ export function McpArgs({ id, args }: { id: string; args: Record<string, unknown
 }
 
 export function McpRunning({ label }: { label: string }) {
+	useI18n();
 	return (
 		<span
 			data-testid="mcp-running"
@@ -76,9 +81,10 @@ export function McpOutput({
 	result: unknown;
 	failed: boolean;
 }) {
+	const { t } = useI18n();
 	if (!text) {
 		return parseToolResultContent(result).images.length > 0 ? null : (
-			<span className="text-text-muted tr-text-metadata italic">(no output)</span>
+			<span className="text-text-muted tr-text-metadata italic">{t("(no output)")}</span>
 		);
 	}
 	return (

@@ -1,3 +1,4 @@
+import { translate } from "@thinkrail/ui/i18n";
 import { useEffect, useRef } from "react";
 import { messagesToRuntime } from "../../chat/hydrate";
 import { type LayoutAttention, readLayoutSelection, tupleKey } from "../../lib";
@@ -236,7 +237,7 @@ export function useWorkspaceChatCatalogReconciliation(
 		};
 		const fetchMessages = (sessionId: string) =>
 			getSessionMessagesWithSkillBaseline({ sessionId, workspaceId }).catch((error: unknown) => {
-				if (live()) toast.error(errorText(error), "Couldn't load this chat");
+				if (live()) toast.error(errorText(error), translate("Couldn't load this chat"));
 				return null;
 			});
 		void getTransport()
@@ -244,7 +245,7 @@ export function useWorkspaceChatCatalogReconciliation(
 			.then(async (summaries) => {
 				if (!live()) return;
 				if (summaries.some((summary) => summary.workspaceId !== workspaceId)) {
-					throw new Error("Session list did not match the requested workspace");
+					throw new Error(translate("Session list did not match the requested workspace"));
 				}
 				useAppStore.getState().reconcileWorkspaceSessions(
 					workspaceId,
@@ -427,7 +428,8 @@ export function useWorkspaceChatCatalogReconciliation(
 				);
 			})
 			.catch((error: unknown) => {
-				if (live()) toast.error(errorText(error), "Couldn't load this workspace's chats");
+				if (live())
+					toast.error(errorText(error), translate("Couldn't load this workspace's chats"));
 			});
 		return () => {
 			current = false;
@@ -539,7 +541,10 @@ export function useChatLocationReconciliation(
 							!latest.removedWorkspaceIds[workspaceId] &&
 							!latest.deletedSessionsByWorkspace[workspaceId]?.[sessionId]
 						) {
-							toast.error("The chat could not be restored.", "Couldn't open the chat");
+							toast.error(
+								translate("The chat could not be restored."),
+								translate("Couldn't open the chat"),
+							);
 						}
 						latest.clearChatLocation();
 					})
@@ -552,7 +557,7 @@ export function useChatLocationReconciliation(
 							!latest.removedWorkspaceIds[workspaceId] &&
 							!latest.deletedSessionsByWorkspace[workspaceId]?.[sessionId]
 						) {
-							toast.error(errorText(error), "Couldn't open the chat");
+							toast.error(errorText(error), translate("Couldn't open the chat"));
 						}
 						latest.clearChatLocation();
 					});
@@ -619,7 +624,10 @@ export function useChatLocationReconciliation(
 						!settled.removedWorkspaceIds[workspaceId] &&
 						!settled.deletedSessionsByWorkspace[workspaceId]?.[sessionId]
 					) {
-						toast.error("The chat could not be restored.", "Couldn't open the chat");
+						toast.error(
+							translate("The chat could not be restored."),
+							translate("Couldn't open the chat"),
+						);
 					}
 					settled.clearChatLocation();
 				}
@@ -639,7 +647,7 @@ export function useChatLocationReconciliation(
 					!latest.removedWorkspaceIds[workspaceId] &&
 					!latest.deletedSessionsByWorkspace[workspaceId]?.[sessionId]
 				) {
-					toast.error(errorText(error), "Couldn't open the chat");
+					toast.error(errorText(error), translate("Couldn't open the chat"));
 				}
 				if (latest.chatLocationRequest === chatLocationRequest) latest.clearChatLocation();
 			});

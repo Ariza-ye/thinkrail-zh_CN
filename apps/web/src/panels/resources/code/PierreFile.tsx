@@ -1,6 +1,7 @@
 import type { LineAnnotation, SelectedLineRange } from "@pierre/diffs";
 import { File, VirtualizerContext } from "@pierre/diffs/react";
 import { RiChatNewLine as MessageSquarePlus } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AnchorDraft, ResourceViewProps } from "@/resources";
@@ -11,6 +12,7 @@ import { type AnnotationSlot, reconcileAnnotationSlots } from "./annotationSlots
 import PierreProvider from "./PierreProvider";
 import { PierreScroller } from "./PierreScroller";
 import {
+	composerDraftLabel,
 	composerLineLabel,
 	draftLineLabel,
 	filePlacedThreadIds,
@@ -71,6 +73,7 @@ function PierreFileSurface({
 	viewState,
 	onViewState,
 }: ResourceViewProps) {
+	const { t } = useI18n();
 	const text = content.kind === "text" ? content.text : "";
 	const hash = content.kind === "absent" || !content.hash ? undefined : content.hash;
 	const file = useMemo(
@@ -163,11 +166,11 @@ function PierreFileSurface({
 					selectedLines={selectedLines}
 					className="flex-1"
 					renderGutterUtility={(getHoveredLine) => (
-						<IconTooltip label="Comment on this line">
+						<IconTooltip label={t("Comment on this line")}>
 							<button
 								type="button"
 								data-testid="review-add-icon"
-								aria-label="Comment on this line"
+								aria-label={t("Comment on this line")}
 								onPointerDown={(event) => {
 									event.preventDefault();
 									event.stopPropagation();
@@ -195,7 +198,7 @@ function PierreFileSurface({
 							<ReviewComposer
 								key={composer.id}
 								draft={composer.draft}
-								label={composer.label}
+								label={composerDraftLabel(composer.draft)}
 								commenting={review.commenting}
 								onClose={closeComposer}
 								className="review-composer-flow"

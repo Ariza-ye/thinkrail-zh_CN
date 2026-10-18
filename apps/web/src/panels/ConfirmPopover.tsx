@@ -1,5 +1,6 @@
 import { RiAlertLine as TriangleAlert } from "@remixicon/react";
 import { Button } from "@thinkrail/ui/button";
+import { translate } from "@thinkrail/ui/i18n";
 import { Popover, PopoverContent } from "@thinkrail/ui/popover";
 import { type ComponentProps, type ReactNode, useId } from "react";
 
@@ -8,8 +9,8 @@ export function ConfirmPopover({
 	onOpenChange,
 	title,
 	description,
-	confirmLabel = "Confirm",
-	cancelLabel = "Cancel",
+	confirmLabel = translate("Confirm"),
+	cancelLabel = translate("Cancel"),
 	destructive = false,
 	confirmTestId,
 	onConfirm,

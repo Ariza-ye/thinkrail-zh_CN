@@ -7,11 +7,13 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useRef, useState } from "react";
 import { ANALYTICS_DESCRIPTION, AnalyticsSharingSwitch } from "./AnalyticsPreferences";
 import { useAnalyticsConsent } from "./useAnalyticsConsent";
 
 export function AnalyticsConsentDialog() {
+	const { t } = useI18n();
 	const [draft, setDraft] = useState(true);
 	const primed = useRef(false);
 	const { pending, error, save, prime } = useAnalyticsConsent();
@@ -31,8 +33,8 @@ export function AnalyticsConsentDialog() {
 		>
 			<DialogContent data-testid="analytics-consent-dialog">
 				<DialogHeader>
-					<DialogTitle>Help improve ThinkRail</DialogTitle>
-					<DialogDescription>{ANALYTICS_DESCRIPTION}</DialogDescription>
+					<DialogTitle>{t("Help improve ThinkRail")}</DialogTitle>
+					<DialogDescription>{t(ANALYTICS_DESCRIPTION)}</DialogDescription>
 				</DialogHeader>
 				<AnalyticsSharingSwitch
 					enabled={draft}
@@ -53,7 +55,7 @@ export function AnalyticsConsentDialog() {
 						data-testid="analytics-consent-confirm"
 						onClick={() => save(draft)}
 					>
-						{pending ? "Saving…" : "Done"}
+						{pending ? t("Saving…") : t("Done")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

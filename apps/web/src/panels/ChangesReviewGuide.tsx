@@ -4,6 +4,7 @@ import {
 	RiRobot2Line as Robot,
 } from "@remixicon/react";
 import type { GitFileChange, ReviewComment, ReviewGuide } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { ChangesTab } from "../store";
 import { splitPath } from "./changesModel";
@@ -76,6 +77,7 @@ export function ChangesReviewGuide({
 	comments: readonly ReviewComment[] | undefined;
 	onReveal: (path: string, commentId?: string) => void;
 }) {
+	const { t } = useI18n();
 	const { workspaceId } = tab;
 	const steps = useMemo(() => guideSteps(guide, comments), [guide, comments]);
 	const [cursorAt, setCursorAt] = useState<{ key: string; index: number } | null>(null);
@@ -133,7 +135,7 @@ export function ChangesReviewGuide({
 			className="flex w-[280px] shrink-0 flex-col border-border-default border-r bg-container-sidebar-bg"
 		>
 			<div className="min-h-0 flex-1 overflow-auto">
-				<GuideHeading>Review guide · agent</GuideHeading>
+				<GuideHeading>{t("Review guide · agent")}</GuideHeading>
 				{guide ? (
 					<p
 						data-testid="changes-review-guide-summary"
@@ -146,18 +148,18 @@ export function ChangesReviewGuide({
 									: "bg-feedback-warning-subtle text-feedback-warning"
 							}`}
 						>
-							{guide.verdict === "approve" ? "approved" : "changes requested"}
+							{guide.verdict === "approve" ? t("approved") : t("changes requested")}
 						</span>
 						{guide.summary}
 					</p>
 				) : (
 					<p className="px-12 pb-8 tr-text-metadata text-text-subtle">
-						No reviewer summary yet — start an agent review from the plan.
+						{t("No reviewer summary yet — start an agent review from the plan.")}
 					</p>
 				)}
 				{readSteps.length > 0 ? (
 					<>
-						<GuideHeading>Suggested reading order</GuideHeading>
+						<GuideHeading>{t("Suggested reading order")}</GuideHeading>
 						<ol className="flex flex-col">
 							{steps.map((step, index) =>
 								step.kind === "read" ? (
@@ -197,9 +199,11 @@ export function ChangesReviewGuide({
 						</ol>
 					</>
 				) : null}
-				<GuideHeading>Findings ({findings.length})</GuideHeading>
+				<GuideHeading>{t("Findings ({count})", { count: findings.length })}</GuideHeading>
 				{findings.length === 0 ? (
-					<p className="px-12 pb-8 tr-text-metadata text-text-subtle">No open reviewer findings.</p>
+					<p className="px-12 pb-8 tr-text-metadata text-text-subtle">
+						{t("No open reviewer findings.")}
+					</p>
 				) : (
 					<ul className="flex flex-col gap-4 px-8 pb-8">
 						{steps.map((step, index) =>
@@ -221,7 +225,7 @@ export function ChangesReviewGuide({
 										>
 											<span className="flex items-center gap-4 tr-text-metadata text-text-subtle">
 												<Robot className="size-12" />
-												{step.comment.status === "sent" ? "sent to the agent" : "open"}
+												{step.comment.status === "sent" ? t("sent to the agent") : t("open")}
 											</span>
 											<span className="tr-text-metadata text-text-default">
 												{step.comment.body}
@@ -238,7 +242,7 @@ export function ChangesReviewGuide({
 												onClick={() => send(() => sendReviewComment(workspaceId, step.comment.id))}
 												className="mt-8 rounded-sm bg-primary px-8 py-2 tr-text-metadata text-text-on-primary hover:bg-control-primary-bg-hovered"
 											>
-												Fix this one
+												{t("Fix this one")}
 											</button>
 										) : null}
 									</div>
@@ -252,7 +256,7 @@ export function ChangesReviewGuide({
 				<button
 					type="button"
 					data-testid="changes-review-guide-prev"
-					aria-label="Previous step (P)"
+					aria-label={t("Previous step (P)")}
 					disabled={steps.length === 0}
 					onClick={previous}
 					className="flex size-24 items-center justify-center rounded-sm border border-control-border-default text-text-muted hover:bg-control-bg-hovered disabled:text-control-disabled-text"
@@ -266,7 +270,7 @@ export function ChangesReviewGuide({
 					onClick={next}
 					className="flex h-24 flex-1 items-center justify-center gap-4 whitespace-nowrap rounded-sm bg-primary px-8 tr-text-metadata text-text-on-primary hover:bg-control-primary-bg-hovered disabled:bg-control-primary-disabled-bg disabled:text-control-primary-disabled-text"
 				>
-					{cursor < 0 ? "Start" : cursor + 1 < steps.length ? "Next" : "Restart"}
+					{cursor < 0 ? t("Start") : cursor + 1 < steps.length ? t("Next") : t("Restart")}
 					<span className="tabular-nums">
 						{cursor < 0 ? "" : `${cursor + 1} / ${steps.length}`}
 					</span>
@@ -278,11 +282,11 @@ export function ChangesReviewGuide({
 					data-testid="changes-review-guide-apply"
 					disabled={sending || openFindingIds.length === 0}
 					onClick={() => send(() => sendReviewBatch(workspaceId, openFindingIds))}
-					title="Send every open finding to the agent"
+					title={t("Send every open finding to the agent")}
 					className="flex h-24 items-center gap-4 rounded-sm border border-control-border-default px-8 tr-text-metadata text-text-muted hover:bg-control-bg-hovered disabled:text-control-disabled-text"
 				>
 					<Robot className="size-14" />
-					Apply fixes
+					{t("Apply fixes")}
 				</button>
 			</div>
 		</aside>

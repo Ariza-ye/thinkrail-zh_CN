@@ -7,9 +7,11 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useState } from "react";
 
 function ToolResultImage({ image, label }: { image: ImageContent; label: string }) {
+	const { t } = useI18n();
 	const [open, setOpen] = useState(false);
 	const src = `data:${image.mimeType};base64,${image.data}`;
 	return (
@@ -30,8 +32,8 @@ function ToolResultImage({ image, label }: { image: ImageContent; label: string 
 					<button
 						type="button"
 						data-testid="tool-result-image-fullscreen"
-						aria-label={`View ${label} full screen`}
-						title="Full screen"
+						aria-label={t("View {value} full screen", { value: label })}
+						title={t("Full screen")}
 						className="absolute top-4 right-4 rounded-sm border border-border-default bg-container-elevated-bg p-4 text-text-muted transition-colors hover:text-text-default focus-visible:ring-2 focus-visible:ring-primary"
 					>
 						<Maximize2 className="size-14" />
@@ -59,6 +61,7 @@ function ToolResultImage({ image, label }: { image: ImageContent; label: string 
 }
 
 export function ToolResultImages({ images, label }: { images: ImageContent[]; label: string }) {
+	const { t } = useI18n();
 	if (images.length === 0) return null;
 	return (
 		<div data-testid="tool-result-images" className="mt-4 flex flex-col gap-4">
@@ -66,7 +69,15 @@ export function ToolResultImages({ images, label }: { images: ImageContent[]; la
 				<ToolResultImage
 					key={`${image.mimeType}:${image.data.length}:${image.data.slice(-24)}:${index}`}
 					image={image}
-					label={images.length === 1 ? label : `${label} (${index + 1} of ${images.length})`}
+					label={
+						images.length === 1
+							? label
+							: t("{value} ({value2} of {value3})", {
+									value: label,
+									value2: index + 1,
+									value3: images.length,
+								})
+					}
 				/>
 			))}
 		</div>

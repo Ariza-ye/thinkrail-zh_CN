@@ -1,4 +1,5 @@
 import type { ResourceMeta } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { useEffect, useRef } from "react";
 import type { ResourceRenderer } from "../resources";
 import { useAppStore } from "../store";
@@ -26,7 +27,8 @@ export function selectResourceRenderer(
 	path: string,
 ): ResourceRenderer {
 	const renderer = candidates.find((candidate) => candidate.id === selectedId) ?? candidates[0];
-	if (!renderer) throw new Error(`No resource renderer resolved for ${path}`);
+	if (!renderer)
+		throw new Error(translate("No resource renderer resolved for {path}", { path: path }));
 	return renderer;
 }
 

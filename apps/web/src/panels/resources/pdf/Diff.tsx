@@ -1,3 +1,4 @@
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ResourceDiffProps } from "@/resources";
 import { PdfDiffPage } from "./PdfDiffPage";
@@ -28,6 +29,7 @@ export default function PdfDiff({
 	viewState,
 	onViewState,
 }: ResourceDiffProps) {
+	const { t } = useI18n();
 	const initial = pdfViewState(viewState);
 	const [page, setPage] = useState(initial.page);
 	const [zoom, setZoom] = useState(initial.zoom);
@@ -128,14 +130,14 @@ export default function PdfDiff({
 	if (originalLoaded.error || modifiedLoaded.error) {
 		return (
 			<div className="flex h-full items-center justify-center bg-container-content-bg tr-text-ui text-feedback-error">
-				PDF diff failed.
+				{t("PDF diff failed.")}
 			</div>
 		);
 	}
 	if (!originalLoaded.settled || !modifiedLoaded.settled) {
 		return (
 			<div className="flex h-full items-center justify-center bg-container-content-bg tr-text-ui text-text-muted">
-				Loading PDF diff…
+				{t("Loading PDF diff…")}
 			</div>
 		);
 	}

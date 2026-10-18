@@ -1,6 +1,7 @@
 import { RiArrowDownLine as ArrowDown, RiArrowUpLine as ArrowUp } from "@remixicon/react";
 import type { AskUserQuestionResult, GitDiffScope, TurnChangeSet } from "@thinkrail/contracts";
 import { useModalLayerOpen } from "@thinkrail/ui/dialog";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import {
 	forwardRef,
@@ -182,6 +183,7 @@ const ChatTranscript = forwardRef<
 	},
 	ref,
 ) {
+	const { t } = useI18n();
 	const sessionExists = useAppStore((s) => s.sessions[sessionId] !== undefined);
 	// Subscribe only to the runtime fields the transcript renders from, so composer keystrokes
 	// (`draft`), stats/model/extUi churn, etc. no longer re-render the transcript subtree.
@@ -424,7 +426,7 @@ const ChatTranscript = forwardRef<
 				: currentTurns.findLast((t) => turnAnchorText(t).includes(prefix));
 		const index = target ? rowIndexForTurn(currentRows, target.id) : -1;
 		if (index === -1) {
-			toast.error("couldn't locate the message — the session may have changed");
+			toast.error(translate("couldn't locate the message — the session may have changed"));
 			useAppStore.getState().clearChatLocation();
 			return;
 		}
@@ -446,7 +448,7 @@ const ChatTranscript = forwardRef<
 				if (useAppStore.getState().chatLocationRequest !== chatLocationRequest) return;
 				if (result === "found") setFlashRowId(rowId);
 				else if (result === "missing")
-					toast.error("couldn't locate the message — the session may have changed");
+					toast.error(translate("couldn't locate the message — the session may have changed"));
 				useAppStore.getState().clearChatLocation();
 			},
 		);
@@ -649,7 +651,7 @@ const ChatTranscript = forwardRef<
 							) : (
 								<ArrowDown className="size-12" />
 							)}
-							{scrollButtonLabel}
+							{scrollButtonLabel ? t(scrollButtonLabel) : null}
 						</button>
 					) : null}
 					{resourcesOverlay}

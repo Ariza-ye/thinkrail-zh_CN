@@ -6,6 +6,7 @@ import type {
 	TodoPlan,
 } from "@thinkrail/contracts";
 import { TODO_NUDGE_PREFIX, WS_CHANNELS } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
 import { tupleKey } from "../lib";
 import {
@@ -206,7 +207,10 @@ export function useChatTodos(workspaceId: string, sessionId: string): ChatTodos 
 			(payload) => {
 				const failure = payload as ReviewFailedPayload;
 				if (failure.workspaceId !== workspaceId || failure.sessionId !== sessionId) return;
-				toast.error(failure.message, `Review of “${failure.itemTitle}” failed`);
+				toast.error(
+					failure.message,
+					translate("Review of “{value}” failed", { value: failure.itemTitle }),
+				);
 			},
 		);
 		return () => {
@@ -281,7 +285,7 @@ export function useChatTodos(workspaceId: string, sessionId: string): ChatTodos 
 			kind: "plan",
 			id: `${workspaceId}:plan:${sessionId}`,
 			workspaceId,
-			name: `Plan · ${title}`,
+			name: translate("Plan · {title}", { title }),
 			sessionId,
 		});
 	};
@@ -317,7 +321,7 @@ export function useChatTodos(workspaceId: string, sessionId: string): ChatTodos 
 			await getTransport().request("todo.remove", { workspaceId, sessionId, id });
 		} catch (error) {
 			if (live(requestIdentity)) await reloadPlan(); // roll the optimistic patch back from authority
-			toast.error(errorText(error), "Couldn't remove the step");
+			toast.error(errorText(error), translate("Couldn't remove the step"));
 			return;
 		}
 		if (!live(requestIdentity)) return;

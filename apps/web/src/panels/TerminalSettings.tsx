@@ -1,5 +1,6 @@
 import type { HostPlatform, TerminalWindowsShell } from "@thinkrail/contracts";
 import { WINDOWS_SHELL_SETTINGS_PROTOCOL_VERSION } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { toast, useAppStore } from "@/store";
 import { getTransport } from "@/transport";
 import { SegmentedControl, type SegmentedControlOption } from "./SegmentedControl";
@@ -55,6 +56,7 @@ export function WindowsShellSettings({
 	value: TerminalWindowsShell;
 	onSelect: (shell: TerminalWindowsShell) => void;
 }) {
+	const { t } = useI18n();
 	if (
 		platform !== "win32" ||
 		protocolVersion === null ||
@@ -66,13 +68,18 @@ export function WindowsShellSettings({
 		<div className="pt-24">
 			<div className="flex flex-col">
 				<div className="flex flex-col gap-2 pb-8">
-					<h3 className="tr-title-section text-text-default">Windows shell</h3>
-					<p className="tr-text-metadata text-text-muted">Shell for new terminal tabs.</p>
+					<h3 className="tr-title-section text-text-default">{t("Windows shell")}</h3>
+					<p className="tr-text-metadata text-text-muted">{t("Shell for new terminal tabs.")}</p>
 				</div>
 				<SettingsRadioCards
 					name="terminal-windows-shell"
-					label="Windows shell"
-					choices={WINDOWS_SHELL_CHOICES}
+					label={t("Windows shell")}
+					choices={WINDOWS_SHELL_CHOICES.map((choice) => ({
+						...choice,
+						label: t(choice.label),
+						description: t(choice.description),
+						...(choice.hint ? { hint: t(choice.hint) } : {}),
+					}))}
 					value={value}
 					onSelect={onSelect}
 				/>
@@ -82,6 +89,7 @@ export function WindowsShellSettings({
 }
 
 export function TerminalSettings() {
+	const { t } = useI18n();
 	const replayKb = useAppStore((s) => s.terminalReplayKb);
 	const windowsShell = useAppStore((s) => s.terminalWindowsShell);
 	const hostPlatform = useAppStore((s) => s.hostPlatform);
@@ -91,14 +99,14 @@ export function TerminalSettings() {
 		if (kb === replayKb) return;
 		getTransport()
 			.request("settings.update", { config: { terminalReplayKb: kb } })
-			.catch(() => toast.error("Couldn't change the replay size"));
+			.catch(() => toast.error(t("Couldn't change the replay size")));
 	};
 
 	const selectWindowsShell = (shell: TerminalWindowsShell) => {
 		if (shell === windowsShell) return;
 		getTransport()
 			.request("settings.update", { config: { terminalWindowsShell: shell } })
-			.catch(() => toast.error("Couldn't change the Windows shell"));
+			.catch(() => toast.error(t("Couldn't change the Windows shell")));
 	};
 
 	const scrollbackValue =
@@ -108,15 +116,15 @@ export function TerminalSettings() {
 		<div data-testid="settings-terminal" className={SETTINGS_ROWS_CONTAINER}>
 			<div className="flex flex-col gap-12 py-12">
 				<div className="flex flex-col gap-2">
-					<span className="tr-text-ui text-text-default">Scrollback</span>
+					<span className="tr-text-ui text-text-default">{t("Scrollback")}</span>
 					<span className="tr-text-metadata text-text-muted">
-						How much recent output to restore when reattaching.
+						{t("How much recent output to restore when reattaching.")}
 					</span>
 				</div>
 				<SegmentedControl
 					name="terminal-scrollback"
-					label="Scrollback buffer size"
-					options={SCROLLBACK_OPTIONS}
+					label={t("Scrollback buffer size")}
+					options={SCROLLBACK_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
 					value={scrollbackValue}
 					onSelect={(id) => select(Number(id))}
 					testId="terminal-scrollback-control"

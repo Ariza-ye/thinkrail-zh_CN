@@ -1,4 +1,5 @@
 import { RiChatNewLine as MessageSquarePlus } from "@remixicon/react";
+import { subscribeLocale, translate } from "@thinkrail/ui/i18n";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -77,8 +78,8 @@ export function attachReviewCommenting(
 	const iconButton = document.createElement("button");
 	iconButton.type = "button";
 	iconButton.dataset.testid = "review-add-icon";
-	iconButton.title = "Comment on selection";
-	iconButton.ariaLabel = "Comment on selection";
+	iconButton.title = translate("Comment on selection");
+	iconButton.ariaLabel = translate("Comment on selection");
 	iconButton.className = "review-add-icon";
 	iconButton.innerHTML = ICON_SVG;
 	iconNode.appendChild(iconButton);
@@ -120,14 +121,22 @@ export function attachReviewCommenting(
 	};
 	iconButton.addEventListener("click", commentOnSelection);
 
-	const menuAction = codeEditor.addAction({
-		id: `thinkrail.review.commentSelection.${codeEditor.getId()}`,
-		label: "Comment on selection",
-		precondition: "editorHasSelection",
-		contextMenuGroupId: "9_cutcopypaste",
-		contextMenuOrder: 2,
-		keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyM],
-		run: commentOnSelection,
+	const createMenuAction = () =>
+		codeEditor.addAction({
+			id: `thinkrail.review.commentSelection.${codeEditor.getId()}`,
+			label: translate("Comment on selection"),
+			precondition: "editorHasSelection",
+			contextMenuGroupId: "9_cutcopypaste",
+			contextMenuOrder: 2,
+			keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyM],
+			run: commentOnSelection,
+		});
+	let menuAction = createMenuAction();
+	const unsubscribeLocale = subscribeLocale(() => {
+		iconButton.title = translate("Comment on selection");
+		iconButton.ariaLabel = translate("Comment on selection");
+		menuAction.dispose();
+		menuAction = createMenuAction();
 	});
 	const selectionListener = codeEditor.onDidChangeCursorSelection((event) => {
 		if (zones.isComposerOpen()) return;
@@ -143,6 +152,7 @@ export function attachReviewCommenting(
 	});
 
 	return () => {
+		unsubscribeLocale();
 		selectionListener.dispose();
 		menuAction.dispose();
 		codeEditor.removeContentWidget(iconWidget);

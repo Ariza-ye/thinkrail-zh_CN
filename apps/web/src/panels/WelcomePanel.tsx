@@ -5,6 +5,7 @@ import {
 	RiRocketLine as Rocket,
 	RiSparkling2Line as Sparkles,
 } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import { type ComponentPropsWithoutRef, forwardRef, useEffect, useState } from "react";
 import { PRODUCT_NAME } from "../constants/branding";
@@ -23,6 +24,7 @@ const SETUP_NOTE =
 	"Runs the setting-up-a-project skill — the agent drafts your project's specs, starting from its goal, before building.";
 
 export function WelcomePanel() {
+	const { t } = useI18n();
 	const projects = useAppStore((s) => s.projects);
 	const recentProjects = useAppStore((s) => s.recentProjects);
 	const selectedProjectId = useAppStore((s) => s.selectedProjectId);
@@ -64,8 +66,10 @@ export function WelcomePanel() {
 	const projectFolderCard = (projectId: string) => (
 		<Card
 			icon={House}
-			title="Work in project folder"
-			subtitle="Chats, changes, and terminals run directly in your project folder — no isolation."
+			title={t("Work in project folder")}
+			subtitle={t(
+				"Chats, changes, and terminals run directly in your project folder — no isolation.",
+			)}
 			onClick={() => void enterDefaultWorkspace(projectId)}
 			className="motion-safe:animate-reveal"
 		/>
@@ -83,8 +87,8 @@ export function WelcomePanel() {
 				cta
 				primary
 				icon={FolderOpen}
-				title="Open project"
-				subtitle="Choose a local git repository to work in."
+				title={t("Open project")}
+				subtitle={t("Choose a local git repository to work in.")}
 			/>
 		</AddProjectMenu>
 	);
@@ -118,8 +122,10 @@ export function WelcomePanel() {
 							cta
 							primary
 							icon={Rocket}
-							title="Start building"
-							subtitle="Cut an isolated worktree + branch, then pair with the agent to build it."
+							title={t("Start building")}
+							subtitle={t(
+								"Cut an isolated worktree + branch, then pair with the agent to build it.",
+							)}
 							onClick={() => setDialog({ projectId: project.id, prompt: "" })}
 							className="motion-safe:animate-reveal"
 						/>
@@ -131,9 +137,11 @@ export function WelcomePanel() {
 							cta
 							primary
 							icon={Sparkles}
-							title="Set up project"
+							title={t("Set up project")}
 							tag="spec-first"
-							subtitle="Draft the project's specs with the agent before building, starting from its goal."
+							subtitle={t(
+								"Draft the project's specs with the agent before building, starting from its goal.",
+							)}
 							onClick={() =>
 								setDialog({
 									projectId: project.id,
@@ -145,8 +153,8 @@ export function WelcomePanel() {
 						/>
 						<Card
 							icon={Rocket}
-							title="Start building"
-							subtitle="Cut an isolated worktree + branch and pair with the agent."
+							title={t("Start building")}
+							subtitle={t("Cut an isolated worktree + branch and pair with the agent.")}
 							onClick={() => setDialog({ projectId: project.id, prompt: "" })}
 							className="motion-safe:animate-reveal"
 						/>
@@ -172,10 +180,11 @@ export function WelcomePanel() {
 }
 
 function CardSkeleton() {
+	const { t } = useI18n();
 	return (
 		<div
 			role="status"
-			aria-label="Loading"
+			aria-label={t("Loading")}
 			aria-busy="true"
 			className="flex h-[150px] w-[220px] flex-col items-start justify-between rounded-sm border border-border-default bg-container-workspace-bg p-16"
 		>

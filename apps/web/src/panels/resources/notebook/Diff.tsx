@@ -1,4 +1,5 @@
 import { RiChatNewLine as MessageSquarePlus } from "@remixicon/react";
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { useEffect, useMemo, useRef } from "react";
 import type { ResourceDiffProps, ReviewThread, SurfaceReview } from "@/resources";
@@ -70,7 +71,10 @@ function CellCommentButton({
 	side: Side;
 	onSelect: (selection: SelectedCell) => void;
 }) {
-	const label = `Comment on ${side === "base" ? "old" : "new"} cell ${cell.index + 1}`;
+	const label =
+		side === "base"
+			? translate("Comment on old cell {number}", { number: cell.index + 1 })
+			: translate("Comment on new cell {number}", { number: cell.index + 1 });
 	return (
 		<IconTooltip label={label}>
 			<button
@@ -96,6 +100,7 @@ function NotebookDiffSurface({
 	viewState,
 	onViewState,
 }: ResourceDiffProps) {
+	const { t } = useI18n();
 	const originalText = original.kind === "text" ? original.text : null;
 	const modifiedText = modified.kind === "text" ? modified.text : null;
 	const originalDocument = useMemo(
@@ -227,7 +232,11 @@ function NotebookDiffSurface({
 						>
 							<header className="flex min-h-32 items-center gap-4 border-border-muted border-b bg-container-header-bg px-8">
 								<span className="tr-text-eyebrow text-text-muted">
-									{entry.state} · cell {current.index + 1} · {current.type}
+									{t("{state} · cell {number} · {type}", {
+										state: t(entry.state),
+										number: current.index + 1,
+										type: current.type,
+									})}
 								</span>
 								{review ? (
 									<span className="ml-auto flex gap-2">

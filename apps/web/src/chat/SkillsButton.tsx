@@ -1,4 +1,5 @@
 import { RiBookOpenLine as BookOpen } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { cn } from "@thinkrail/ui/utils";
 
@@ -13,8 +14,9 @@ export function SkillsButton({
 	stale?: boolean;
 	className?: string;
 }) {
+	const { t } = useI18n();
 	return (
-		<IconTooltip label={stale ? "Skills changed on disk — reload" : "Skills"}>
+		<IconTooltip label={stale ? t("Skills changed on disk — reload") : t("Skills")}>
 			<button
 				type="button"
 				data-testid={testId}
@@ -26,7 +28,7 @@ export function SkillsButton({
 				)}
 			>
 				<BookOpen className="size-14" />
-				Skills
+				{t("Skills")}
 				{stale ? <span className="size-6 rounded-full bg-feedback-warning" aria-hidden /> : null}
 			</button>
 		</IconTooltip>

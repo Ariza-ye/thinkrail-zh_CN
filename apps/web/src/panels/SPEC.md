@@ -645,7 +645,10 @@ a project picker, the prompt hero, and the reused
   neither control. **`GithubSettings`** (the Integrations section's "Local GitHub" group —
   `github.authStatus()` shown as `settings-gh-status[data-connected]`: Connected + login, or a Not connected
   notice naming `gh auth login`; Refresh (`github.refresh`) is offered in both states);
-  **`AppearanceSettings`** (the catalog-driven theme settings: a **Theme mode** segmented control,
+  **`AppearanceSettings`** (a client-local **Language** group offers **System / English / 简体中文** through
+  the app `i18n` preference seam; System is the default, changes apply immediately, and no host setting
+  is written. Settings navigation and page copy use reactive translations while protocol ids and React
+  keys remain stable. The catalog-driven theme settings follow: a **Theme mode** segmented control,
   **System / Light / Dark** with System offered only from `THEME_SYSTEM_PROTOCOL_VERSION` (older hosts keep
   fixed-only behavior), and a **Contrast level** control, **Default / High**. Light/Dark write a fixed
   theme: from System they adopt the pair's half for that appearance — what the control showed — never a

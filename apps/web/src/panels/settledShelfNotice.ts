@@ -1,3 +1,4 @@
+import { translate } from "@thinkrail/ui/i18n";
 import { STORAGE_PREFIX } from "../constants/branding";
 import { selectAutoSettledCounts, useAppStore } from "../store";
 import { getTransport } from "../transport";
@@ -18,15 +19,21 @@ export function settledShelfNoticed(): boolean {
 }
 
 export function settledNoticeTitle(count: number): string {
-	return `Moved ${count === 1 ? "1 quiet workspace" : `${count} quiet workspaces`} to Settled`;
+	return count === 1
+		? translate("Moved 1 quiet workspace to Settled")
+		: translate("Moved {count} quiet workspaces to Settled", { count });
 }
 
 export function settledNoticeMessage(settleIdleDays: number | null): string {
 	const why =
 		settleIdleDays === null
-			? "Their pull request merged or closed."
-			: `Their pull request merged or closed, or they sat idle for ${settleIdleDays === 1 ? "a day" : `${settleIdleDays} days`}.`;
-	return `${why} Any work in one, or Keep active, brings it back.`;
+			? translate("Their pull request merged or closed.")
+			: settleIdleDays === 1
+				? translate("Their pull request merged or closed, or they sat idle for a day.")
+				: translate("Their pull request merged or closed, or they sat idle for {days} days.", {
+						days: settleIdleDays,
+					});
+	return translate("{why} Any work in one, or Keep active, brings it back.", { why: why });
 }
 
 export function announceSettledShelf(): void {
@@ -44,7 +51,7 @@ export function announceSettledShelf(): void {
 		message: settledNoticeMessage(state.settleIdleDays),
 		durationMs: NOTICE_DURATION_MS,
 		action: {
-			label: "Show",
+			label: translate("Show"),
 			onClick: () => {
 				const store = useAppStore.getState();
 				for (const { projectId } of filled) {

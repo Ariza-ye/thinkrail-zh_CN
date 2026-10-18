@@ -1,3 +1,4 @@
+import { translate } from "@thinkrail/ui/i18n";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { ResourceContent } from "@/resources";
 import { pdfSourceUrl } from "./pdfModel";
@@ -21,7 +22,8 @@ export async function loadPdfDocument(
 ): Promise<PDFDocumentProxy | null> {
 	if (content.kind !== "bytes") return null;
 	const response = await fetch(pdfSourceUrl(content.url, content.hash), { signal });
-	if (!response.ok) throw new Error(`PDF fetch failed (${response.status})`);
+	if (!response.ok)
+		throw new Error(translate("PDF fetch failed ({status})", { status: response.status }));
 	const data = new Uint8Array(await response.arrayBuffer());
 	if (signal.aborted) return null;
 	const pdfjs = await loadPdfModule();
@@ -64,7 +66,7 @@ export class PdfRenderQueue {
 					signal?.removeEventListener("abort", onAbort);
 					const index = this.pending.indexOf(entry);
 					if (index >= 0) this.pending.splice(index, 1);
-					reject(new Error("PDF render cancelled"));
+					reject(new Error(translate("PDF render cancelled")));
 					this.drain();
 				},
 			};

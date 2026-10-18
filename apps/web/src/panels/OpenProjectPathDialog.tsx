@@ -8,6 +8,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@thinkrail/ui/dialog";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useState } from "react";
 
 export function OpenProjectPathDialog({
@@ -21,6 +22,7 @@ export function OpenProjectPathDialog({
 	onOpenChange: (open: boolean) => void;
 	onSubmit: (path: string) => void;
 }) {
+	const { t } = useI18n();
 	const [path, setPath] = useState("");
 	const finalPath = path.trim();
 
@@ -33,10 +35,12 @@ export function OpenProjectPathDialog({
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogContent data-testid="open-project-path-dialog" className="max-w-[30rem] gap-12">
 				<DialogHeader>
-					<DialogTitle>Open project from host path</DialogTitle>
+					<DialogTitle>{t("Open project from host path")}</DialogTitle>
 					<DialogDescription>
-						Enter a folder path on the computer running ThinkRail. Use{" "}
-						<code className="tr-code-text">~/</code> for the host account&apos;s home folder.
+						{t(
+							"Enter a folder path on the computer running ThinkRail. Use {home} for the host account's home folder.",
+							{ home: "~/" },
+						)}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -60,7 +64,7 @@ export function OpenProjectPathDialog({
 					}}
 				>
 					<label htmlFor="open-project-host-path" className="flex flex-col gap-4">
-						<span className="tr-title-compact text-text-default">Folder path</span>
+						<span className="tr-title-compact text-text-default">{t("Folder path")}</span>
 						<input
 							id="open-project-host-path"
 							data-testid="open-project-path-input"
@@ -75,10 +79,10 @@ export function OpenProjectPathDialog({
 					</label>
 					<DialogFooter>
 						<Button variant="outline" onClick={() => setOpen(false)}>
-							Cancel
+							{t("Cancel")}
 						</Button>
 						<Button type="submit" data-testid="open-project-path-submit" disabled={!finalPath}>
-							Open project
+							{t("Open project")}
 						</Button>
 					</DialogFooter>
 				</form>

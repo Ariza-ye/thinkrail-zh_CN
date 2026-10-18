@@ -5,6 +5,7 @@ import type {
 	McpServerSummary,
 	WsParams,
 } from "@thinkrail/contracts";
+import { type Translator, translate } from "@thinkrail/ui/i18n";
 import { MCP_STATE_LABEL, type McpStateTone, mcpStateTone, mcpToolCountLabel } from "@/lib";
 import type { McpServerRow } from "@/store";
 import { type McpEditableExposure, withEnabled, withExposure } from "./mcpEntries";
@@ -29,10 +30,15 @@ export interface McpRowView {
 
 const DISABLED_IN_PI_SETTINGS = "pi settings (-builtin:mcp)";
 
-export function mcpHandledElsewhereText(by: string): string {
+export function mcpHandledElsewhereText(by: string, translator: Translator = translate): string {
 	return by === DISABLED_IN_PI_SETTINGS
-		? "MCP is turned off in pi settings (-builtin:mcp); remove that entry to manage servers here."
-		: `MCP is handled by ${by} in this workspace; ThinkRail's MCP management is read-only.`;
+		? translator(
+				"MCP is turned off in pi settings (-builtin:mcp); remove that entry to manage servers here.",
+			)
+		: translator(
+				"MCP is handled by {by} in this workspace; ThinkRail's MCP management is read-only.",
+				{ by },
+			);
 }
 
 export interface McpChatFailure {
@@ -71,18 +77,24 @@ function mcpDetailReason(detail: string | undefined, name: string): string | und
 	return body.replace(STATUS_LINE_TAIL, "").replace(STATE_PREFIX, "").trim() || undefined;
 }
 
-export function formatStartingElapsed(ms: number): string {
+export function formatStartingElapsed(ms: number, translator: Translator = translate): string {
 	const minutes = Math.floor(Math.max(0, ms) / 60_000);
-	return minutes < 1 ? "<1 min" : `${minutes} min`;
+	return minutes < 1 ? translator("<1 min") : translator("{minutes} min", { minutes });
 }
 
-function inChats(row: McpServerRow, count: number): string {
-	return row.sessions.total > 1 ? ` in ${count} of ${row.sessions.total} chats` : "";
+function inChats(row: McpServerRow, count: number, translator: Translator = translate): string {
+	return row.sessions.total > 1
+		? translator(" in {count} of {total} chats", { count, total: row.sessions.total })
+		: "";
 }
 
-export function mcpRowView(row: McpServerRow, now: number): McpRowView {
+export function mcpRowView(
+	row: McpServerRow,
+	now: number,
+	translator: Translator = translate,
+): McpRowView {
 	const { summary } = row;
-	const view = baseView(row, now);
+	const view = baseView(row, now, translator);
 	if (
 		row.approvalPending &&
 		row.state !== "pending-approval" &&
@@ -92,121 +104,144 @@ export function mcpRowView(row: McpServerRow, now: number): McpRowView {
 			...view,
 			reason:
 				summary.approval?.state === "changed"
-					? "The repository's override changed since you approved it — review it again."
-					: "The repository overrides this server's settings — review the change.",
+					? translator("The repository's override changed since you approved it — review it again.")
+					: translator("The repository overrides this server's settings — review the change."),
 			action: "review",
 		};
 	}
 	return view;
 }
 
-function baseView(row: McpServerRow, now: number): McpRowView {
+function baseView(row: McpServerRow, now: number, translator: Translator = translate): McpRowView {
 	const { summary } = row;
 	const http = summary.transport === "http";
 	switch (row.state) {
 		case "replaced":
 			return {
-				label: "Replaced by project",
+				label: translator("Replaced by project"),
 				tone: "neutral",
-				reason: "This project's own entry runs instead.",
+				reason: translator("This project's own entry runs instead."),
 			};
 		case "handled-elsewhere":
-			return { label: MCP_STATE_LABEL["handled-elsewhere"], tone: "neutral" };
+			return { label: translator(MCP_STATE_LABEL["handled-elsewhere"]), tone: "neutral" };
 		case "starting":
 			return {
-				label: `Starting · ${formatStartingElapsed(now - (row.startingSince ?? now))}`,
+				label: translator("Starting · {elapsed}", {
+					elapsed: formatStartingElapsed(now - (row.startingSince ?? now), translator),
+				}),
 				tone: "working",
 				...(row.sessions.total > 1
-					? { reason: `Starting${inChats(row, row.sessions.reporting.length)}.` }
+					? {
+							reason: translator("Starting{chats}.", {
+								chats: inChats(row, row.sessions.reporting.length, translator),
+							}),
+						}
 					: {}),
 			};
 		case "connected": {
 			const tools = row.toolCount === undefined ? "" : ` · ${mcpToolCountLabel(row.toolCount)}`;
 			return {
-				label: `Connected${inChats(row, row.sessions.connected)}${tools}`,
+				label: translator("Connected{chats}{tools}", {
+					chats: inChats(row, row.sessions.connected, translator),
+					tools,
+				}),
 				tone: mcpStateTone("connected", row.toolCount),
-				...(row.toolCount === 0 ? { reason: "The server reports no tools." } : {}),
+				...(row.toolCount === 0 ? { reason: translator("The server reports no tools.") } : {}),
 			};
 		}
 		case "needs-sign-in":
 			return {
-				label: MCP_STATE_LABEL["needs-sign-in"],
+				label: translator(MCP_STATE_LABEL["needs-sign-in"]),
 				tone: "warning",
-				reason: "Sign in to let chats use this server.",
+				reason: translator("Sign in to let chats use this server."),
 				...(row.effective && summary.oauth ? { action: "sign-in" as const } : {}),
 			};
 		case "failed":
 			return {
-				label: MCP_STATE_LABEL.failed,
+				label: translator(MCP_STATE_LABEL.failed),
 				tone: "error",
-				reason: mcpDetailReason(row.detail, summary.name) ?? "The server failed to start.",
+				reason:
+					mcpDetailReason(row.detail, summary.name) ?? translator("The server failed to start."),
 				action: "reconnect",
 				secondary: "show-log",
 			};
 		case "disconnected":
 			return {
-				label: MCP_STATE_LABEL.disconnected,
+				label: translator(MCP_STATE_LABEL.disconnected),
 				tone: "warning",
-				reason: "Reconnects on the next call.",
+				reason: translator("Reconnects on the next call."),
 				action: "reconnect",
 			};
 		case "disabled":
-			return { label: MCP_STATE_LABEL.disabled, tone: "neutral", reason: "Turned off." };
+			return {
+				label: translator(MCP_STATE_LABEL.disabled),
+				tone: "neutral",
+				reason: translator("Turned off."),
+			};
 		case "disabled-in-project":
 			return {
-				label: MCP_STATE_LABEL["disabled-in-project"],
+				label: translator(MCP_STATE_LABEL["disabled-in-project"]),
 				tone: "neutral",
-				reason: "Turned off for this project only.",
+				reason: translator("Turned off for this project only."),
 			};
 		case "disabled-in-chat":
 			return {
-				label: `Disabled in ${row.sessions.total > 1 ? `${row.sessions.reporting.length} of ${row.sessions.total} chats` : "1 chat"}`,
+				label:
+					row.sessions.total > 1
+						? translator("Disabled in {count} of {total} chats", {
+								count: row.sessions.reporting.length,
+								total: row.sessions.total,
+							})
+						: translator("Disabled in 1 chat"),
 				tone: "neutral",
-				reason: "Turned off from a chat's Resources.",
+				reason: translator("Turned off from a chat's Resources."),
 			};
 		case "pending-approval":
 			return summary.approval?.state === "changed"
 				? {
-						label: "Changed since approval",
+						label: translator("Changed since approval"),
 						tone: "warning",
-						reason: "The entry changed since you approved it — review it again.",
+						reason: translator("The entry changed since you approved it — review it again."),
 						action: "review",
 					}
 				: {
-						label: MCP_STATE_LABEL["pending-approval"],
+						label: translator(MCP_STATE_LABEL["pending-approval"]),
 						tone: "warning",
-						reason: "Defined by this repository — review what it runs before it starts.",
+						reason: translator(
+							"Defined by this repository — review what it runs before it starts.",
+						),
 						action: "review",
 					};
 		case "invalid-config":
 			return {
-				label: MCP_STATE_LABEL["invalid-config"],
+				label: translator(MCP_STATE_LABEL["invalid-config"]),
 				tone: "error",
-				reason: firstLine(summary.configError ?? row.detail) ?? "pi rejected this entry.",
+				reason:
+					firstLine(summary.configError ?? row.detail) ?? translator("pi rejected this entry."),
 				...(summary.scope === "project" ? { action: "edit" as const } : {}),
 			};
 		case "pending-reload":
 			return {
-				label: MCP_STATE_LABEL["pending-reload"],
+				label: translator(MCP_STATE_LABEL["pending-reload"]),
 				tone: "info",
-				reason: "Applies when the chat is idle.",
+				reason: translator("Applies when the chat is idle."),
 				action: "reload",
 			};
 		case "not-running":
 			return {
-				label: MCP_STATE_LABEL["not-running"],
+				label: translator(MCP_STATE_LABEL["not-running"]),
 				tone: "neutral",
-				reason: "Starts when a chat opens in this workspace.",
+				reason: translator("Starts when a chat opens in this workspace."),
 				action: "open-chat",
 				...(row.effective && http ? { secondary: "test-connection" as const } : {}),
 			};
 		case "unknown":
 			return {
-				label: MCP_STATE_LABEL.unknown,
+				label: translator(MCP_STATE_LABEL.unknown),
 				tone: "neutral",
 				reason: row.startingStalled
-					? "Still starting after a minute — pi has not answered."
-					: "pi has not reported this server yet.",
+					? translator("Still starting after a minute — pi has not answered.")
+					: translator("pi has not reported this server yet."),
 			};
 	}
 }
@@ -235,6 +270,7 @@ export function mcpSettingWrite(
 	summary: McpServerSummary,
 	change: McpSettingChange,
 	projectEntry: McpServerEntryInput | null,
+	translator: Translator = translate,
 ): McpSettingWrite {
 	if (summary.scope === "user") {
 		return {
@@ -242,7 +278,8 @@ export function mcpSettingWrite(
 			params: { workspaceId, name: summary.name, ...change },
 		};
 	}
-	if (!projectEntry) throw new Error(`Read "${summary.name}" from .pi/mcp.json first.`);
+	if (!projectEntry)
+		throw new Error(translator('Read "{name}" from .pi/mcp.json first.', { name: summary.name }));
 	return {
 		method: "mcp.update",
 		params: mcpEntryUpdate(
@@ -261,12 +298,18 @@ export function mcpSaveFeedback(result: McpListResult): string {
 		: "Saved — applies to open chats as they reload; a busy chat waits until it is idle.";
 }
 
-export function mcpExposureLabel(exposure: McpEditableExposure): string {
-	return exposure.charAt(0).toUpperCase() + exposure.slice(1);
+export function mcpExposureLabel(
+	exposure: McpEditableExposure,
+	translator: Translator = translate,
+): string {
+	return translator(exposure.charAt(0).toUpperCase() + exposure.slice(1));
 }
 
-export function mcpConfiguredExposureText(summary: McpServerSummary): string {
+export function mcpConfiguredExposureText(
+	summary: McpServerSummary,
+	translator: Translator = translate,
+): string {
 	return summary.exposure === "codemode"
-		? "codemode — treated as deferred (codemode not available yet)"
+		? translator("codemode — treated as deferred (codemode not available yet)")
 		: summary.exposure;
 }

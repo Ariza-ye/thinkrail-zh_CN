@@ -3,6 +3,7 @@ import {
 	type SessionResources,
 	WS_CHANNELS,
 } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type ChatResourceScope,
@@ -48,7 +49,7 @@ export function startChatResourceSync(
 		try {
 			const snapshot = await deps.read();
 			if (snapshot.workspaceId !== scope.workspaceId || snapshot.sessionId !== scope.sessionId) {
-				throw new Error("Resource snapshot belongs to another chat.");
+				throw new Error(translate("Resource snapshot belongs to another chat."));
 			}
 			if (current()) deps.state().installChatResources(read, snapshot);
 		} catch (error) {
@@ -268,13 +269,13 @@ export function startCommandLogPolling(
 		isChatResourceConnectionCurrent(deps.state(), { ...scope, connectionGeneration });
 	return startDetailPolling({
 		read: async () => {
-			if (!current()) throw new Error("Resource connection changed.");
+			if (!current()) throw new Error(translate("Resource connection changed."));
 			const result = await deps.read();
 			if (
 				result.available &&
 				(result.command.id !== scope.commandId || result.command.sessionId !== scope.sessionId)
 			)
-				throw new Error("Command output belongs to another resource.");
+				throw new Error(translate("Command output belongs to another resource."));
 			return result;
 		},
 		isLive: (result) => current() && result.available && isActiveBackgroundCommand(result.command),

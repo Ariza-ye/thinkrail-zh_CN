@@ -1,3 +1,4 @@
+import { useI18n } from "@thinkrail/ui/i18n";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SurfaceReview } from "@/resources";
@@ -52,6 +53,7 @@ export function PdfDiffPage({
 	onRendered: (side: DiffSide, page: number, rendered: boolean) => void;
 	registerElement: (page: number, element: HTMLElement | null) => void;
 }) {
+	const { t } = useI18n();
 	const rootRef = useRef<HTMLElement | null>(null);
 	const [originalBitmap, setOriginalBitmap] = useState<Bitmap | null>(null);
 	const [modifiedBitmap, setModifiedBitmap] = useState<Bitmap | null>(null);
@@ -144,9 +146,9 @@ export function PdfDiffPage({
 	const originalSide: VisualDiffSide = {
 		present: originalPresent,
 		content: originalBitmap ? (
-			<BitmapImage bitmap={originalBitmap} title={`Original PDF page ${page}`} />
+			<BitmapImage bitmap={originalBitmap} title={t("Original PDF page {page}", { page: page })} />
 		) : null,
-		caption: originalPresent ? `Old: page ${page}` : "Old: No page",
+		caption: originalPresent ? t("Old: page {page}", { page: page }) : t("Old: No page"),
 		intrinsicSize: originalBitmap?.size ?? null,
 		review: pageBaseReview,
 		draftForRegion: (region) => pdfRegionDraft(region, page),
@@ -154,9 +156,9 @@ export function PdfDiffPage({
 	const modifiedSide: VisualDiffSide = {
 		present: modifiedPresent,
 		content: modifiedBitmap ? (
-			<BitmapImage bitmap={modifiedBitmap} title={`Modified PDF page ${page}`} />
+			<BitmapImage bitmap={modifiedBitmap} title={t("Modified PDF page {page}", { page: page })} />
 		) : null,
-		caption: modifiedPresent ? `New: page ${page}` : "New: No page",
+		caption: modifiedPresent ? t("New: page {page}", { page: page }) : t("New: No page"),
 		intrinsicSize: modifiedBitmap?.size ?? null,
 		review: pageWorktreeReview,
 		draftForRegion: (region) => pdfRegionDraft(region, page),
@@ -172,17 +174,17 @@ export function PdfDiffPage({
 			data-page={page}
 			className="flex min-h-[680px] flex-col gap-4"
 		>
-			<span className="tr-text-metadata text-text-muted">Page {page}</span>
+			<span className="tr-text-metadata text-text-muted">{t("Page {page}", { page })}</span>
 			{active ? (
 				<VisualDiff
 					prefix="image"
 					noun="page"
-					regionLabel={`page ${page} region`}
+					regionLabel={t("page {page} region", { page: page })}
 					original={originalSide}
 					modified={modifiedSide}
 					contentStamp={pdfPageContentStamp(stamp, page)}
 					initialMode="2-up"
-					emptyLabel="No page"
+					emptyLabel={t("No page")}
 				/>
 			) : null}
 		</section>

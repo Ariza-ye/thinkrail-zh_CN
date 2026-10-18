@@ -1,5 +1,6 @@
 import { RiArrowRightSLine as ChevronRight } from "@remixicon/react";
 import type { McpResultSummary } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import { useFold } from "../../foldState";
 import { isRecord } from "./mcpResult";
@@ -38,6 +39,7 @@ const toggleClass =
 const Indent = () => <span aria-hidden className="size-16 shrink-0" />;
 
 function JsonScalar({ value }: { value: unknown }) {
+	useI18n();
 	return (
 		<span
 			className={cn(
@@ -61,6 +63,7 @@ function JsonNode({
 	value: unknown;
 	expandAll: boolean;
 }) {
+	useI18n();
 	if (!isBranch(value)) {
 		return (
 			<div className="flex min-w-0 gap-4">
@@ -82,6 +85,7 @@ function JsonEntries({
 	value: JsonContainer;
 	expandAll: boolean;
 }) {
+	const { t } = useI18n();
 	const [all, toggleAll, toggleAllRef] = useFold(`${id}:all`);
 	const entries = entriesOf(value);
 	const shown = all ? entries : entries.slice(0, CHILD_LIMIT);
@@ -105,7 +109,7 @@ function JsonEntries({
 					className={cn(toggleClass, "self-start text-primary hover:underline")}
 				>
 					<Indent />
-					{all ? "Show fewer" : `Show all ${entries.length}`}
+					{all ? t("Show fewer") : t("Show all {value}", { value: entries.length })}
 				</button>
 			) : null}
 		</div>
@@ -123,6 +127,7 @@ function JsonBranch({
 	value: JsonContainer;
 	expandAll: boolean;
 }) {
+	useI18n();
 	const [open, toggle, toggleRef] = useFold(id, expandAll);
 	const size = Array.isArray(value) ? `[${value.length}]` : `{${Object.keys(value).length}}`;
 	return (
@@ -146,6 +151,7 @@ function JsonBranch({
 }
 
 export function McpJsonTree({ id, value }: { id: string; value: unknown }) {
+	useI18n();
 	return (
 		<div data-testid="mcp-json-tree" className="min-w-0 tr-code-text">
 			{isBranch(value) ? (
@@ -171,6 +177,7 @@ export function McpStructuredContent({
 	id: string;
 	summary: McpResultSummary | null;
 }) {
+	const { t } = useI18n();
 	const [open, toggle, toggleRef] = useFold(id);
 	if (summary?.structuredContentTruncated) {
 		return (
@@ -178,7 +185,7 @@ export function McpStructuredContent({
 				data-testid="mcp-structured-truncated"
 				className="text-text-muted tr-text-metadata italic"
 			>
-				Structured content too large to keep.
+				{t("Structured content too large to keep.")}
 			</span>
 		);
 	}
@@ -201,7 +208,7 @@ export function McpStructuredContent({
 				<ChevronRight
 					className={cn("size-16 shrink-0 transition-transform", open && "rotate-90")}
 				/>
-				Structured content
+				{t("Structured content")}
 			</button>
 			{open ? <McpJsonTree id={`${id}:tree`} value={summary.structuredContent} /> : null}
 		</div>

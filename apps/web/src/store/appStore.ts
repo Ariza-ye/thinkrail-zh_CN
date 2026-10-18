@@ -53,6 +53,7 @@ import {
 	normalizeThemePreference,
 	sameModel,
 } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { create } from "zustand";
 import type { LoginState } from "../auth";
 import { assistantFailureText } from "../chat/assistantFailure";
@@ -2452,7 +2453,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 		if (wasActive) {
 			if (fallbackWorkspace) set((state) => workspaceActivationPatch(state, fallbackWorkspace));
 			else s.selectProject(projectId);
-			toast.info(`Workspace "${name ?? "?"}" was removed`);
+			toast.info(translate('Workspace "{name}" was removed', { name: name ?? "?" }));
 		}
 	},
 	selectProject: (selectedProjectId, opts) =>

@@ -1,3 +1,4 @@
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useMemo, useRef } from "react";
 import type { ResourceDiffProps, ReviewThread, SurfaceReview } from "@/resources";
 import { ReviewComposer } from "../../ReviewComposer";
@@ -59,6 +60,7 @@ export default function CsvDiff({
 	review,
 	onPlacedThreadIds,
 }: ResourceDiffProps) {
+	const { t } = useI18n();
 	const delimiter = sniffDelimiter(
 		resource.path,
 		modified.kind === "text" ? modified.text : "",
@@ -240,7 +242,7 @@ export default function CsvDiff({
 															<button
 																key={entry.thread.id}
 																type="button"
-																aria-label={`Show comment ${entry.number}`}
+																aria-label={t("Show comment {number}", { number: entry.number })}
 																className="flex size-20 items-center justify-center rounded-full bg-primary tr-text-metadata text-text-on-primary outline-none focus-visible:ring-2 focus-visible:ring-primary"
 																onClick={() => scrollToCard(entry.thread.id)}
 															>

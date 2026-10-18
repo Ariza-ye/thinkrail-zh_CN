@@ -34,7 +34,7 @@ The app's Tailwind sources and adoption guards include this package and extensio
 
 The per-file surface is `button`, `switch`, `dialog`, `dropdown-menu`, `context-menu`, `menu-styles`,
 `popover`, `command` (cmdk combobox body), `textarea`, `tooltip`, `resizable`, and `toast`, alongside
-`utils` and `theme`. `menu-styles` is shared by the menu primitives and custom app menu rows.
+`utils`, `theme`, and `i18n`. `menu-styles` is shared by the menu primitives and custom app menu rows.
 
 - Button variants are `default`/`destructive`/`outline`/`ghost`/`soft`; destructive confirms irreversible
   actions, and `soft` (primary-tinted surface + primary text) marks a prominent secondary action such as

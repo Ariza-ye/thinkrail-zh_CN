@@ -1,3 +1,4 @@
+import { translate } from "@thinkrail/ui/i18n";
 import { inferredMime } from "./describe";
 import type {
 	ResourceDescriptor,
@@ -77,7 +78,12 @@ export function resolveRenderers(
 	const fallbackId = descriptor.text ? "thinkrail/code" : "thinkrail/binary";
 	const fallback = registry.get(fallbackId);
 	if (!fallback || !supports(fallback, intent, environment)) {
-		throw new Error(`Resource renderer fallback is unavailable: ${fallbackId} (${intent})`);
+		throw new Error(
+			translate("Resource renderer fallback is unavailable: {id} ({intent})", {
+				id: fallbackId,
+				intent: intent,
+			}),
+		);
 	}
 	const candidates = [...registry.values()]
 		.filter(

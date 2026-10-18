@@ -1,4 +1,5 @@
 import { sameModel, type ThinkingLevel, type WireModel } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 import { useCallback, useMemo } from "react";
 import { selectCatalogModel, selectSupportsModelPicker, toast, useAppStore } from "@/store";
 import { getTransport } from "@/transport";
@@ -68,7 +69,7 @@ export function useModelPreferences(models: readonly WireModel[]): ModelPreferen
 				});
 				useAppStore.getState().applyConfig(config);
 			} catch {
-				toast.error("Couldn't update favorite models");
+				toast.error(translate("Couldn't update favorite models"));
 			}
 		});
 	}, []);
@@ -82,7 +83,7 @@ export function useModelPreferences(models: readonly WireModel[]): ModelPreferen
 	const setDefault = useCallback((model: WireModel, level: ThinkingLevel) => {
 		getTransport()
 			.request("settings.update", { config: { defaultModel: model, defaultEffort: level } })
-			.catch(() => toast.error("Couldn't save the default model"));
+			.catch(() => toast.error(translate("Couldn't save the default model")));
 	}, []);
 
 	return {

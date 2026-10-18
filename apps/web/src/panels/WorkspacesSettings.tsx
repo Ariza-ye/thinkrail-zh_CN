@@ -1,4 +1,5 @@
 import { WORKSPACE_SETTLE_PROTOCOL_VERSION } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { toast, useAppStore } from "../store";
 import { getTransport } from "../transport";
 import { SettingsRadioCards, type SettingsRadioChoice } from "./SettingsRadioCards";
@@ -44,6 +45,7 @@ export function toChoice(days: number | null): IdleChoice {
 }
 
 export function WorkspacesSettings() {
+	const { t } = useI18n();
 	const settleIdleDays = useAppStore((s) => s.settleIdleDays);
 	const protocolVersion = useAppStore((s) => s.protocolVersion);
 	const supported =
@@ -54,24 +56,31 @@ export function WorkspacesSettings() {
 		if (next === settleIdleDays) return;
 		getTransport()
 			.request("settings.update", { config: { settleIdleDays: next } })
-			.catch(() => toast.error("Couldn't change the settle window"));
+			.catch(() => toast.error(t("Couldn't change the settle window")));
 	};
 
 	return (
 		<section data-testid="settings-workspaces" className="flex flex-col gap-16">
 			<div className="flex flex-col gap-8">
 				<div className="flex flex-col gap-4">
-					<h3 className="tr-title-section text-text-default">Settle idle workspaces after</h3>
+					<h3 className="tr-title-section text-text-default">
+						{t("Settle idle workspaces after")}
+					</h3>
 					<p className="text-text-muted tr-text-metadata">
-						A quiet workspace moves to its project's Settled shelf after this long without a chat, a
-						terminal command, or a commit. Open pull requests, running agents, and unread results
-						never settle; Keep active or any real work brings a workspace back.
+						{t(
+							"A quiet workspace moves to its project's Settled shelf after this long without a chat, a terminal command, or a commit. Open pull requests, running agents, and unread results never settle; Keep active or any real work brings a workspace back.",
+						)}
 					</p>
 				</div>
 				<SettingsRadioCards
 					name="settle-idle-days"
-					label="Settle idle workspaces after"
-					choices={IDLE_CHOICES}
+					label={t("Settle idle workspaces after")}
+					choices={IDLE_CHOICES.map((choice) => ({
+						...choice,
+						label: t(choice.label),
+						description: t(choice.description),
+						...(choice.hint ? { hint: t(choice.hint) } : {}),
+					}))}
 					value={toChoice(settleIdleDays)}
 					disabled={!supported}
 					onSelect={select}

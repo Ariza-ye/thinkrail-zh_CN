@@ -1,4 +1,5 @@
 import type { Project } from "@thinkrail/contracts";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { type ReactNode, useState } from "react";
 import { useAppStore } from "../store";
 import { errorText, getTransport } from "../transport";
@@ -16,6 +17,7 @@ export function useOpenProject(onOpened: (project: Project) => void | Promise<vo
 	enterHostPath: () => void;
 	dialogs: ReactNode;
 } {
+	const { t } = useI18n();
 	const [initTarget, setInitTarget] = useState<string | null>(null);
 	const [openError, setOpenError] = useState<string | null>(null);
 	const [pathEntry, setPathEntry] = useState<{ reason: string | null } | null>(null);
@@ -43,9 +45,10 @@ export function useOpenProject(onOpened: (project: Project) => void | Promise<vo
 			if (!isCurrent()) return;
 			if (status?.kind === "initable") setInitTarget(trimmed);
 			else if (status?.kind === "missing")
-				setOpenError(`This folder no longer exists:\n${trimmed}`);
-			else if (status?.kind === "notDirectory") setOpenError(`This isn't a folder:\n${trimmed}`);
-			else setOpenError(errorText(err, `Couldn't open ${trimmed}.`));
+				setOpenError(t("This folder no longer exists:\n{path}", { path: trimmed }));
+			else if (status?.kind === "notDirectory")
+				setOpenError(t("This isn't a folder:\n{path}", { path: trimmed }));
+			else setOpenError(errorText(err, t("Couldn't open {path}.", { path: trimmed })));
 		}
 	};
 
@@ -61,7 +64,9 @@ export function useOpenProject(onOpened: (project: Project) => void | Promise<vo
 			if (!isCurrent()) return;
 		} catch (err) {
 			if (!isCurrent()) return;
-			setOpenError(errorText(err, `Couldn't initialise a git repository in ${path}.`));
+			setOpenError(
+				errorText(err, t("Couldn't initialise a git repository in {path}.", { path: path })),
+			);
 		}
 	};
 
@@ -81,7 +86,7 @@ export function useOpenProject(onOpened: (project: Project) => void | Promise<vo
 			));
 		} catch (err) {
 			if (!isCurrent()) return;
-			setPathEntry({ reason: errorText(err, "Couldn't open the folder picker on the host.") });
+			setPathEntry({ reason: errorText(err, t("Couldn't open the folder picker on the host.")) });
 			return;
 		}
 		if (!isCurrent()) return;
@@ -95,15 +100,12 @@ export function useOpenProject(onOpened: (project: Project) => void | Promise<vo
 				onOpenChange={(o) => {
 					if (!o) setInitTarget(null);
 				}}
-				title="Initialize a git repository?"
-				description={
-					<>
-						<span className="tr-text-emphasis text-text-default">{initTarget}</span> isn't a git
-						repository. ThinkRail works on git worktrees, so it needs one. Initialize a repo here
-						and commit the folder's current contents?
-					</>
-				}
-				confirmLabel="Initialize & open"
+				title={t("Initialize a git repository?")}
+				description={t(
+					"{path} isn't a git repository. ThinkRail works on git worktrees, so it needs one. Initialize a repo here and commit the folder's current contents?",
+					{ path: initTarget ?? "" },
+				)}
+				confirmLabel={t("Initialize & open")}
 				confirmTestId="confirm-init-repo"
 				onConfirm={() => {
 					if (initTarget) void initProject(initTarget);
@@ -122,7 +124,7 @@ export function useOpenProject(onOpened: (project: Project) => void | Promise<vo
 				onOpenChange={(o) => {
 					if (!o) setOpenError(null);
 				}}
-				title="Couldn't open project"
+				title={t("Couldn't open project")}
 				description={<span className="whitespace-pre-line">{openError}</span>}
 				testId="open-error-dialog"
 			/>

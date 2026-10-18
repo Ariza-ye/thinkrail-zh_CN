@@ -1,3 +1,4 @@
+import { translate, useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useRef, useState } from "react";
 import type { ResourceContent, ResourceDiffProps } from "@/resources";
 import type { Size } from "../regionReview";
@@ -50,8 +51,9 @@ function ImageContent({
 }
 
 function caption(label: string, size: Size | null, content: ResourceContent): string {
-	const dimensions = size ? `${size.width} × ${size.height}` : "No dimensions";
-	const bytes = content.kind === "bytes" ? formatByteLength(content.byteLength) : "No image";
+	const dimensions = size ? `${size.width} × ${size.height}` : translate("No dimensions");
+	const bytes =
+		content.kind === "bytes" ? formatByteLength(content.byteLength) : translate("No image");
 	return `${label}: ${dimensions} · ${bytes}`;
 }
 
@@ -64,6 +66,7 @@ export default function ImageDiff({
 	viewState,
 	onViewState,
 }: ResourceDiffProps) {
+	const { t } = useI18n();
 	const originalIdentity = imageIdentity(original);
 	const modifiedIdentity = imageIdentity(modified);
 	const [loadedOriginal, setLoadedOriginal] = useState<LoadedSize>(null);
@@ -88,7 +91,7 @@ export default function ImageDiff({
 				onSize={setLoadedOriginal}
 			/>
 		),
-		caption: caption("Old", originalSize, original),
+		caption: caption(t("Old"), originalSize, original),
 		intrinsicSize: originalSize,
 		review: review?.base,
 	};
@@ -102,7 +105,7 @@ export default function ImageDiff({
 				onSize={setLoadedModified}
 			/>
 		),
-		caption: caption("New", modifiedSize, modified),
+		caption: caption(t("New"), modifiedSize, modified),
 		intrinsicSize: modifiedSize,
 		review: review?.worktree,
 	};
@@ -110,7 +113,7 @@ export default function ImageDiff({
 		<VisualDiff
 			prefix="image"
 			noun="image"
-			regionLabel="image region"
+			regionLabel={t("image region")}
 			original={originalSide}
 			modified={modifiedSide}
 			contentStamp={diffContentStamp(original, modified)}

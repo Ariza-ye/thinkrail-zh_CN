@@ -1,3 +1,4 @@
+import { useI18n } from "@thinkrail/ui/i18n";
 import { useEffect, useMemo } from "react";
 import type { ResourceViewProps } from "@/resources";
 import { RegionReviewSurface } from "../RegionReviewSurface";
@@ -15,6 +16,7 @@ export default function SvgView({
 	review,
 	onPlacedThreadIds,
 }: ResourceViewProps) {
+	const { t } = useI18n();
 	const text = content.kind === "text" ? content.text : null;
 	const tokens = useSvgTheme(false);
 	const document = useMemo(
@@ -47,11 +49,14 @@ export default function SvgView({
 					className={`${aspect ? "mx-auto w-full" : "h-[min(72vh,760px)] w-full"} min-h-40 max-w-[960px] border border-border-muted bg-container-workspace-bg`}
 					{...(aspect ? { style: { aspectRatio: aspect } } : {})}
 				>
-					<SvgFrame title={`Vector preview of ${resource.path}`} document={document} />
+					<SvgFrame
+						title={t("Vector preview of {path}", { path: resource.path })}
+						document={document}
+					/>
 				</RegionReviewSurface>
 			</div>
 			<div className="shrink-0 border-border-default border-t bg-container-header-bg px-12 py-4 tr-text-metadata text-text-muted">
-				{size ? `${size.width} × ${size.height}` : "Flexible size"} · {svgByteLength(text)} B
+				{size ? `${size.width} × ${size.height}` : t("Flexible size")} · {svgByteLength(text)} B
 			</div>
 		</div>
 	);

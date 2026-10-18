@@ -4,6 +4,7 @@ import {
 	RiTerminalBoxFill,
 	RiTerminalBoxLine as SquareTerminal,
 } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { cn } from "@thinkrail/ui/utils";
 import type { ReactNode } from "react";
@@ -52,6 +53,7 @@ export function AuxiliaryRailButton({
 	shared: SharedGroupProps;
 	onActivate: () => void;
 }) {
+	const { t } = useI18n();
 	const unplaced = isUnplacedRailEntry(entry);
 	const group =
 		entry.groupId && !unplaced
@@ -77,10 +79,15 @@ export function AuxiliaryRailButton({
 		entry.kind === "tool"
 			? layoutTabName(toolTab(entry.tool))
 			: entry.kind === "terminals"
-				? `Terminal group ${ordinal}, ${entry.tabs.length} ${entry.tabs.length === 1 ? "session" : "sessions"}`
+				? t(
+						entry.tabs.length === 1
+							? "Terminal group {ordinal}, {count} session"
+							: "Terminal group {ordinal}, {count} sessions",
+						{ ordinal, count: entry.tabs.length },
+					)
 				: entry.region === "bottom"
-					? "Terminal"
-					: `Empty ${entry.region} group ${ordinal}`;
+					? t("Terminal")
+					: t("Empty {region} group {ordinal}", { region: t(entry.region), ordinal: ordinal });
 	return (
 		<div data-active={active} className={railEntryFrameClass(entry.region)}>
 			{active ? <AuxiliaryRailIndicator region={entry.region} /> : null}
@@ -118,7 +125,11 @@ export function AuxiliaryRailButton({
 					}
 					{...control}
 					onClick={onActivate}
-					data-drop-label={dropEnabled ? `Join ${entry.region} group ${ordinal}` : undefined}
+					data-drop-label={
+						dropEnabled
+							? t("Join {region} group {ordinal}", { region: t(entry.region), ordinal: ordinal })
+							: undefined
+					}
 					data-drop-active={isOver || undefined}
 					data-drop-hint={(dropEnabled && !isOver) || undefined}
 					className={cn(
@@ -163,6 +174,7 @@ export function AuxiliaryRegionRail({
 	attention: LayoutAttention;
 	trailing?: ReactNode;
 }) {
+	const { t } = useI18n();
 	const entries = projectAuxiliaryRail(shared.document, attention, region);
 	const groups = shared.document[region].groups;
 	const draggedAuxiliary =
@@ -210,7 +222,7 @@ export function AuxiliaryRegionRail({
 			<DropZone
 				id={tupleKey("dnd-rail-boundary", region, String(paneIndex))}
 				target={{ kind: "auxiliary-edge", region, index: paneIndex }}
-				label={`New ${region} pane here`}
+				label={t("New {region} pane here", { region: t(region) })}
 				className={cn(
 					"absolute",
 					region === "bottom"
@@ -231,7 +243,7 @@ export function AuxiliaryRegionRail({
 						<DropZone
 							id={tupleKey("dnd-hidden-side-edge", region)}
 							target={{ kind: "auxiliary-edge", region, index: groups.length }}
-							label={`Create ${region} group in hidden side`}
+							label={t("Create {region} group in hidden side", { region: t(region) })}
 							className="relative min-h-32 w-32 flex-1"
 						/>
 					) : (

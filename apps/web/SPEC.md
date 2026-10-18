@@ -49,6 +49,7 @@ convention; their boundary is held by convention + spec. Sibling edges live here
 | `components` | dependency-light app primitives: error isolation, status icons, custom icons, quiet scroll frames | no | [components/SPEC.md](src/components/SPEC.md) |
 | `extensions` | ordered composition of web extension descriptors into the chat registry | yes | [extensions/SPEC.md](src/extensions/SPEC.md) |
 | `themes` | validated single-file manifests, bundled catalog + atomic token application | yes | [themes/SPEC.md](src/themes/SPEC.md) |
+| `i18n` | UI catalogs, system language resolution and client-local language preference | yes | [i18n/SPEC.md](src/i18n/SPEC.md) |
 | `lib` | shared path/array primitives + highlighting | yes | [lib/SPEC.md](src/lib/SPEC.md) |
 
 Leaf utilities without their own spec: `constants/` (branding — the product name, storage/event prefixes, and the one
@@ -171,6 +172,7 @@ external errors and protocol identifiers are never translated. See [[submodule-w
 - `resources` → `contracts` (types only), `lib`; it owns no store, transport, shell, or renderer implementation
 - `lib` → `themes` (the lazy highlighter uses the one generic CSS-variable Shiki registration), React (the phone-viewport hook only), and `contracts` (types only, e.g. the MCP state vocabulary's `McpServerState`)
 - `themes` → `constants` (the branding storage prefix scopes the first-paint hint), `clientPreferences` (native-stable hint storage)
+- `i18n` → `ui` (shared translation runtime), `constants` (preference key), `clientPreferences` (native-stable storage); no store or transport
 - leaves (`clientPreferences`, `constants`, `utils`, `styles`) → none internal
 
 Rules: a panel never imports another panel sideways; nothing imports `shell` (it's the composition root).

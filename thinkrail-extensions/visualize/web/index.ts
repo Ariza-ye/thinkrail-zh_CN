@@ -1,4 +1,5 @@
 import { defineWebExtension, strArg } from "@thinkrail/extension-api/web";
+import { translate } from "@thinkrail/ui/i18n";
 import { VisualizationCard } from "./VisualizationCard";
 
 export { MermaidView } from "./MermaidView";
@@ -16,9 +17,12 @@ export default defineWebExtension({
 					if (title) return title;
 					if (strArg(args, "type") === "comparison") {
 						const count = Array.isArray(args.options) ? args.options.length : 0;
-						return `comparison — ${count} option${count === 1 ? "" : "s"}`;
+						return translate(
+							count === 1 ? "comparison — {count} option" : "comparison — {count} options",
+							{ count },
+						);
 					}
-					return "diagram";
+					return translate("diagram");
 				},
 			},
 		},

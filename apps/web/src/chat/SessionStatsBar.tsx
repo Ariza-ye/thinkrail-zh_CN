@@ -1,6 +1,12 @@
 import type { ContextUsage, SessionStats } from "@thinkrail/contracts";
+import { getLocale, translate, useI18n } from "@thinkrail/ui/i18n";
 
 export function formatTokens(count: number): string {
+	if (getLocale() === "zh-CN")
+		return new Intl.NumberFormat("zh-CN", {
+			notation: "compact",
+			maximumFractionDigits: 1,
+		}).format(count);
 	if (count < 1_000) return count.toString();
 	if (count < 10_000) return `${(count / 1_000).toFixed(1)}k`;
 	if (count < 1_000_000) return `${Math.round(count / 1_000)}k`;
@@ -16,7 +22,9 @@ export function formatElapsed(ms: number): string {
 	const totalSec = Math.round(ms / 1000);
 	const m = Math.floor(totalSec / 60);
 	const s = totalSec % 60;
-	return m > 0 ? `${m}m ${s}s` : `${s}s`;
+	return m > 0
+		? translate("{value}m {value2}s", { value: m, value2: s })
+		: translate("{value}s", { value: s });
 }
 
 export function usageParts(stats: SessionStats): string[] {
@@ -43,6 +51,7 @@ export function contextPart(usage: ContextUsage): { bar: string; text: string } 
 }
 
 export function SessionStatsBar({ stats }: { stats: SessionStats | null }) {
+	const { t } = useI18n();
 	if (!stats) return null;
 	const parts = usageParts(stats);
 	const context = stats.contextUsage ? contextPart(stats.contextUsage) : null;
@@ -52,7 +61,7 @@ export function SessionStatsBar({ stats }: { stats: SessionStats | null }) {
 		<div
 			data-testid="session-stats"
 			className="flex min-w-0 flex-nowrap items-center justify-end gap-x-4 overflow-hidden text-text-muted tr-text-metadata"
-			title="Cumulative usage: ↑ input · ↓ output · R cache read · W cache write"
+			title={t("Cumulative usage: ↑ input · ↓ output · R cache read · W cache write")}
 		>
 			{parts.map((part, index) => (
 				<span key={part} className="flex items-center gap-4 whitespace-nowrap">
@@ -61,7 +70,10 @@ export function SessionStatsBar({ stats }: { stats: SessionStats | null }) {
 				</span>
 			))}
 			{context ? (
-				<span className="flex items-center gap-4 whitespace-nowrap" title="Context window used">
+				<span
+					className="flex items-center gap-4 whitespace-nowrap"
+					title={t("Context window used")}
+				>
 					{parts.length > 0 ? <span aria-hidden="true">·</span> : null}
 					<span aria-hidden="true" className="text-primary">
 						{context.bar}

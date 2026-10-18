@@ -1,4 +1,5 @@
 import type { ReviewFixComment } from "@thinkrail/contracts";
+import { translate } from "@thinkrail/ui/i18n";
 
 export interface ReviewPackageItem {
 	path: string | null;
@@ -94,12 +95,27 @@ export function reviewFixCommentsToItems(comments: ReviewFixComment[]): ReviewPa
 }
 
 export function reviewPackageLabel(summary: Pick<ReviewPackageSummary, "count" | "files">): string {
-	const noun = summary.count === 1 ? "review comment" : "review comments";
-	const where =
-		summary.files.length === 0
-			? "the change set"
-			: summary.files.length === 1
-				? summary.files[0]
-				: `${summary.files.length} files`;
-	return `Sent ${summary.count} ${noun} on ${where}`;
+	const count = summary.count;
+	if (summary.files.length === 0) {
+		return translate(
+			count === 1
+				? "Sent {count} review comment on the change set"
+				: "Sent {count} review comments on the change set",
+			{ count },
+		);
+	}
+	if (summary.files.length === 1) {
+		return translate(
+			count === 1
+				? "Sent {count} review comment on {file}"
+				: "Sent {count} review comments on {file}",
+			{ count, file: summary.files[0] ?? "" },
+		);
+	}
+	return translate(
+		count === 1
+			? "Sent {count} review comment on {files} files"
+			: "Sent {count} review comments on {files} files",
+		{ count, files: summary.files.length },
+	);
 }

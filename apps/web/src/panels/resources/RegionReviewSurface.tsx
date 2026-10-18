@@ -1,4 +1,5 @@
 import { RiChatNewLine as MessageSquarePlus } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { IconTooltip } from "@thinkrail/ui/tooltip";
 import { cn } from "@thinkrail/ui/utils";
 import {
@@ -72,6 +73,7 @@ export function RegionReviewSurface({
 	label?: string | undefined;
 	draftForRegion?: ((region: Region) => AnchorDraft) | undefined;
 }) {
+	const { t } = useI18n();
 	const [drag, setDrag] = useState<DragState | null>(null);
 	const composer = useStampedComposer<Region>(contentStamp, selectionKey);
 	const cardsRef = useRef(new Map<string, HTMLDivElement>());
@@ -213,7 +215,7 @@ export function RegionReviewSurface({
 							>
 								<button
 									type="button"
-									aria-label={`Show comment ${index + 1}`}
+									aria-label={t("Show comment {number}", { number: index + 1 })}
 									data-testid="region-comment-marker"
 									className="pointer-events-auto absolute -top-12 -right-12 flex size-24 items-center justify-center rounded-full bg-primary tr-text-action text-text-on-primary outline-none focus-visible:ring-2 focus-visible:ring-primary"
 									onPointerDown={(event) => event.stopPropagation()}
@@ -230,11 +232,11 @@ export function RegionReviewSurface({
 								style={regionStyle(composer.selection, primaryBounds)}
 							>
 								{!drag && !composer.composing ? (
-									<IconTooltip label={`Comment on this ${label}`}>
+									<IconTooltip label={t("Comment on this {label}", { label: t(label) })}>
 										<button
 											type="button"
 											data-testid="review-add-icon"
-											aria-label={`Comment on this ${label}`}
+											aria-label={t("Comment on this {label}", { label: t(label) })}
 											className="pointer-events-auto absolute -right-12 -bottom-12 flex size-24 items-center justify-center rounded-sm bg-primary text-text-on-primary outline-none focus-visible:ring-2 focus-visible:ring-primary"
 											onPointerDown={(event) => event.stopPropagation()}
 											onClick={composer.open}

@@ -1,4 +1,5 @@
 import { RiExpandUpDownLine as Expand } from "@remixicon/react";
+import { useI18n } from "@thinkrail/ui/i18n";
 import { diffArrays } from "diff";
 import { createElement, type ReactNode, useEffect, useMemo, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -176,6 +177,7 @@ function HiddenRun({
 	ordinal: Ordinal;
 	changed: Changed;
 }) {
+	const { t } = useI18n();
 	const [expanded, setExpanded] = useState(false);
 	if (expanded) return blockNodes(items, first, ordinal, changed);
 	const section =
@@ -191,7 +193,7 @@ function HiddenRun({
 		>
 			<Expand className="size-14 shrink-0" />
 			<span className="shrink-0">
-				{items.length} unchanged {unit}
+				{t("{count} unchanged {unit}", { count: items.length, unit: t(unit) })}
 			</span>
 			{section ? (
 				<span className="ml-auto min-w-0 truncate text-text-subtle">§ {section}</span>
@@ -252,6 +254,7 @@ export default function RenderedDiff({
 	viewState,
 	onViewState,
 }: ResourceDiffProps) {
+	const { t } = useI18n();
 	const originalText = original.kind === "text" ? original.text : "";
 	const modifiedText = modified.kind === "text" ? modified.text : "";
 	const [before, after] = useMemo(
@@ -286,12 +289,12 @@ export default function RenderedDiff({
 	if (merge.state === "failed") {
 		return (
 			<Placeholder testid="rendered-diff-error">
-				Rendered diff failed — use the Source view.
+				{t("Rendered diff failed — use the Source view.")}
 			</Placeholder>
 		);
 	}
 	if (view === null) {
-		return <Placeholder testid="rendered-diff-loading">Rendering diff…</Placeholder>;
+		return <Placeholder testid="rendered-diff-loading">{t("Rendering diff…")}</Placeholder>;
 	}
 
 	return (
@@ -302,8 +305,9 @@ export default function RenderedDiff({
 		>
 			{view.empty ? (
 				<p data-testid="rendered-diff-empty" className="px-12 py-8 tr-text-ui text-text-muted">
-					The rendered preview is identical on both sides — the change is in front matter,
-					whitespace, or markup that does not render. Compare in Source.
+					{t(
+						"The rendered preview is identical on both sides — the change is in front matter, whitespace, or markup that does not render. Compare in Source.",
+					)}
 				</p>
 			) : null}
 			<article className={`mx-auto max-w-[78ch] px-24 py-16 ${DIFF_MARKS}`}>

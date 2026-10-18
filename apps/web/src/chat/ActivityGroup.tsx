@@ -7,6 +7,7 @@ import {
 	RiCloseLine as X,
 } from "@remixicon/react";
 import type { ToolRenderProps, ToolStatus } from "@thinkrail/extension-api/web";
+import { getLocale, translate, useI18n } from "@thinkrail/ui/i18n";
 import { cn } from "@thinkrail/ui/utils";
 import type { ActivityBreadcrumbKind } from "./activityBreadcrumbs";
 import { useFold } from "./foldState";
@@ -27,6 +28,7 @@ export function ActivityGroup({
 	workspaceRoot?: string | undefined;
 	onOpenFile?: ((path: string) => void) | undefined;
 }) {
+	useI18n();
 	const flatSteps = flattenActivitySteps(steps);
 	const single = flatSteps.length === 1 ? steps[0] : undefined;
 	if (single)
@@ -101,12 +103,13 @@ export function ThinkingGroup({
 	workspaceRoot?: string | undefined;
 	onOpenFile?: ((path: string) => void) | undefined;
 }) {
+	const { t } = useI18n();
 	const summary =
 		tools.length > 0
 			? live
 				? liveActivityTicker(tools, workspaceRoot)
 				: summarizeSteps(tools)
-			: `${formatChars(thought.text.length)} chars`;
+			: t("{value} chars", { value: formatChars(thought.text.length) });
 	return (
 		<GroupDisclosure
 			id={id}
@@ -116,9 +119,9 @@ export function ThinkingGroup({
 			live={live}
 			stepCount={tools.length}
 			icon={<Brain className="size-12 shrink-0" />}
-			label="Thinking"
+			label={t("Thinking")}
 			headline={extractThinkingHeading(thought.text)}
-			breadcrumbLabel="Thinking"
+			breadcrumbLabel={t("Thinking")}
 			breadcrumbMeta={summary}
 			summary={summary}
 		>
@@ -259,22 +262,31 @@ export function summarizeSteps(steps: ActivityStep[]): string {
 	const flatSteps = flattenActivitySteps(steps);
 	const counts = new Map<string, number>();
 	for (const step of flatSteps) {
-		const name = step.kind === "thinking" ? "thinking" : step.toolName;
+		const name = step.kind === "thinking" ? translate("thinking") : step.toolName;
 		counts.set(name, (counts.get(name) ?? 0) + 1);
 	}
 	const names = [...counts.entries()].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name));
 	const MAX_NAMES = 4;
 	const shown = names.slice(0, MAX_NAMES).join(", ");
 	const more = names.length - MAX_NAMES;
-	const count = `${flatSteps.length} ${flatSteps.length === 1 ? "step" : "steps"}`;
-	return `${count} · ${shown}${more > 0 ? `, +${more} more` : ""}`;
+	return more > 0
+		? translate(
+				flatSteps.length === 1
+					? "{count} step · {names}, +{more} more"
+					: "{count} steps · {names}, +{more} more",
+				{ count: flatSteps.length, names: shown, more },
+			)
+		: translate(flatSteps.length === 1 ? "{count} step · {names}" : "{count} steps · {names}", {
+				count: flatSteps.length,
+				names: shown,
+			});
 }
 
 function liveActivityTicker(steps: ActivityStep[], workspaceRoot: string | undefined): string {
 	const flatSteps = flattenActivitySteps(steps);
 	const current = flatSteps[flatSteps.length - 1];
-	if (!current) return "Working…";
-	if (current.kind === "thinking") return "Thinking…";
+	if (!current) return translate("Working…");
+	if (current.kind === "thinking") return translate("Thinking…");
 	const summary = getToolSummary(current.toolName, toolRenderProps(current, workspaceRoot));
 	return summary ? `${current.toolName} · ${summary}` : `${current.toolName}…`;
 }
@@ -307,6 +319,7 @@ function RoutineToolRow({
 	workspaceRoot?: string | undefined;
 	onOpenFile?: ((path: string) => void) | undefined;
 }) {
+	useI18n();
 	const [expanded, toggle, toggleRef] = useFold(step.id);
 	const status: ToolStatus = step.tool?.status ?? (step.dead ? "error" : "running");
 	const renderProps = toolRenderProps(step, workspaceRoot, onOpenFile);
@@ -391,5 +404,10 @@ function StepHeader({
 }
 
 function formatChars(n: number): string {
+	if (getLocale() === "zh-CN")
+		return new Intl.NumberFormat("zh-CN", {
+			notation: "compact",
+			maximumFractionDigits: 1,
+		}).format(n);
 	return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
