@@ -46,7 +46,8 @@ const messages: Record<string, string> = {
 		"此主机为智能体提供的 ThinkRail 扩展。关闭扩展后，新聊天将不再使用其工具，已打开的聊天会在当前轮次结束后移除这些工具；历史结果仍可显示。此设置保存在主机上，并在各设备间同步。",
 	Feedback: "反馈",
 	"Schedule an interview": "预约访谈",
-	"Tell us about your experience with ThinkRail in a user interview. After you complete the interview, you will receive 100 bonus credits in Central (JetBrains AI).": "欢迎通过用户访谈分享您使用 ThinkRail 的体验。完成访谈后，您将获得 Central（JetBrains AI）的 100 点奖励额度。",
+	"Tell us about your experience with ThinkRail in a user interview. After you complete the interview, you will receive 100 bonus credits in Central (JetBrains AI).":
+		"欢迎通过用户访谈分享您使用 ThinkRail 的体验。完成访谈后，您将获得 Central（JetBrains AI）的 100 点奖励额度。",
 	Refresh: "刷新",
 	"Local GitHub": "本地 GitHub",
 	"Authenticate the GitHub CLI to create workspaces from remote branches.":
@@ -80,7 +81,7 @@ const messages: Record<string, string> = {
 	"Connect to the host to manage": "连接主机后即可管理",
 	"Couldn't change the analytics setting": "无法更改分析设置",
 	"Share anonymous usage analytics": "分享匿名使用情况分析数据",
-	"Off": "关闭",
+	Off: "关闭",
 	Auto: "自动",
 	Recommended: "推荐",
 	"PowerShell 7 when installed, otherwise Windows PowerShell.":
@@ -492,7 +493,8 @@ const messages: Record<string, string> = {
 		"项目模板存储在项目的 {path} 目录中，可在该项目内使用。",
 	"Templates you create here are stored in this project's {path} directory.":
 		"在此创建的模板会存储在此项目的 {path} 目录中。",
-	"Share anonymous product usage and how you found ThinkRail. We never collect prompts, code, files, credentials, or account identity.": "分享匿名产品使用情况以及您了解 ThinkRail 的途径。我们绝不会收集提示词、代码、文件、凭据或账户身份。",
+	"Share anonymous product usage and how you found ThinkRail. We never collect prompts, code, files, credentials, or account identity.":
+		"分享匿名产品使用情况以及您了解 ThinkRail 的途径。我们绝不会收集提示词、代码、文件、凭据或账户身份。",
 	"This server can modify data in {service}.": "此服务器可以修改 {service} 中的数据。",
 	"!commands run on the host each time a chat connects; keep them fast (e.g. read a cached token).":
 		"!commands 会在每次聊天连接时在主机上运行；请确保它们快速完成（例如读取缓存的令牌）。",
@@ -539,10 +541,10 @@ const messages: Record<string, string> = {
 	"<1 min": "不足 1 分钟",
 	"Disabled in {count} of {total} chats": "已在 {total} 个聊天中的 {count} 个禁用",
 	"Disabled in 1 chat": "已在 1 个聊天中禁用",
-	"Starting": "正在启动",
+	Starting: "正在启动",
 	"Needs sign-in": "需要登录",
 	Failed: "失败",
-	"Disconnected": "已断开",
+	Disconnected: "已断开",
 	Disabled: "已禁用",
 	"Disabled in project": "已在项目中禁用",
 	"Disabled in chat": "已在聊天中禁用",
