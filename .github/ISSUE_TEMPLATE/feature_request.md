@@ -1,23 +1,23 @@
 ---
 name: Feature request
-about: Suggest an idea or improvement
+about: 提出一个想法或改进建议
 title: ''
 labels: enhancement
 assignees: ''
 ---
 
-## Problem
+## 问题
 
-What problem are you trying to solve? What's the motivation?
+你想解决什么问题？动机是什么？
 
-## Proposed solution
+## 建议的方案
 
-What you'd like to see happen.
+你希望看到发生什么。
 
-## Alternatives considered
+## 考虑过的替代方案
 
-Any alternative approaches you've thought about.
+你考虑过的任何替代做法。
 
-## Additional context
+## 补充上下文
 
-Anything else that would help — mockups, links, related issues.
+任何其他有帮助的内容 —— 草图、链接、相关 issue。

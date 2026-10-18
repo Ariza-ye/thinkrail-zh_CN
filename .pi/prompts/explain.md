@@ -1,6 +1,6 @@
 ---
-description: "Explain how something works in this codebase"
-argument-hint: "[path-or-topic]"
+description: "讲清楚这个代码库里的某个东西是如何工作的"
+argument-hint: "[路径或主题]"
 ---
-Explain how $1 works in this codebase: its purpose, the key control and data flow, and what depends on it.
-Keep it concise and point to the load-bearing files and `file:line` locations.
+解释 $1 在本代码库中是如何工作的：它的目的、关键的控制流与数据流，以及有哪些东西依赖它。
+保持简洁，并指出承担关键作用的文件与 `file:line` 位置。

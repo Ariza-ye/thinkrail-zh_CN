@@ -1,6 +1,6 @@
 ---
-description: "Rename a symbol everywhere (demoes repeated-slot mirroring)"
-argument-hint: "[old] [new]"
+description: "在所有位置重命名一个符号（演示重复槽位的镜像机制）"
+argument-hint: "[旧名] [新名]"
 ---
-Rename `$1` to `$2` across the codebase: update every definition, reference, and import of `$1`,
-plus any docs or comments that mention `$1`. Keep `$2` consistent everywhere and run the type-checker after.
+在整个代码库中把 `$1` 重命名为 `$2`：更新 `$1` 的每一处定义、引用和 import，
+以及任何提到 `$1` 的文档或注释。保持 `$2` 在各处一致，并在之后运行类型检查器。

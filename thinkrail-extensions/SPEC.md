@@ -2,111 +2,96 @@
 id: module-thinkrail-extensions
 type: module-design
 status: draft
-title: ThinkRail extensions (thinkrail-extensions/)
+title: ThinkRail 扩展（thinkrail-extensions/）
 parent: architecture
 depends-on: [module-pi-extensions, module-contracts]
 tags: [extensions, ui-sdk]
 ---
 
-## Responsibility
+## 职责
 
-A **ThinkRail extension** is a workspace package `thinkrail-extensions/<name>/` (`@thinkrail/ext-<name>`,
-private) that composes a pi capability — usually a [[module-pi-extensions]] package, possibly a
-third-party pi package — with its ThinkRail-specific halves: what the host bundles into sessions and how
-the web client presents the capability's tools. The host composes extensions from **one registry file per
-side**. A user sees the server registry in Settings → Extensions and can switch each extension off (a
-host-level setting keyed on the descriptor `name`; the extension declares nothing for it); how a user would
-install or discover a new extension is deliberately not designed.
+一个 **ThinkRail 扩展**是一个工作区包 `thinkrail-extensions/<name>/`（`@thinkrail/ext-<name>`，私有），它把一项
+pi 能力 —— 通常是一个 [[module-pi-extensions]] 包，也可能是第三方 pi 包 —— 与它的 ThinkRail 专属半边组合起来：
+宿主把什么打包进会话，以及 web 客户端如何呈现该能力的工具。宿主从**每侧一个注册表文件**组合扩展。用户在
+Settings → Extensions 里能看到 server 注册表，并可以逐个关掉扩展（一个以描述符 `name` 为键的宿主级设置；扩展
+本身不为此声明任何东西）；用户如何安装或发现新扩展是刻意不做设计的。
 
-The first extension (`visualize`, [[module-ext-visualize]]) ships both halves; the host composes them from
-the two registry files below ([[submodule-server-extensions]], [[submodule-web-extensions]]). Install UX,
-marketplace, per-extension settings, a per-workspace on/off override, extension-contributed wire methods,
-panels and store contributions are explicit deferrals, not gaps. The on/off switch does not yet cover an
-extension's `skillPackages` — they keep staging and loading until an extension with skills exists.
+第一个扩展（`visualize`，[[module-ext-visualize]]）同时交付两半；宿主从下面两个注册表文件组合它们
+（[[submodule-server-extensions]]、[[submodule-web-extensions]]）。安装体验、市场、按扩展的设置、按工作区的
+开关覆盖、扩展提供的线上协议方法、面板与 `store` 贡献都是明确的推迟项，而不是缺口。这个开关目前还不覆盖扩展
+的 `skillPackages` —— 它们会继续暂存与加载，直到出现带技能的扩展。
 
-## Shape — two entrypoints, no root barrel
+## 形态 —— 两个入口点，没有根 barrel
 
-- `./server` — default export `defineServerExtension({ name, title?, description?, extensions, childExtensions?, skillPackages? })`
-  (`title` / `description` are Settings display copy).
-  `extensions` / `childExtensions` are pi `ExtensionFactory`s the host composes into every parent session /
-  the curated child set, registered as named `InlineExtension`s so pi diagnostics keep an identity.
-  `skillPackages` are **package specifiers** whose `pi.skills` directories the host stages — explicit module
-  identity for the build step, never inferred from a function. Server-only; may value-import pi.
-- `./web` — default export `defineWebExtension({ name, toolRenderers })` keyed by tool name, **plus named
-  exports** for components the host uses directly (visualize exports `MermaidView` for fenced mermaid in
-  chat markdown). Browser-only; never value-imports pi; heavy renderers stay lazy.
+- `./server` — 默认导出 `defineServerExtension({ name, title?, description?, extensions, childExtensions?, skillPackages? })`
+  （`title` / `description` 是 Settings 的展示文案）。`extensions` / `childExtensions` 是 pi
+  `ExtensionFactory`，宿主把它们组合进每个父会话 / 精选子集合，注册为具名 `InlineExtension`，这样 pi 的诊断
+  仍保有身份。`skillPackages` 是**包说明符**，宿主会暂存其中 `pi.skills` 目录 —— 这是给构建步骤的显式模块
+  身份，绝不从函数推断。仅服务端；可以以值的形式 import pi。
+- `./web` — 默认导出 `defineWebExtension({ name, toolRenderers })`，以工具名为键，**外加具名导出**供宿主直接
+  使用的组件（visualize 导出 `MermaidView`，用于聊天 markdown 中的围栏 mermaid）。仅浏览器；绝不以值的形式
+  import pi；重型渲染器保持惰性加载。
 
-The `define*` objects and the named web exports are the whole contract. Future capabilities (wire methods,
-panels, settings) are added to these objects when a real consumer needs them.
+`define*` 对象与具名 web 导出就是整个契约。未来的能力（线上协议方法、面板、设置）在有真实使用方需要时才加到这些
+对象上。
 
-**The property fixed now so later extensions never force a rewrite — runtime/lifecycle ownership:**
-separate server and browser entrypoints; no imports of host internals; host-owned scoped state
-(per-session owners such as subagents and background commands, per-workspace services) is supplied through
-explicit seams and never created by an extension. Per-session owners therefore stay in the host's
-session manager, outside the static registry.
+**现在固定下来、以免后来的扩展被迫重写的性质 —— 运行时/生命周期归属：** server 入口点与浏览器入口点分离；
+不 import 宿主内部实现；宿主拥有的作用域状态（按会话的拥有者，例如 subagents 与后台命令；按工作区的服务）
+通过显式接缝提供，绝不由扩展创建。因此按会话的拥有者留在宿主的会话管理器里，位于静态注册表之外。
 
-## Host UI SDK
+## 宿主 UI SDK
 
-What a `./web` half may import:
+`./web` 半边可以 import 什么：
 
-- `@thinkrail/extension-api` ([[module-extension-api]]) — types and `define*` helpers only, no React
-  components. `./web`: `ToolRenderProps`, `ToolRenderer`, `ToolRegistrationOptions`, `ToolStatus`,
-  `WebExtension`, `defineWebExtension`, and the pure renderer helpers (`toolHelpers`, `toolResultContent`).
-  `./server`: `ServerExtension`, `defineServerExtension`. Its own package because server pi types would
-  contaminate the wire boundary in `contracts`, and the server contract in `ui` would give the host a
-  presentation dependency.
-- `@thinkrail/ui` ([[module-ui]]) — the owned shadcn/Radix primitives moved whole, `cn`, and the
-  `onThemeSwap` function only (not the theme catalog/preferences runtime). Per-file imports
-  (`@thinkrail/ui/dialog`) are retained for code-splitting. Design tokens stay in `apps/web/src/styles`;
-  the SDK and extension web halves use token utility classes only, and the app's CSS `@source` and
-  color/spacing/typography checks cover `packages/ui` and `thinkrail-extensions/*/web`.
-- **Not in the SDK (yet):** the highlighted `CodeBlock` and the shiki highlighter — not dependency-closed
-  (highlighter → theme barrel). They move together with the generic CSS-variable shiki map when a second
-  extension needs highlighting.
+- `@thinkrail/extension-api`（[[module-extension-api]]）—— 只有类型与 `define*` 辅助函数，没有 React 组件。
+  `./web`：`ToolRenderProps`、`ToolRenderer`、`ToolRegistrationOptions`、`ToolStatus`、`WebExtension`、
+  `defineWebExtension`，以及纯渲染辅助函数（`toolHelpers`、`toolResultContent`）。`./server`：
+  `ServerExtension`、`defineServerExtension`。它自成一个包，因为 server 的 pi 类型会污染 `contracts` 中的线上
+  协议边界，而 `ui` 里的 server 契约会给宿主带来一个表现层依赖。
+- `@thinkrail/ui`（[[module-ui]]）—— 整体搬过来的自有 shadcn/Radix 原语、`cn`，以及只含 `onThemeSwap` 函数
+  （不含主题目录/偏好运行时）。为了代码分割，保留逐文件 import（`@thinkrail/ui/dialog`）。设计 token 留在
+  `apps/web/src/styles`；SDK 与扩展 web 半边只使用 token 工具类，而应用的 CSS `@source` 与颜色/间距/字体检查
+  覆盖 `packages/ui` 与 `thinkrail-extensions/*/web`。
+- **不在 SDK 里（目前）：** 带高亮的 `CodeBlock` 与 shiki 高亮器 —— 未做到依赖闭合（高亮器 → 主题 barrel）。
+  当第二个扩展需要高亮时，它们会随通用的 CSS 变量 shiki 映射一起搬过去。
 
-## Composition — the registry files
+## 组合 —— 注册表文件
 
-- **Server:** `packages/server/src/extensions/registry.ts` statically imports every
-  `@thinkrail/ext-*/server` and exports entries `{ specifier, extension }` — the descriptor **and its public
-  server specifier as a string**. Static imports put the factories into the compiled CLI binary and the
-  desktop bundle through the normal server graph, so the packagers generate no factory lists for them
-  (the generated lists remain only for the pi packages not yet wrapped as extensions). The resource
-  loader flattens `extensions` / `childExtensions` into named inline extensions in dev and bundled mode
-  alike — one composition mode, no path-based dev loading. **Skill resolution is owner-scoped:** one
-  shared resolver resolves the extension's entry from `specifier`, then each `skillPackages` manifest via
-  `createRequire(extensionEntry)` — build support stages the flattened roots, unbundled dev resolves at
-  runtime, the bundled runtime uses only the injected staged root. The launcher infrastructure (desktop's
-  bundled server runtime, `startDesktopHost`, `registerBundledRuntime`'s OAuth/Bedrock/trash registration,
-  the generated-module isolation of `pi-web-access`) is unchanged by this.
-- **Web:** `apps/web/src/extensions/registry.ts` exports the ordered web extensions;
-  `registerWebExtensions()` feeds their `toolRenderers` into the chat tool registry. App-local tool
-  registrations retain their side-effect imports; extension descriptors need none.
+- **服务端：** `packages/server/src/extensions/registry.ts` 静态 import 每个 `@thinkrail/ext-*/server`，并导出
+  条目 `{ specifier, extension }` —— 描述符**及其作为字符串的公开 server 说明符**。静态 import 让这些 factory
+  通过正常的 server 图进入编译后的 CLI 二进制与桌面 bundle，因此打包器不会为它们生成 factory 列表（生成的列表
+  只留给尚未包装成扩展的 pi 包）。资源加载器在 dev 与打包模式下同样把 `extensions` / `childExtensions` 摊平成
+  具名内联扩展 —— 只有一种组合模式，没有基于路径的 dev 加载。**技能解析是按拥有者划分作用域的：** 一个共享
+  解析器先从 `specifier` 解析扩展入口，然后通过 `createRequire(extensionEntry)` 解析每个 `skillPackages`
+  manifest —— 构建支持会暂存摊平后的根，未打包的 dev 在运行时解析，打包后的运行时只用注入的暂存根。启动器
+  基础设施（桌面打包的 server 运行时、`startDesktopHost`、`registerBundledRuntime` 的 OAuth/Bedrock/trash
+  注册、`pi-web-access` 的生成模块隔离）不因此改变。
+- **Web：** `apps/web/src/extensions/registry.ts` 导出有序的 web 扩展；`registerWebExtensions()` 把它们的
+  `toolRenderers` 喂给聊天工具注册表。应用本地的工具注册保留它们的副作用 import；扩展描述符则不需要。
 
-## Boundary rules (enforced by `scripts/check-module-boundaries.ts`, with negative tests)
+## 边界规则（由 `scripts/check-module-boundaries.ts` 强制，带负向测试）
 
-- Discovery of `pi-extensions/*` and `thinkrail-extensions/*` as workspace roots.
-- **Source halves:** inside every extension, `web/**` and `server/**` never import each other, including
-  by relative path.
-- **Public subpaths:** `apps/web` may import only `@thinkrail/ext-*/web`; `packages/server` only
-  `@thinkrail/ext-*/server`.
-- Edges: `extension-api → contracts`; `ui → contracts`; `ext-*/web → ui, extension-api, contracts`;
-  `ext-*/server → extension-api, its pi package`; `apps/web → contracts, ui, extension-api, ext-*/web`;
-  `packages/server → extension-api, ext-*/server` (and no longer directly on pi packages an extension owns).
+- 把 `pi-extensions/*` 与 `thinkrail-extensions/*` 发现为工作区根。
+- **源码半边：** 在每个扩展内部，`web/**` 与 `server/**` 绝不互相 import，包括通过相对路径。
+- **公开子路径：** `apps/web` 只能 import `@thinkrail/ext-*/web`；`packages/server` 只能 import
+  `@thinkrail/ext-*/server`。
+- 边：`extension-api → contracts`；`ui → contracts`；`ext-*/web → ui, extension-api, contracts`；
+  `ext-*/server → extension-api, 它的 pi 包`；`apps/web → contracts, ui, extension-api, ext-*/web`；
+  `packages/server → extension-api, ext-*/server`（且不再直接依赖扩展所拥有的 pi 包）。
 
-## Delivery template (every extension, every PR user-invisible)
+## 交付模板（每个扩展、每个 PR 对用户都不可见）
 
-1. **New pi package beside the old one**, published; old package and host wiring untouched.
-2. **Web half moves** into `thinkrail-extensions/<name>/web`, registered from the web registry; the server
-   still runs the old package — both register the same tool name, so rendering is unchanged.
-3. **Server half + wiring**: `./server` composes the new package, the server registry picks it up, the
-   old package is deleted.
+1. **在旧包旁边新建 pi 包**，发布；旧包与宿主接线保持不动。
+2. **web 半边迁移**到 `thinkrail-extensions/<name>/web`，由 web 注册表注册；server 仍运行旧包 —— 两边注册同一个
+   工具名，所以渲染不变。
+3. **server 半边 + 接线**：`./server` 组合新包，server 注册表拾取它，旧包被删除。
 
-PRs 1 and 2 are independent; PR 3 depends on both. A *new* extension without a web half renders through
-the default tool renderer until step 2 — never visualize, whose renderer exists before and after.
+PR 1 与 PR 2 相互独立；PR 3 依赖两者。一个没有 web 半边的*新*扩展在第 2 步之前通过默认工具渲染器渲染 —— 绝不是
+visualize，它的渲染器在第 2 步前后都存在。
 
-## Members
+## 成员
 
-| extension | pi capability | notes |
+| 扩展 | pi 能力 | 备注 |
 | --- | --- | --- |
-| `visualize` | `@thinkrail/pi-visualize` | shipped. `./server` injects the **strict** mermaid validator (`mermaid` at the web renderer's catalog version, initialised through `linkedom` — required: DOMPurify needs a real `document` for flowchart/class/state/gantt/mindmap, verified under Bun). `./web` carries the diagram/comparison cards and exports `MermaidView`. The guarantee is syntax parsing, not SVG/layout success; the browser renderer keeps its fallback. |
-| `web-access` | third-party `pi-web-access` | planned next: wraps the npm package with the existing renderers and `headlessSearchPolicy`, removing the last packager special case. |
+| `visualize` | `@thinkrail/pi-visualize` | 已交付。`./server` 注入**严格**的 mermaid 校验器（`mermaid` 用 web 渲染器所在的 catalog 版本，通过 `linkedom` 初始化 —— 必需：DOMPurify 需要真实的 `document` 来处理 flowchart/class/state/gantt/mindmap，已在 Bun 下验证）。`./web` 承载 diagram/comparison 卡片并导出 `MermaidView`。保证的是语法解析，而不是 SVG/布局成功；浏览器渲染器保留它的回退。 |
+| `web-access` | 第三方 `pi-web-access` | 计划中的下一步：用现有的渲染器与 `headlessSearchPolicy` 包装这个 npm 包，去掉打包器最后一处特例。 |

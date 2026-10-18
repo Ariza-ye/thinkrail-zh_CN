@@ -1,6 +1,6 @@
 ---
-description: "Write tests for a target"
-argument-hint: "[path]"
+description: "为某个目标写测试"
+argument-hint: "[路径]"
 ---
-Write tests for $1. Cover the main behavior, the important edge cases, and one failure path.
-Match the project's existing test conventions and runner, then run them and report the result.
+为 $1 编写测试。覆盖主要行为、重要的边界情况，以及一条失败路径。
+遵循项目现有的测试约定与测试运行器，然后运行它们并报告结果。

@@ -1,32 +1,32 @@
 ---
 name: Bug report
-about: Report something that isn't working as expected
+about: 报告没有按预期工作的行为
 title: ''
 labels: bug
 assignees: ''
 ---
 
-## Description
+## 描述
 
-A clear and concise description of what the bug is.
+清晰简洁地描述这个 bug 是什么。
 
-## Steps to reproduce
+## 复现步骤
 
 1. ...
 2. ...
 3. ...
 
-## Expected behavior
+## 预期行为
 
-What you expected to happen.
+你预期会发生什么。
 
-## Actual behavior
+## 实际行为
 
-What actually happened. Include logs, stack traces, or screenshots if relevant.
+实际发生了什么。如果相关，请附上日志、堆栈跟踪或截图。
 
-## Environment
+## 环境
 
-- OS:
-- Bun version (`bun --version`):
-- Node version (`node --version`):
-- ThinkRail version / commit:
+- 操作系统：
+- Bun 版本（`bun --version`）：
+- Node 版本（`node --version`）：
+- ThinkRail 版本 / 提交：
