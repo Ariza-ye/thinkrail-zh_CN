@@ -2,474 +2,383 @@
 id: module-desktop
 type: module-design
 status: active
-title: Desktop launcher/client (Electrobun)
+title: 桌面启动器/客户端（Electrobun）
 parent: architecture
 depends-on: [module-server, module-contracts, module-shared]
 tags: [desktop, launcher, packaging]
 references: [submodule-web-navigation, module-artifact-tests, module-ci-release, submodule-web-shell]
 ---
 
-## Responsibility
+## 职责
 
-The native Electrobun launcher/client over the existing web UI and wire. The local-host profile embeds
-the server in the Electrobun Bun process, serves the packaged web artifact on one loopback origin, and
-opens that origin in a native system webview. `apps/cli` remains the sibling browser launcher and release
-rollback. A later shared-client profile may dial an existing host without introducing another UI, wire, or
-engine architecture.
+运行在既有 web UI 与线上协议之上的原生 Electrobun 启动器/客户端。local-host 配置把服务器嵌进 Electrobun
+的 Bun 进程，在一个回环 origin 上提供打包好的 web 产物，并在原生系统 webview 中打开那个 origin。
+`apps/cli` 仍是同级的浏览器启动器与发布回滚路径。之后的 shared-client 配置可以拨通一个既有宿主，而不引入
+另一套 UI、线上协议或引擎架构。
 
-## Boundary
+## 边界
 
-- **Owns:** Electrobun configuration and lifecycle; native window policy, including the per-platform
-  title-bar treatment and the window-chrome geometry it publishes to the web client; local `bootHost()` startup;
-  packaged resource staging; the PI-compatible server-runtime bundle; desktop route preload/persistence;
-  the installed-font list the web client's interface-font picker reads; a bounded generic client-preference adapter under stable backend-profile/window identity; and the
-  opt-in live-window test seam. Standalone artifact harnesses belong to [[module-artifact-tests]].
-- **Public surface:** the packaged desktop application and its installers. No test-helper library is
-  exported by the application package.
-- **Allowed deps:** `server` for the embedded host and build-support manifest; `shared`
-  for release identity; `contracts` for
-  compatibility/native-bridge types and the shared `createQuitConfirmation` rule; the completed built web
-  artifact; Electrobun `2.0.1` and its generated SDK; build-only `pe-library`/`resedit` for the
-  Electrobun 2.0.1 Windows-uninstaller icon gap; build-only `@resvg/resvg-js` to rasterize the icon
-  source (below); Bun/Node.
-- **Forbidden:** spawning the CLI or a second engine process; implementing ordinary product feature or
-  agent/domain logic; importing web source at runtime; introducing a desktop-only wire or UI state model;
-  storing one active location on the backend; or bundling CEF without a new acceptance failure that
-  justifies it. Native shell, lifecycle, and packaging concerns are the only desktop-specific behavior.
+- **拥有：** Electrobun 配置与生命周期；原生窗口策略，包括按平台的标题栏处理方式以及它向 web 客户端发布的
+  窗口外壳几何；本地 `bootHost()` 启动；打包资源暂存；PI 兼容的 server-runtime bundle；桌面路由的
+  preload/持久化；web 客户端界面字体选择器所读取的已安装字体列表；稳定 backend-profile/window 身份下的有界
+  通用客户端偏好适配器；以及可选的实时窗口测试接缝。独立的 artifact 测试装置属于
+  [[module-artifact-tests]]。
+- **Public surface（公开接口）：** 打包好的桌面应用及其安装程序。应用包不导出任何测试辅助库。
+- **允许的依赖：** `server`（用于内嵌宿主与 build-support 清单）；`shared`（用于发布标识）；`contracts`
+  （用于兼容/native-bridge 类型与共享的 `createQuitConfirmation` 规则）；已完成的构建 web 产物；
+  Electrobun `2.0.1` 及其生成的 SDK；仅构建期使用的 `pe-library`/`resedit`（补 Electrobun 2.0.1 的
+  Windows 卸载器图标缺口）；仅构建期使用的 `@resvg/resvg-js`（光栅化图标源，见下文）；Bun/Node。
+- **绝不触碰：** 启动 CLI 或第二个引擎进程；实现普通产品功能或 agent/领域逻辑；在运行时导入 web 源码；
+  引入仅桌面的线上协议或 UI 状态模型；在后端存储一个活动位置；或在没有新的验收失败作为理由的情况下打包
+  CEF。原生外壳、生命周期与打包关注点是唯一属于桌面的行为。
 
-## Profile and topology
+## 配置与拓扑
 
-Only the local-host profile ships. One Electrobun Bun process owns the native shell and server on the
-same event loop; the accepted in-process crash trade-off is unchanged. The host binds loopback port `0`
-and its actual port forms the window origin. The packaged `web/dist`, `/ws`, `/files`, and SPA fallback
-therefore remain same-origin and the web client has no desktop branch. A dynamic loopback port is never
-persisted.
+只发布 local-host 配置。一个 Electrobun Bun 进程在同一个事件循环上拥有原生外壳与服务器；已被接受的进程内
+崩溃取舍保持不变。宿主绑定回环端口 `0`，其实际端口构成窗口 origin。因此打包的 `web/dist`、`/ws`、
+`/files` 与 SPA 回退保持同源，web 客户端没有桌面分支。动态回环端口绝不持久化。
 
-Desktop, CLI, and source hosts do not exclude one another by data directory. Every launcher binds an
-independent serving port and initializes its own in-process services. If multiple hosts use the same mutable
-state, their persistence and event streams are not coordinated and concurrent changes may overwrite one
-another.
+桌面、CLI 与源码宿主不按数据目录互相排除。每个启动器绑定各自独立的服务端口，并初始化自己的进程内服务。
+若多个宿主使用同一份可变状态，它们的持久化与事件流并不协调，并发修改可能互相覆盖。
 
-## Startup and packaged runtime
+## 启动与打包运行时
 
-1. Resolve app resources and set `BUN_PTY_LIB` to the staged current-target FFI library before any server
-   import. Electrobun emits an ordinary JavaScript entry, not a `bun build --compile` executable, so it
-   does not embed `bun-pty`'s library.
-2. Dynamically import the separately built, unpacked `server-runtime.ts` resource. That bundle is built with
-   pi's `PI_BUNDLED_NODE=true` define, which makes PI use its embedded-modules extension loader (static jiti
-   with Babel bundled, plus virtual modules) for external extensions such as Central. Without the define a
-   single-file bundle is treated as a plain Node runtime and PI's lazy Babel `require` cannot resolve inside
-   it ([[submodule-server-agent]] owns the seam). Flattening PI into Electrobun's normal entry is still
-   forbidden: it would load `bun-pty` before `BUN_PTY_LIB` is set.
-3. The runtime value-imports the four bundled pi-package factories (`pi-web-access`, `pi-spec-graph`,
-   `pi-thinkrail-workflow`, `pi-todos`) and calls `registerBundledRuntime()` with those factories, the
-   `pi-web-access` factory needed by delegation children (picked by `BuildRuntimeSources.webAccessIndex`,
-   never by position), the staged skills (every `BuildRuntimeSources.skillRoots` entry flattened into one
-   dir, duplicate routes rejected), and macOS/Windows trash helpers. ThinkRail extensions from the server
-   registry ([[submodule-server-extensions]]) need no generated entry: their factories reach the bundle
-   through `@thinkrail/server`'s static import graph. The generator's key map must satisfy every key of the server-owned
-   `BundledExtensions` contract, so adding a required launcher field fails desktop typecheck instead of
-   producing a packaged-only `undefined`. It then calls `bootHost({ resolveShellEnv: true, … })` on loopback port `0` with the staged web
-   directory, baked version and release-only analytics key, `desktop` analytics provenance, and, only when packaged, the launcher-supplied
-   `Utils.openExternal` callback used by the host's one-shot browser attribution claim. The callback passes through
-   `DesktopHostOptions` and the generated runtime. The first native-window `dom-ready` explicitly calls the
-   proxied `host.server.startAttributionClaim()` readiness method; host boot and elapsed time do not start a
-   saved-choice claim. No deep-link or RPC surface is added.
-4. Restore the valid route fragment and bounded client-preference map for
-   `{ backendProfileId: "local", windowId: "main" }`. The route is appended to the fresh origin; the
-   preference map is serialized as data and prepended to the preload source so the web client can hydrate
-   before React mounts despite the changing port. Open one normal native `BrowserWindow` with the system
-   renderer.
+1. 在任何 server 导入之前解析应用资源，并把 `BUN_PTY_LIB` 指向已暂存的目标平台 FFI 库。Electrobun 生成
+   的是普通 JavaScript 入口，而不是 `bun build --compile` 可执行文件，因此它不内嵌 `bun-pty` 的库。
+2. 动态导入单独构建、未打包的 `server-runtime.ts` 资源。该 bundle 用 pi 的 `PI_BUNDLED_NODE=true`
+   define 构建，这使 PI 对 Central 这类外部扩展使用其内嵌模块的扩展加载器（静态 jiti，内置 Babel，外加
+   虚拟模块）。没有该 define，单文件 bundle 会被当作普通 Node 运行时而 PI 的惰性 Babel `require` 无法在其中
+   解析（[[submodule-server-agent]] 拥有该接缝）。把 PI 摊平进 Electrobun 的普通入口仍然是被禁止的：那会
+   在 `BUN_PTY_LIB` 设置之前加载 `bun-pty`。
+3. 运行时按值导入四个打包的 pi-package 工厂（`pi-web-access`、`pi-spec-graph`、`pi-thinkrail-workflow`、
+   `pi-todos`），并用这些工厂、委派子进程所需的 `pi-web-access` 工厂（由
+   `BuildRuntimeSources.webAccessIndex` 选定，绝不按位置）、已暂存的技能（把每个
+   `BuildRuntimeSources.skillRoots` 条目摊平进一个目录，重复路由被拒绝），以及 macOS/Windows 的 trash
+   helper 调用 `registerBundledRuntime()`。来自 server 注册表的 ThinkRail 扩展
+   （[[submodule-server-extensions]]）不需要生成的入口：它们的工厂通过 `@thinkrail/server` 的静态导入图
+   抵达该 bundle。生成器的键映射必须满足 server 拥有的 `BundledExtensions` 契约的每一个键，因此新增一个
+   必需的启动器字段会让桌面 typecheck 失败，而不会产出只在打包版本里才有的 `undefined`。随后它在回环端口 `0`
+   上，带着已暂存的 web 目录、烘焙版本与仅发布版使用的 analytics key、`desktop` analytics 来源，以及
+   （仅打包时）启动器提供的 `Utils.openExternal` 回调调用 `bootHost({ resolveShellEnv: true, … })`，
+   该回调供宿主的一次性浏览器归因声明使用。该回调穿经 `DesktopHostOptions` 与生成的运行时。首个原生窗口的
+   `dom-ready` 会显式调用被代理的 `host.server.startAttributionClaim()` 就绪方法；宿主启动与已流逝时间都不
+   会启动一次已保存选择的声明。不新增任何深链接或 RPC 接口。
+4. 为 `{ backendProfileId: "local", windowId: "main" }` 恢复有效路由片段与有界客户端偏好映射。路由被
+   追加到新 origin 上；偏好映射被序列化为数据并前置到 preload 源码，好让 web 客户端在端口不断变化的情况下
+   仍能在 React 挂载前水合。用系统渲染器打开一个普通的原生 `BrowserWindow`。
 
-The Electrobun entry bundle contains native-shell code only. A static server import there is forbidden:
-it can load `bun-pty` before `BUN_PTY_LIB` and bypass the defined server-runtime build. Startup
-failure is logged through the shared crash path, shown in a native error dialog, and exits without leaving
-a hidden host.
+Electrobun 入口 bundle 只包含原生外壳代码。其中出现静态 server 导入是被禁止的：它可能在 `BUN_PTY_LIB`
+之前加载 `bun-pty`，并绕过已定义的 server-runtime 构建。启动失败经由共享崩溃路径记录、在原生错误对话框中
+展示，并退出而不留下一个隐藏的宿主。
 
-Packaged resources remain physical and unpacked: web assets and skills are read through filesystem paths,
-the PTY uses FFI, trash helpers are executable sidecars, and the preload is read as source text. ASAR is
-not part of this design.
+打包资源保持物理且未打包：web 资源与技能通过文件系统路径读取，PTY 使用 FFI，trash helper 是可执行
+sidecar，preload 以源码文本形式读取。ASAR 不属于本设计。
 
-## Native application menu
+## 原生应用菜单
 
-The shell installs Electrobun's native application menu before creating the main window. Native roles,
-not browser-level key handlers, own standard editing commands so Command/Ctrl-C, V, X, A, Z, and Shift-Z
-flow through the operating-system responder chain across ordinary inputs, Monaco, xterm, and future
-webview surfaces without competing with their local key handling.
+外壳在创建主窗口之前安装 Electrobun 的原生应用菜单。标准编辑命令由原生角色（role）拥有，而不是浏览器级的
+按键处理器，因此 Command/Ctrl-C、V、X、A、Z 与 Shift-Z 会穿过操作系统的响应链，在普通输入框、Monaco、
+xterm 以及未来的 webview 表面上生效，同时不与它们本地的按键处理竞争。
 
-macOS receives the conventional application, Edit, and Window role menus. Windows receives the supported
-Edit role menu. Linux skips registration because Electrobun 2.0.1 does not support application menus
-there; WebKitGTK keeps its renderer-native editing behavior. macOS Command-H, Option-Command-H, and Command-M carry explicit
-accelerators because role items get no default shortcut. Settings… (Command-comma, after About), Quit, and Close
-are custom-action items, not roles; see Confirmed quit and close. The policy is platform-pure and the packaged
-ready seam reports whether registration ran, so unit tests pin menu composition while expanded-app smoke
-pins production wiring.
+macOS 获得惯常的 application、Edit 与 Window role 菜单。Windows 获得所支持的 Edit role 菜单。Linux 跳过
+注册，因为 Electrobun 2.0.1 在那里不支持应用菜单；WebKitGTK 保留其渲染进程原生的编辑行为。macOS 上的
+Command-H、Option-Command-H 与 Command-M 携带显式加速键，因为 role 项没有默认快捷键。Settings…
+（Command-逗号，位于 About 之后）、Quit 与 Close 是自定义动作项，而不是 role；见已确认的退出与关闭。该策略
+是平台纯粹的，打包的 ready 接缝会报告注册是否运行过，因此单元测试钉住菜单组成，而扩展应用冒烟钉住生产接线。
 
-### Confirmed quit and close
+### 已确认的退出与关闭
 
-Command-Q (`quit-shortcut`) must be confirmed: hold it for 1200 ms, then release Q or Command; or press
-it again within 500 ms of releasing the first press, then release. A single tap expires silently. A
-keyboard quit never fires while the chord is held, so key-repeat cannot leak Command-Q into the next app.
-Electrobun fires the menu action on every press and every OS key-repeat with no repeat flag, so
-`quitShortcut` drives the shared contracts `createQuitConfirmation` rule (the one copy of the gesture, also
-used by the web shell for Linux Ctrl+Q) and feeds it key state from CoreGraphics (`keyState.ts`, Bun FFI, HID system state,
-no extra permission) and polls it while engaged. The hold counts only the non-modifier keys down when
-the action fires, because the menu matches Q by character and its physical key differs per layout (AZERTY,
-Dvorak); a key-repeat press keeps that set and never adds to it, so a key pressed later never counts as the hold. A menu click arrives as the same action with no key down and a left mouse-up newer than the
-last key-down, so it quits directly. A keyboard or VoiceOver menu pick (Ctrl+F2, Enter; VO+Space) arrives
-with Command up and its last key-down newer than the last modifier change, so it quits directly too. A
-late-handled tap arms instead: its Command release is a modifier change newer than Q's key-down. A
-late-handled press where Command is released but Q stays down can pass as a menu pick; handling takes
-milliseconds, so this is accepted. Key state unreadable
-at press quits directly; unreadable while armed cancels, unless release was already reached. With no visible hint (window minimized, or host boot before the window and RPC exist), a press skips
-confirmation and quits on release. The menu listener is attached right after the menu, so quit works
-during boot; commands drop until the window exists. Every
-confirmed quit goes through the quit coordinator. Dock Quit, Apple Event quit, and update restart bypass
-the menu and stay direct. Hints travel as the `quitHintChanged` message. Quit stays outside the command
-channel: main owns it, it needs key state, and it must work while the webview hangs.
+Command-Q（`quit-shortcut`）必须被确认：按住它 1200 ms，然后松开 Q 或 Command；或者在松开第一次按下
+之后 500 ms 内再次按下，然后再松开。单次轻点会静默过期。组合键被按住期间键盘退出绝不触发，因此按键重复
+无法把 Command-Q 泄露到下一个应用。Electrobun 在每次按下以及每次 OS 按键重复时都会触发该菜单动作，
+且没有重复标志，因此 `quitShortcut` 驱动共享 contracts 的 `createQuitConfirmation` 规则（该手势的唯一
+一份实现，Linux 上的 Ctrl+Q 也由 web 外壳使用），并从 CoreGraphics（`keyState.ts`、Bun FFI、HID 系统状态，
+无需额外权限）向它提供按键状态，同时在侦测期间轮询它。按住只统计动作触发时按下的非修饰键，因为菜单按
+字符匹配 Q，而它的物理键因布局而异（AZERTY、Dvorak）；按键重复的按下保留该集合且绝不向其添加，因此之后
+按下的键绝不计作按住。菜单点击以同一动作到达，但没有按键按下，且左键抬起晚于最后一次按下，因此它直接
+退出。键盘或 VoiceOver 菜单选择（Ctrl+F2、Enter；VO+Space）到达时 Command 已抬起，且其最后一次按下晚于
+最后一次修饰键变化，因此它也直接退出。迟到处理的轻点则改为待命：它的 Command 松开是晚于 Q 按下的修饰键
+变化。迟到处理的按下中 Command 已松开但 Q 仍按下，可能被当作菜单选择；处理只需毫秒级，因此这是被接受的。
+按下时按键状态不可读则直接退出；已在待命状态时不可读则取消，除非已经到达松开。若没有可见提示（窗口最小化，
+或宿主启动早于窗口与 RPC 存在），按下会跳过确认并在松开时退出。菜单监听器紧接菜单之后挂上，因此退出在
+启动期间就能工作；命令在窗口出现之前被丢弃。每一次已确认的退出都经过退出协调器。Dock Quit、Apple Event
+退出与更新重启绕过菜单，保持直接。提示以 `quitHintChanged` 消息传递。退出保持在命令通道之外：main 拥有
+它，它需要按键状态，且它必须在 webview 挂起时仍能工作。
 
-On Linux no app menu exists, so the web shell owns Ctrl+Q: it confirms the same gesture from
-keydown/keyup and calls `NativeShortcutsBridge.quit()`, the `quitApp` RPC request, which starts the same
-quit coordinator without awaiting shutdown. Windows binds no quit chord; Alt+F4 stays the OS window close
-and its ordinary shutdown.
+在 Linux 上没有应用菜单，因此由 web 外壳拥有 Ctrl+Q：它从 keydown/keyup 确认同一手势，并调用
+`NativeShortcutsBridge.quit()`，即 `quitApp` RPC 请求，这会启动同一个退出协调器而不等待关闭。Windows
+不绑定任何退出组合键；Alt+F4 仍是 OS 窗口关闭及其普通关闭流程。
 
-Other menu shortcuts are forwarded `NativeCommand`s: the menu action is the command id (an exhaustive `Record<NativeCommand, true>` gates it) and main sends
-`nativeCommand`. A shared `repeatGate` makes them edge-triggered: after a forward with a key down, further
-actions drop until no non-modifier key is down, so key-repeat never fires a command twice. A click with no
-key down, or unreadable key state, always forwards. Command-W (`close-item`) asks the web client to close
-its focused item or do nothing; it never closes the native window. Command-comma (`open-settings`) asks it
-to open Settings; the web decides whether a modal blocks it. The preload exposes hints and commands
-as the frozen non-enumerable `__THINKRAIL_NATIVE_SHORTCUTS__` `NativeShortcutsBridge` (built by
-`shortcutsBridge.ts`) on every desktop platform; only the macOS menu sends events today. On Windows and
-Linux the web shell owns Ctrl+W / Ctrl+F4 (close item) and Ctrl+, (Settings) through its command table.
+其他菜单快捷键被转发为 `NativeCommand`：菜单动作就是命令 id（由一个穷尽的
+`Record<NativeCommand, true>` 门控），且 main 发送 `nativeCommand`。共享的 `repeatGate` 使它们边沿触发：
+在一次带按键按下的转发之后，后续动作会被丢弃，直到没有任何非修饰键按下，因此按键重复绝不把命令触发两次。
+没有按键按下的点击，或不可读的按键状态，总是转发。Command-W（`close-item`）请求 web 客户端关闭其聚焦的项
+或什么都不做；它绝不关闭原生窗口。Command-逗号（`open-settings`）请求它打开 Settings；由 web 决定模态是否
+阻断它。preload 在每个桌面平台上把提示与命令暴露为冻结的不可枚举
+`__THINKRAIL_NATIVE_SHORTCUTS__` `NativeShortcutsBridge`（由 `shortcutsBridge.ts` 构建）；目前只有 macOS
+菜单会发送事件。在 Windows 与 Linux 上，web 外壳通过其命令表拥有 Ctrl+W / Ctrl+F4（关闭项）与 Ctrl+,（Settings）。
 
-The preload also exposes the frozen non-enumerable `__THINKRAIL_NATIVE_NOTIFICATIONS__`
-`NativeNotificationBridge` ([[module-contracts]]) on every desktop platform. It has two capabilities:
-`show({ title, subtitle?, body, silent? })` forwards a `showNotification` RPC request to the main
-process, which calls Electrobun `Utils.showNotification` (native OS notification center); delivery is
-best-effort, so a failed request is dropped rather than surfacing an unhandled rejection.
-`isWindowFocused()` returns whether the native window holds OS-level focus; the main process tracks this
-via `BrowserWindow` `focus`/`blur` events and pushes the state to the renderer through a
-`windowFocusChanged` RPC message, which the preload caches synchronously. This correctly reports `true`
-when DevTools or other in-window chrome has renderer focus, unlike `document.hasFocus()` which returns
-`false` in that case. **Platform caveat:** on Windows, DevTools is a separate native window; focusing it
-fires `blur` on the main `BrowserWindow`, so `isWindowFocused()` falls back to the same limitation as
-the browser channel. On macOS, DevTools is docked and the main-window focus is preserved. Electrobun
-2.0.1 has no application-level activation signal; a cross-window solution requires a future API. The web
-client detects this bridge by capability and routes its attention notifications through it instead of the
-page Notifications API — the web shell keeps no desktop branch.
-Electrobun click callbacks are not landed yet, so the native notification carries no click action.
+preload 还在每个桌面平台上暴露冻结的不可枚举 `__THINKRAIL_NATIVE_NOTIFICATIONS__`
+`NativeNotificationBridge`（[[module-contracts]]）。它有两个能力：
+`show({ title, subtitle?, body, silent? })` 把 `showNotification` RPC 请求转发给主进程，
+主进程调用 Electrobun `Utils.showNotification`（原生 OS 通知中心）；投递是尽力而为的，因此失败的请求
+被丢弃，而不是冒出未处理的 rejection。`isWindowFocused()` 返回原生窗口是否持有 OS 级焦点；主进程通过
+`BrowserWindow` 的 `focus`/`blur` 事件跟踪这一点，并通过 `windowFocusChanged` RPC 消息把状态推给渲染进程，
+preload 同步缓存它。当 DevTools 或其他窗口内 chrome 持有渲染进程焦点时，这能正确报告 `true`，而
+`document.hasFocus()` 在该情况下返回 `false`。**平台注意：**在 Windows 上，DevTools 是独立的原生窗口；
+聚焦它会触发主 `BrowserWindow` 的 `blur`，因此 `isWindowFocused()` 会退回到与浏览器通道相同的限制。在
+macOS 上，DevTools 是停靠的，主窗口焦点得以保留。Electrobun 2.0.1 没有应用级激活信号；跨窗口方案需要
+未来的 API。web 客户端按能力探测这座桥，并把它的注意力通知经由该桥转发，而不是走页面的 Notifications
+API —— web 外壳不保留桌面分支。Electrobun 的点击回调尚未落地，因此原生通知不携带点击动作。
 
-Each chord has exactly one owner: a native menu accelerator (forwarded as a `NativeCommand`) or web
-keydown, never both, because the webview still receives keydown for accelerator chords. Native owns chords
-the OS or browser reserves (Command-Q/W/H/M); web owns Ctrl+Q/W/F4 where no native menu claims them.
+每个组合键恰好只有一个拥有者：原生菜单加速键（转发为 `NativeCommand`）或 web keydown，绝不两者兼有，
+因为 webview 对加速键组合仍会收到 keydown。原生拥有 OS 或浏览器保留的组合键（Command-Q/W/H/M）；在
+没有任何原生菜单认领之处，Ctrl+Q/W/F4 归 web 所有。
 
-## Native page zoom
+## 原生页面缩放
 
-Command/Ctrl-`+` (`=`), `-`, and `0` zoom as a browser's default action: the desktop preload listens after
-page handlers and yields any chord a handler already claimed with `preventDefault` (Monaco's `Mod+K` folding
-chords end on these keys), then sends a typed one-way request to the main process. A handler that only stops
-propagation also keeps the chord, so zoom is inert while such an input has focus. The main process steps from
-the webview's current native zoom to the adjacent bounded browser-style factor, so zoom changed outside the
-shortcuts (WebView2's Ctrl+wheel) cannot desync it.
+Command/Ctrl-`+`（`=`）、`-` 与 `0` 像浏览器的默认动作那样缩放：桌面 preload 在页面处理器之后监听，
+并把任何已被处理器用 `preventDefault` 认领的组合键让出（Monaco 的 `Mod+K` 折叠组合键以这些键结尾），
+然后向主进程发送一个类型化的单向请求。只阻止传播的处理器同样保留该组合键，因此当这类输入持有焦点时缩放是
+惰性的。主进程从 webview 当前的原生缩放步进到相邻的有界浏览器式倍数，因此在这些快捷键之外发生的缩放变化
+（WebView2 的 Ctrl+滚轮）无法让它失步。
 
-On macOS, WebKit's two-finger pinch lifecycle drives that same native page zoom continuously. The preload
-yields gestures claimed by page content and forwards validated scales; the main process captures native zoom
-at gesture start and applies each absolute scale against that baseline, bounded to 50%–200%, so updates never
-compound or introduce a second zoom owner. The web app owns no duplicate shortcut, gesture, or zoom state.
+在 macOS 上，WebKit 的双指捻合生命周期连续驱动同一套原生页面缩放。preload 让出被页面内容认领的手势并转发
+校验过的缩放比例；主进程在手势开始时捕获原生缩放，并以该基线应用每个绝对比例，范围限制在 50%–200%，因此
+更新绝不叠加，也不会引入第二个缩放拥有者。web 应用不拥有任何重复的快捷键、手势或缩放状态。
 
-## Installed fonts
+## 已安装字体
 
-The web client's interface-font picker asks the host for this machine's font families
-(`listSystemFonts`, `systemFonts.ts`, exposed to the page as the frozen `__THINKRAIL_SYSTEM_FONTS__`
-bridge) because the system webview cannot answer it: WebKit has no `queryLocalFonts`, so only WebView2
-would. Families come from reading each font file's `name` table in the platform font directories
-(`~/Library/Fonts`, `/Library/Fonts`, `/System/Library/Fonts{,/Supplemental}` and Apple's
-`AssetsV2/com_apple_MobileAsset_Font*` bundles on macOS — PingFang lives there, not in `Fonts/`;
-`%WINDIR%\Fonts` plus the per-user directory on Windows; `~/.fonts`, `~/.local/share/fonts`,
-`/usr/local/share/fonts`, `/usr/share/fonts` on Linux). The enumeration deliberately reads file offsets
-rather than shelling out: `system_profiler SPFontsDataType` answers the same question in ~11s on a
-font-rich macOS install (past the bridge's 5000 ms request budget), and the Windows font registry yields
-display names such as `Microsoft YaHei & Microsoft YaHei UI (TrueType)` rather than families. Two
-container details are load-bearing: a `.ttc` collection's table offsets are absolute from the start of
-the file, not from the face, and Macintosh-platform `name` records are single-byte. Apple's `.`-prefixed
-private faces are dropped here, so no client has to know that convention. An unreadable directory or
-file yields fewer rows, never a failed request; the answer is cached for the process lifetime, and the
-choice of family is the web client's preference, never a host setting.
+web 客户端的界面字体选择器向宿主询问本机的字体族（`listSystemFonts`、`systemFonts.ts`，通过冻结的
+`__THINKRAIL_SYSTEM_FONTS__` 桥暴露给页面），因为系统 webview 无法回答这个问题：WebKit 没有
+`queryLocalFonts`，只有 WebView2 才会有。字体族来自在各平台字体目录中读取每个字体文件的 `name` 表
+（macOS 上的 `~/Library/Fonts`、`/Library/Fonts`、`/System/Library/Fonts{,/Supplemental}` 以及 Apple 的
+`AssetsV2/com_apple_MobileAsset_Font*` bundle —— PingFang 就在那里，而不在 `Fonts/`；Windows 上的
+`%WINDIR%\Fonts` 加上按用户目录；Linux 上的 `~/.fonts`、`~/.local/share/fonts`、
+`/usr/local/share/fonts`、`/usr/share/fonts`）。该枚举刻意读取文件偏移而不是 shell out：
+`system_profiler SPFontsDataType` 在字体丰富的 macOS 安装上对同一问题要花约 11 秒（超出该桥 5000 ms 的
+请求预算），而 Windows 字体注册表给出的是诸如 `Microsoft YaHei & Microsoft YaHei UI (TrueType)` 这样的
+显示名称而不是字体族。两个容器细节是关键承重的：`.ttc` 集合的 table 偏移是相对文件起始的绝对偏移，而不是
+相对字面；Macintosh 平台的 `name` 记录是单字节的。Apple 以 `.` 为前缀的私有字面在这里被丢弃，因此没有
+客户端需要知道那个约定。不可读的目录或文件只是产出更少的行，绝不是一个失败的请求；答案在进程生命周期内被
+缓存，而字体族的选择是 web 客户端的偏好，绝不是宿主设置。
 
-## Native window chrome
+## 原生窗口外壳
 
-The web topbar ([[submodule-web-shell]]) is the window's title bar wherever the framework lets native
-controls survive without a native strip. Electrobun 2.0.1 exposes no caption-colour API on any platform
-(macOS and Windows only follow the system light/dark setting), so a theme-coloured title bar means
-removing the native strip and letting the web header occupy it. The policy is platform-pure
-(`windowChrome.ts`, pinned by unit tests) and spread into the main `BrowserWindow`:
+只要框架允许原生控件在没有原生条带的情况下存活，web 顶栏（[[submodule-web-shell]]）就是窗口的标题栏。
+Electrobun 2.0.1 在任何平台上都不暴露标题栏颜色 API（macOS 与 Windows 只跟随系统的浅色/深色设置），
+因此主题色的标题栏意味着移除原生条带并让 web 头部占据它。该策略是平台纯粹的（`windowChrome.ts`，由单元
+测试钉住）并被铺进主 `BrowserWindow`：
 
-| platform | `titleBarStyle` | native controls | published insets | header drag |
+| 平台 | `titleBarStyle` | 原生控件 | 发布的内边距 | 头部拖拽 |
 |---|---|---|---|---|
-| macOS | `hiddenInset` — transparent strip, hidden title, full-size content view | AppKit traffic lights stay; `trafficLightOffset { x: 0, y: 4 }` centres the 12px buttons in the 40px topbar (measured on a packaged build: the default position centres them at 16px, so +4 lands on 20) | left `64px` — the traffic-light zone (7 + 3×12 + 2×8 = 59px on the spacing grid) | yes |
-| Windows | `hiddenInset` — Electrobun creates `WS_CAPTION \| WS_THICKFRAME` and strips the caption in `WM_NCCALCSIZE`: resize borders and the DWM shadow survive, no native caption buttons | none native; the web renders minimize / maximize-or-restore / close ([[submodule-web-shell]]) and drives the window over RPC | right `138px` — three 46px caption buttons | yes |
-| Linux | `default` | GTK/WM decorations | none | no |
+| macOS | `hiddenInset` —— 透明条带、隐藏标题、全尺寸内容视图 | AppKit 的红绿灯按钮保留；`trafficLightOffset { x: 0, y: 4 }` 把 12px 按钮在 40px 顶栏中居中（在打包构建上实测：默认位置把它们居中在 16px，因此 +4 落在 20） | 左 `64px` —— 红绿灯区（按间距栅格 7 + 3×12 + 2×8 = 59px） | 是 |
+| Windows | `hiddenInset` —— Electrobun 创建 `WS_CAPTION \| WS_THICKFRAME` 并在 `WM_NCCALCSIZE` 中剥掉标题栏：缩放边框与 DWM 阴影保留，没有原生标题栏按钮 | 没有原生控件；web 渲染最小化 / 最大化或还原 / 关闭（[[submodule-web-shell]]）并通过 RPC 驱动窗口 | 右 `138px` —— 三个 46px 标题栏按钮 | 是 |
+| Linux | `default` | GTK/WM 装饰 | 无 | 否 |
 
-**Windows.** Electrobun 2.0.1 already enables WebView2's non-client-region support, so the header's
-`app-region: drag` is a real `HTCAPTION` hit: Aero Snap, drag-from-maximized, double-click-to-maximize and
-Alt+Space come from the OS, not from Electrobun's raw-input mover. What Electrobun omits from its
-`hiddenInset` style is `WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX` (upstream blackboardsh/electrobun#558):
-without them maximize covers the taskbar and the double-click / system-menu behaviours are inert. Until
-that lands upstream, `windowsFrame.ts` ORs the three bits onto the HWND once after window creation through
-a `dlopen`ed `user32.dll` (`GetWindowLongPtrW` → `SetWindowLongPtrW` → `SetWindowPos(SWP_FRAMECHANGED)`) —
-pure style arithmetic behind an injectable API, no C source, no runtime compilation; a failure is logged,
-never fatal. Success is judged by reading the style back, not by `SetWindowLongPtrW`'s return: a 0 previous
-style is ambiguous, and its `SetLastError`/`GetLastError` disambiguation would span separate FFI calls the
-runtime may clobber. The HTML controls call `minimizeWindow` / `toggleMaximizeWindow` / `closeWindow` requests;
-close goes through `requestClose()`, the same path as the native X, so the quit coordinator still owns
-shutdown. The main process publishes `windowStateChanged { maximized, fullScreen }` on every `dom-ready` and
-on `resize` when it changed, and the preload exposes the `NativeWindowControlsBridge`
-(`__THINKRAIL_NATIVE_WINDOW_CONTROLS__`, [[module-contracts]]) only when the injected seed says
-`windowControls`. Known gaps, accepted rather than patched with a window subclass: the top edge is not a
-resize hit (Electrobun folds it into the client area, also #558) and Windows 11 Snap Layouts do not appear on
-hover over the HTML maximize button (that needs `HTMAXBUTTON`, which nothing short of WebView2's prerelease
-window-controls overlay provides). PR #469 explored keeping DWM's own buttons through a runtime-compiled HWND
-subclass and WebView2 region masking; it was set aside as too heavy to verify.
+**Windows。** Electrobun 2.0.1 已经启用 WebView2 的非客户区支持，因此头部的 `app-region: drag` 是真正的
+`HTCAPTION` 命中：Aero Snap、从最大化状态拖拽、双击最大化以及 Alt+Space 都来自 OS，而不是来自 Electrobun
+的原始输入移动器。Electrobun 从其 `hiddenInset` 样式里省略的是 `WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX`
+（上游 blackboardsh/electrobun#558）：没有它们，最大化会盖住任务栏，双击 / 系统菜单行为失效。
+在该修复落地上游之前，`windowsFrame.ts` 在窗口创建后通过 `dlopen` 的 `user32.dll`
+（`GetWindowLongPtrW` → `SetWindowLongPtrW` → `SetWindowPos(SWP_FRAMECHANGED)`）把这三个位一次性 OR 到
+HWND 上 —— 可注入 API 背后的纯样式算术，没有 C 源码，没有运行时编译；失败会被记录，绝不致命。成功与否通过
+回读样式来判定，而不是看 `SetWindowLongPtrW` 的返回值：先前样式为 0 是有歧义的，而它的
+`SetLastError`/`GetLastError` 消歧会跨越多次独立的 FFI 调用，运行时可能把它们弄脏。HTML 控件调用
+`minimizeWindow` / `toggleMaximizeWindow` / `closeWindow` 请求；关闭走 `requestClose()`，与原生 X 相同的
+路径，因此退出协调器仍拥有关闭流程。主进程在每次 `dom-ready` 以及 `resize` 变化时发布
+`windowStateChanged { maximized, fullScreen }`，而 preload 只在注入的种子声明 `windowControls` 时才暴露
+`NativeWindowControlsBridge`（`__THINKRAIL_NATIVE_WINDOW_CONTROLS__`，[[module-contracts]]）。已知缺口，
+被接受而不是用窗口子类打补丁：上边缘不是缩放到手（Electrobun 把它折进客户区，同样是 #558），并且 Windows 11
+的 Snap Layouts 不会在悬停 HTML 最大化按钮时出现（那需要 `HTMAXBUTTON`，除了 WebView2 预发布的
+window-controls overlay 之外没有任何东西能提供）。PR #469 探索过通过运行时编译的 HWND 子类与 WebView2 区域
+遮蔽来保留 DWM 自己的按钮；它被认为验证成本过高而被搁置。
 
-Linux is not planned: `hiddenInset` is a no-op under GTK and `hidden` removes decorations together with
-WM-provided resize handles. Fully custom macOS chrome (`titleBarStyle: "hidden"` with drawn traffic lights)
-was rejected because the platform provides real ones.
+Linux 未被规划：`hiddenInset` 在 GTK 下是无操作，而 `hidden` 会把装饰与 WM 提供的缩放手柄一起去掉。完全
+自定义的 macOS 外壳（`titleBarStyle: "hidden"` 加自绘红绿灯按钮）被否决，因为平台提供真的那些。
 
-**Geometry contract.** The desktop publishes three CSS custom properties on `<html>`: the two inset
-properties plus `--window-chrome-drag-region` (`drag` | `no-drag`), which tells the page whether its
-header is the title bar. The drag flag rides only the initial preload global (it is a per-policy constant);
-geometry updates arrive as `windowChromeChanged { insetLeft, insetRight }`. The web consumes the properties
-with `0px` fallbacks, so a browser-hosted client and the neutral E2E-host window (`about:blank`, no
-preload) are unaffected and the *web client still has no desktop branch*. The preload validates geometry,
-keeps only the latest value while the document root is absent, and flushes it at `DOMContentLoaded`, so a
-pending startup write cannot overwrite a newer native state. The right inset is `138px` on Windows and `0px` elsewhere; the seed additionally carries the
-per-policy `windowControls` flag, which the preload turns into the optional controls bridge.
+**几何契约。** 桌面在 `<html>` 上发布三个 CSS 自定义属性：两个内边距属性外加
+`--window-chrome-drag-region`（`drag` | `no-drag`），它告诉页面其头部是否为标题栏。拖拽标志只搭乘初始的
+preload 全局（它是按策略恒定的常量）；几何更新以 `windowChromeChanged { insetLeft, insetRight }` 到达。
+web 以 `0px` 回退值消费这些属性，因此在浏览器中托管的客户端与中性的 E2E 宿主窗口（`about:blank`，无
+preload）都不受影响，并且*web 客户端仍然没有桌面分支*。preload 校验几何，在文档根缺失时只保留最新值，并在
+`DOMContentLoaded` 时冲刷它，因此一次待处理的启动写入无法覆盖更新的原生状态。右侧内边距在 Windows 上是
+`138px`，其它地方是 `0px`；种子还携带按策略的 `windowControls` 标志，preload 把它变成可选的控件桥。
 
-**Fullscreen.** macOS native fullscreen auto-hides the traffic lights with the menu bar, and a Windows
-fullscreen window is a bare `WS_POPUP`, so fullscreen zeroes both insets and the web hides its controls when
-`windowStateChanged` reports `fullScreen`. The main process publishes geometry on every webview `dom-ready` (a reload during
-fullscreen must not inherit the windowed insets) and on `resize` only when the geometry changed. The
-neutral E2E-host window (`THINKRAIL_DESKTOP_E2E_HOST=1`) keeps the default native chrome and publishes
-nothing.
+**全屏。** macOS 原生全屏会连菜单栏一起自动隐藏红绿灯按钮，而 Windows 的全屏窗口是裸的 `WS_POPUP`，因此
+全屏会把两个内边距归零，且当 `windowStateChanged` 报告 `fullScreen` 时 web 隐藏其控件。主进程在每次 webview
+`dom-ready` 时发布几何（全屏期间的重载绝不能继承窗口态的内边距），并只在几何变化时于 `resize` 发布。中性的
+E2E 宿主窗口（`THINKRAIL_DESKTOP_E2E_HOST=1`）保留默认原生外壳且不发布任何东西。
 
-**Dragging.** The desktop's only contribution is the `drag` flag: the web header's `window-drag` utility
-resolves to `-webkit-app-region: drag` only when `--window-chrome-drag-region` says so, and Electrobun's
-own injected preload rewrites app-region declarations from same-origin stylesheets into a mirrored custom
-property it hit-tests against on `mousedown`. A decorated window (Linux, the neutral window)
-publishes `no-drag` and so never acquires a second, partial drag strip.
+**拖拽。** 桌面唯一的贡献是 `drag` 标志：web 头部的 `window-drag` 工具类仅在
+`--window-chrome-drag-region` 如此声明时解析为 `-webkit-app-region: drag`，而 Electrobun 自己注入的 preload
+会把同源样式表中的 app-region 声明改写成一个镜像的自定义属性，并在 `mousedown` 时针对它做命中测试。带装饰的
+窗口（Linux、中性窗口）发布 `no-drag`，因此绝不获得第二条、部分可用的拖拽条带。
 
-**Title-bar double-click.** The webview covers the native strip, so `NSWindow` never sees a header
-double-click, and Electrobun 2.0.1 implements app-region dragging only. Its native move uses pass-through
-event monitors, so the page still receives `dblclick`. The desktop preload listens for primary-button
-`dblclick` events the page did not `preventDefault` and sends a payload-free `titleBarDoubleClick` message
-when the target is a drag region by Electrobun's own hit-test input: the computed, inherited
-`--electrobun-app-region` property its stylesheet rewrite produces. Exactly the area that drags the window
-therefore also zooms it; the `window-no-drag` action cluster does neither, and the web client still has no
-desktop branch. The main process acts only when the macOS policy's `titleBarDoubleClick` flag is set and outside native
-fullscreen; Windows leaves it off because its `HTCAPTION` drag region already maximizes natively, and handling
-it too would toggle twice. It
-reads `AppleActionOnDoubleClick` on every double-click (asynchronous `defaults read -g`, so a changed
-setting applies without restart) and maps it as Chromium does for custom draggable areas: unset, `Maximize`
-(Zoom) or `Fill` toggles zoom through `maximize()`/`unmaximize()` (`[NSWindow zoom:]`); `Minimize`
-miniaturizes; `None` and unknown values do nothing. `Fill` uses zoom because Apple's `_zoomFill:` is
-private and unreachable through Electrobun; this window's standard zoom frame is the screen's visible
-frame, so only tiling margins differ. A double-click arriving while the previous one is still resolving is
-dropped. This workaround exists only because Electrobun lacks the behavior, tracked upstream in
-[electrobun#561](https://github.com/blackboardsh/electrobun/issues/561). An Electrobun upgrade must
-re-check the mirror property name and that issue: once the framework handles drag-region double-clicks
-itself, remove the preload listener, `titleBarDoubleClick` message, and handler, or the window toggles
-twice.
+**标题栏双击。** webview 覆盖原生条带，因此 `NSWindow` 永远看不到头部双击，而 Electrobun 2.0.1 只实现了
+app-region 拖拽。它的原生移动使用直通事件监视器，因此页面仍会收到 `dblclick`。桌面 preload 监听未被页面
+`preventDefault` 的主按钮 `dblclick` 事件，并在目标按 Electrobun 自己的命中测试输入属于拖拽区域时发送一个
+无载荷的 `titleBarDoubleClick` 消息：该输入就是其样式表改写所产出的、计算后的继承属性
+`--electrobun-app-region`。因此，恰好是能拖拽窗口的区域也会缩放窗口；`window-no-drag` 动作簇两者都不做，
+而 web 客户端仍然没有桌面分支。主进程只在 macOS 策略的 `titleBarDoubleClick` 标志被设置且在原生全屏之外时
+才动作；Windows 保持关闭，因为它的 `HTCAPTION` 拖拽区域已经原生最大化，再处理一次会切换两次。它在每次双击
+时读取 `AppleActionOnDoubleClick`（异步 `defaults read -g`，因此改动的设置无需重启即生效），并像 Chromium
+对自定义可拖拽区域那样映射：未设置、`Maximize`（Zoom）或 `Fill` 通过 `maximize()`/`unmaximize()`
+（`[NSWindow zoom:]`）切换缩放；`Minimize` 最小化；`None` 与未知值什么都不做。`Fill` 使用 zoom 是因为
+Apple 的 `_zoomFill:` 是私有的、通过 Electrobun 无法抵达；该窗口的标准缩放框是屏幕的可见框，因此只有平铺
+边距不同。前一次双击仍在解析时到达的双击会被丢弃。这个变通存在只是因为 Electrobun 缺少该行为，上游追踪于
+[electrobun#561](https://github.com/blackboardsh/electrobun/issues/561)。Electrobun 升级时必须重新核对镜像
+属性名与该 issue：一旦框架自己处理拖拽区域双击，就移除 preload 监听器、`titleBarDoubleClick` 消息与处理器，
+否则窗口会切换两次。
 
-## Navigation and window security
+## 导航与窗口安全
 
-The native window permits navigation only within its exact loopback origin. User-requested external URLs
-open through the OS instead of replacing the app surface. Navigation listeners use the SDK emitter's
-webview-scoped `will-navigate-<id>` and `new-window-open-<id>` channels; the unscoped payload has no
-webview id, and the instance listener's typed event list omits popups. Payload types are derived from
-SDK event factories, not copied into local declarations. Detail can be a raw URL, a popup object, or
-serialized navigation JSON; bounded decoding retains only a string URL and the HTTP/HTTPS/mailto
-allowlist. Native `navigationRules` enforce confinement: navigation-event responses cannot cancel it.
+原生窗口只在其精确的回环 origin 内允许导航。用户请求的外部 URL 通过 OS 打开，而不是替换应用表面。导航
+监听器使用 SDK emitter 的 webview 作用域通道 `will-navigate-<id>` 与 `new-window-open-<id>`；未加作用域的
+载荷没有 webview id，而实例监听器的类型化事件列表省略弹窗。载荷类型源自 SDK 事件工厂，而不是复制到本地
+声明里。detail 可以是原始 URL、弹窗对象，或序列化的导航 JSON；有界解码只保留字符串 URL 以及
+HTTP/HTTPS/mailto 白名单。原生 `navigationRules` 强制约束：导航事件响应无法取消它。
 
-A desktop preload sends typed, one-way route, local-preference, page-zoom, and title-bar double-click
-messages, and is the only writer of the window-chrome CSS properties described above. It wraps
-`history.replaceState` and `history.pushState` before page scripts and also reports initial/hash/pop
-navigation, because Electrobun's native navigation events do not observe History API route changes. The
-main process accepts messages only from the main window. Routes persist as bounded fragment strings in a
-versioned channel-scoped document; unreadable/invalid state falls back to `#/v1`. Preferences persist in a
-separate bounded, versioned generic string map scoped by `{ backendProfileId, windowId }`; each value is capped
-at 256 Ki characters and the complete document remains capped at 1 MiB. The native side validates only
-size/shape and never learns feature meaning. Its frozen preload adapter exposes `getItem`,
-`setItem`, and `removeItem` only, with writes returning over the typed one-way channel. Malformed messages
-are ignored; a filesystem refusal is logged without changing the in-memory document or terminating the
-client. The web feature still owns each value's validation and default. The web router remains the route
-grammar validator, and the preload exposes no host/domain capability.
+桌面 preload 发送类型化的单向路由、本地偏好、页面缩放与标题栏双击消息，并且是上文所述窗口外壳 CSS 属性的
+唯一写入者。它在页面脚本之前包裹 `history.replaceState` 与 `history.pushState`，并且还上报初始/hash/pop
+导航，因为 Electrobun 的原生导航事件观察不到 History API 路由变化。主进程只接受来自主窗口的消息。路由以
+有界片段字符串持久化在一个按频道限定作用域、带版本的文档中；不可读/无效状态回退到 `#/v1`。偏好持久化在
+一个独立的有界、带版本、按 `{ backendProfileId, windowId }` 限定作用域的通用字符串映射中；每个值上限为
+256 Ki 个字符，整个文档仍以 1 MiB 为上限。原生侧只校验大小/形状，绝不了解功能含义。它冻结的 preload
+适配器只暴露 `getItem`、`setItem` 与 `removeItem`，写入经由类型化单向通道返回。畸形消息被忽略；文件系统
+拒绝会被记录，而不改动内存中的文档或终止客户端。web 功能仍然拥有每个值的校验与默认值。web 路由器仍是
+路由语法的校验者，且 preload 不暴露任何宿主/域能力。
 
-On Windows, webview-to-main RPC (requests and one-way messages) rides Electrobun's native host bridge,
-not its loopback WebSocket. Electrobun 2.0.1's core binds its fixed default socket port `50000` with
-address reuse on Windows, so a second running Electrobun app (another ThinkRail channel included) shares
-the port and receives this webview's socket traffic; every request then times out and every message is
-lost. The launcher therefore prepends a removal of the two injected socket-port globals to the Windows
-preload, which selects Electroview's documented no-socket path (`__electrobunHostBridge`, the same per-webview
-WebView2 channel used as its fallback). Main-to-webview delivery is unaffected. Re-check on an Electrobun
-upgrade: once the core picks a private port on Windows, drop `hostTransport.ts`.
+在 Windows 上，webview 到 main 的 RPC（请求与单向消息）走 Electrobun 的原生宿主桥，而不是它的回环
+WebSocket。Electrobun 2.0.1 的核心在 Windows 上以地址复用绑定其固定的默认 socket 端口 `50000`，因此第二个
+运行的 Electrobun 应用（包括另一个 ThinkRail 频道）会共享该端口并收到这个 webview 的 socket 流量；于是每个
+请求都会超时，每条消息都会丢失。因此启动器在 Windows preload 前面加上一段移除两个注入的 socket 端口全局的
+代码，这会选中 Electroview 文档化的无 socket 路径（`__electrobunHostBridge`，同一个按 webview 的 WebView2
+通道被用作其回退）。main 到 webview 的投递不受影响。Electrobun 升级时重新核对：一旦核心在 Windows 上选择
+私有端口，就移除 `hostTransport.ts`。
 
-The host reads the staged preload bundle and passes its JavaScript **source text** to
-`BrowserWindow.preload`. A `views://` preload URL is forbidden: Electrobun 1.18.1 resolves it on macOS but
-injects the literal URL as code on Linux.
+宿主读取已暂存的 preload bundle，并把其 JavaScript **源码文本** 传给 `BrowserWindow.preload`。`views://`
+形式的 preload URL 是被禁止的：Electrobun 1.18.1 在 macOS 上能解析它，但在 Linux 上会把字面 URL 作为代码
+注入。
 
-## Lifecycle
+## 生命周期
 
-Every quit path calls the shared idempotent asynchronous server shutdown once, including a startup
-failure after acquiring the host but before the native window or quit listener is ready. Shutdown ownership
-begins as soon as the host is acquired. It settles/aborts active agent work within its bound, drains
-analytics, disposes server resources and PTYs, and closes sockets.
-Electrobun's synchronous `before-quit` callback cancels quit while that promise is pending and retries
-`Utils.quit()` under a completion guard. Startup failure also requests quit directly through that coordinator
-in the error-dialog finalizer, so even missing quit interception or a failed dialog cannot bypass shutdown.
-Abrupt death relies only on operating-system process cleanup.
+每条退出路径都只调用一次共享的、幂等的异步 server 关闭，包括在获取宿主之后、而在原生窗口或退出监听器就绪
+之前的启动失败。关闭所有权在宿主被获取的那一刻开始。它在自己的界限内收敛/中止活动 agent 工作，排空
+analytics，释放 server 资源与 PTY，并关闭 socket。Electrobun 同步的 `before-quit` 回调在该 promise 挂起
+期间取消退出，并在完成守卫下重试 `Utils.quit()`。启动失败也在错误对话框的终结器里经由同一个协调器直接
+请求退出，因此即使缺少退出拦截或对话框失败也无法绕过关闭。突然死亡只依赖操作系统进程清理。
 
-Artifact tests drive this same entrypoint through opt-in environment/ready/control seams: isolated user
-data, a hidden neutral window for browser-backed tests, host/launcher ids and origin on DOM-ready, and
-normal quit. Native UI smoke can capture an external-open result and request one fixed navigation probe
-instead of launching the user's browser. With a title-bar probe file, two control commands dispatch
-synthetic `dblclick`s in the live webview: `title-bar-double-click` on the header, and
-`title-bar-double-click-no-drag` on the no-drag action cluster followed by the header in one task. The
-launcher records how many double-click messages it received and handled, plus the last handled
-preference, action, and before/after window state. The header-only phase proves the header is
-forwarded; counting receipt as well as handling lets the second phase detect a forwarded no-drag
-click that the single-flight handler would drop. With a window-controls probe file,
-`window-controls-maximize` / `window-controls-restore` click the HTML caption button once it carries the
-expected label, and the launcher records every window-control request it handles plus the last published
-`NativeWindowState`. These hooks need the live window; their standalone
-drivers and assertions live in the test package, which product code never imports.
+Artifact 测试通过可选的 环境/ready/control 接缝驱动同一个入口：隔离的用户数据、供浏览器后端测试使用的隐藏
+中性窗口、DOM-ready 时的 host/launcher id 与 origin，以及普通退出。原生 UI 冒烟可以捕获一次外部打开结果，
+并请求一次固定的导航探测，而不是启动用户的浏览器。配合标题栏探测文件时，两个控制命令会在活的 webview 中
+派发合成的 `dblclick`：`title-bar-double-click` 作用于头部，`title-bar-double-click-no-drag` 作用于
+no-drag 动作簇，并在同一个任务中随后作用于头部。启动器记录它收到并处理了多少条双击消息，以及最后处理的
+偏好、动作与前后窗口状态。仅头部的阶段证明头部被转发；同时统计收到与处理，使第二阶段能检出一次被转发的
+no-drag 点击——单飞处理器会把它丢弃。配合 window-controls 探测文件时，`window-controls-maximize` /
+`window-controls-restore` 会在 HTML 标题栏按钮带上预期标签后点击它，且启动器记录它处理的每个 window-control
+请求外加最后发布的 `NativeWindowState`。这些钩子需要活的窗口；它们的独立驱动器与断言位于测试包中，产品
+代码从不导入该包。
 
-## Build and release
+## 构建与发布
 
-The package pins the Electrobun `2.0.1` npm bootstrap as a build-only dependency. That exact pin selects
-its paired Hutch toolchain and SDK; direct global Hutch invocation and floating version overrides are not
-part of the build path. The application explicitly selects the real Bun main process, not the default
-Cottontail runtime. Electrobun owns the packaged Bun `1.4.0` version; per-project runtime overrides are
-unsupported. The repository's independently pinned development/CI runtime is aligned with it through
-[[architecture]]'s root toolchain contract.
+该包把 Electrobun `2.0.1` npm bootstrap 钉为仅构建期依赖。这个精确版本钉会选中其配套的 Hutch 工具链与 SDK；
+直接调用全局 Hutch 以及浮动版本覆盖不属于构建路径。应用显式选择真正的 Bun 主进程，而不是默认的 Cottontail
+运行时。Electrobun 拥有打包的 Bun `1.4.0` 版本；按项目覆盖运行时不受支持。仓库独立钉住的开发/CI 运行时通过
+[[architecture]] 的根工具链契约与它对齐。
 
-The package runs the official `electrobun build` / `dev` commands. Configuration reads the same shared
-version module as the launcher, without an environment-version bridge. One documented `preBuild` hook
-builds the shared web artifact and stages the application-specific PTY/trash/skill resources and PI
-runtime. The hook runs under Hutch's Cottontail, so it invokes the real Bun CLI both to read the
-`@thinkrail/server/build-support` manifest (which value-loads the server extension registry and with it
-the pi graph — Cottontail's module runtime cannot evaluate that graph; `typebox`'s `String` export is the
-first casualty) and to bundle the separately staged `.ts` server runtime rather than changing PI's
-bundler. Its transient factory entry is removed even on failure. Staged resources include the workflow SPEC consumed by the bundled skills. A documented
-`postBuild` hook removes staging after the framework has copied it; a failed build's staging is replaced
-at the next pre-build. On Windows that hook also brands the bundled uninstaller after its resource exists
-but before release compression, wrapping, and signing. Builds in one worktree remain sequential.
+该包运行官方的 `electrobun build` / `dev` 命令。配置读取与启动器相同的共享版本模块，无需环境版本桥。一个
+文档化的 `preBuild` 钩子构建共享 web 产物，并暂存应用专属的 PTY/trash/技能资源与 PI 运行时。该钩子在 Hutch
+的 Cottontail 下运行，因此它会调用真正的 Bun CLI，既用于读取 `@thinkrail/server/build-support` 清单
+（该清单按值加载 server 扩展注册表并连带 pi 图 —— Cottontail 的模块运行时无法求值那张图；`typebox` 的
+`String` 导出是第一个受害者），也用于打包单独暂存的 `.ts` server 运行时，而不是改动 PI 的打包器。它那临时
+的工厂入口即使失败也会被移除。暂存资源包括被打包技能所消费的 workflow SPEC。一个文档化的 `postBuild` 钩子
+在框架复制完暂存内容后将其移除；失败构建的暂存会在下一次 pre-build 时被替换。在 Windows 上，该钩子还会在
+卸载器资源存在之后、发布压缩、包裹与签名之前为打包的卸载器打上品牌。同一个工作树中的构建保持串行。
 
-Electrobun's platform icon configuration points at one ThinkRail mark in the native formats each target
-requires: the macOS iconset, Windows multi-resolution ICO, and Linux PNG. The native mark preserves its
-rounded-square silhouette with the ThinkRail glyph in the dark-family brand green (`#8dff4f`) on a solid
-black tile; translucent glass, highlights, and decorative edging are excluded so small taskbar frames stay
-crisp. The browser favicon and in-app shell mark are separate web-owned surfaces. The same Windows ICO is the
-Hutch-owned source for the installed app, setup/extractor executable, shortcuts, and taskbar identity; no
-release action substitutes a second installer icon. Electrobun 2.0.1 does not apply that icon to its
-bundled Windows uninstaller, so the project `postBuild` hook adds the same icon group to
-`Resources/uninstall`.
+Electrobun 的平台图标配置指向一个 ThinkRail 标记，采用各目标所需的原生格式：macOS iconset、Windows
+多分辨率 ICO 与 Linux PNG。原生标记保留其圆角方形轮廓，ThinkRail 字形是深色系品牌绿（`#8dff4f`）置于纯黑
+底片上；半透明玻璃、高光与装饰性镶边被排除，好让小的任务栏图框保持清晰。浏览器 favicon 与应用内外壳标记是
+各自独立的 web 拥有表面。同一个 Windows ICO 是 Hutch 拥有的源，用于已安装应用、setup/解包可执行文件、快捷
+方式与任务栏身份；没有任何发布动作会替换成第二个安装器图标。Electrobun 2.0.1 不会把该图标应用到其打包的
+Windows 卸载器，因此项目的 `postBuild` 钩子把同一图标组加入 `Resources/uninstall`。
 
-`assets/icon.svg` is the one hand-authored source; every raster below it (the iconset, the ICO, the
-Linux PNG) is generated, never hand-edited, by `scripts/generate-icons.ts` (`bun run generate-icons`)
-using `@resvg/resvg-js` to rasterize straight from the vector. The Windows ICO carries PNG-compressed
-frames at 16/24/32/48/64/128/256 — Microsoft's documented icon-construction minimum (16/24/32/48/256)
-plus two extra sizes so in-between DPI scales interpolate from a close neighbor — packed through the
-same `resedit` dependency already used for the uninstaller. A prior 4-frame raw-BMP ICO (16/32/48/256,
-pre-dating the generator) had no frame matching the Windows 11 taskbar's 24×24 100%-scale target,
-reading as blurry there; the generated set closes that gap.
+`assets/icon.svg` 是唯一手工编写的源；它下面的每个位图（iconset、ICO、Linux PNG）都由
+`scripts/generate-icons.ts`（`bun run generate-icons`）生成，绝不手工编辑，使用 `@resvg/resvg-js` 直接从
+矢量栅格化。Windows ICO 携带 16/24/32/48/64/128/256 的 PNG 压缩帧 —— 微软文档化的图标构建最小集
+（16/24/32/48/256）外加两个额外尺寸，好让中间 DPI 缩放能从邻近尺寸插值 —— 经由已用于卸载器的同一个
+`resedit` 依赖打包。先前的一个 4 帧原始 BMP ICO（16/32/48/256，早于生成器）没有匹配 Windows 11 任务栏
+24×24 100% 缩放目标的帧，在那里看起来是糊的；生成集补上了这个缺口。
 
-Electrobun's `build.views` owns the browser preload bundle; `build.copy` owns physical resource inclusion.
-There is no custom SDK resolver, SDK metadata validator, or Electrobun command runner. App-local Hutch
-configuration selects Bun as package manager, retaining the workspace catalog and `bun.lock`.
+Electrobun 的 `build.views` 拥有浏览器 preload bundle；`build.copy` 拥有物理资源包含。没有自定义 SDK
+resolver、SDK 元数据校验器或 Electrobun 命令运行器。应用本地的 Hutch 配置选择 Bun 作为包管理器，保留工作区
+catalog 与 `bun.lock`。
 
-Hutch owns the generated `.hutch/devkit` projection and download cache. The projection and transient
-`.cottontail-tmp` loaders are ignored and excluded from repository source-boundary scans, never edited
-or committed. Framework builds prepare it
-implicitly; typecheck runs the standard `electrobun prepare` command before TypeScript. Preparation errors
-propagate normally, and a fresh machine needs network access. Ordinary install, web-only development/
-builds, and unit tests do not prepare the native SDK.
+Hutch 拥有生成的 `.hutch/devkit` 投射与下载缓存。该投射与瞬态 `.cottontail-tmp` 加载器被忽略，并被排除在
+仓库源码边界扫描之外，绝不编辑或提交。框架构建会隐式准备它；typecheck 在 TypeScript 之前运行标准的
+`electrobun prepare` 命令。准备错误会正常传播，新机器需要网络访问。普通 install、仅 web 开发/构建与单元
+测试都不准备原生 SDK。
 
-Desktop typechecking consumes the official SDK's `.ts` sources through the same baseUrl-free paths used
-by editor tooling; no handwritten API declarations or shadow typecheck config exist. As explicitly
-approved, desktop alone sets `exactOptionalPropertyTypes: false` to match Electrobun's source contract,
-while retaining `strict: true` and `noUncheckedIndexedAccess: true`. This setting applies to the desktop
-compilation, including imported workspace source; every other package retains its separate unchanged
-strict check. The upstream source incompatibility is tracked in Electrobun issue #516; `skipLibCheck`
-cannot exclude imported implementation `.ts`. The direct-source approach follows the v2 migration guide
-and avoids a second declaration-generation pipeline. Canonical main imports use `electrobun/main`; the
-preload retains `electrobun/view`, and the RPC schema retains its `bun`/`webview` keys.
+桌面 typecheck 通过编辑器工具所用的同一批无 baseUrl 路径消费官方 SDK 的 `.ts` 源码；不存在手写的 API 声明
+或影子 typecheck 配置。经明确批准，只有桌面设置 `exactOptionalPropertyTypes: false` 以匹配 Electrobun 的
+源码契约，同时保留 `strict: true` 与 `noUncheckedIndexedAccess: true`。该设置适用于桌面编译，包括被导入的
+工作区源码；其它每个包保留各自未变动的 strict 检查。上游源码不兼容追踪于 Electrobun issue #516；
+`skipLibCheck` 无法排除被导入的实现 `.ts`。直接源码方案遵循 v2 迁移指南，并避免第二条声明生成流水线。
+规范的 main 导入使用 `electrobun/main`；preload 保留 `electrobun/view`，而 RPC schema 保留其
+`bun`/`webview` 键。
 
-References: [official v2 migration](https://framework.blackboard.sh/electrobun/guides/migrating-to-v2/),
-[upstream optional-property issue](https://github.com/blackboardsh/electrobun/issues/516).
+参考：[官方 v2 迁移指南](https://framework.blackboard.sh/electrobun/guides/migrating-to-v2/)、
+[上游可选属性 issue](https://github.com/blackboardsh/electrobun/issues/516)。
 
-Desktop installers ship beside the CLI artifacts for macOS ARM64, Windows x64, Linux x64, and
-Linux ARM64. Electrobun 2.0.1 publishes no macOS x64 core. Nightly maps to Electrobun canary and stable
-maps to stable. Standard formats are DMG on macOS, a setup-EXE-plus-payload ZIP on Windows, and a setup
-tar.gz on Linux. The private release pipeline retains the existing `thinkrail-desktop-*` download aliases;
-its collector selects the exact framework artifact for the channel and native target. The macOS app
-archive is transferred privately for SRE finalization, never published as an updater payload. Runtime
-updating is integrated below; feed publication remains release-owned and gated by the target policy.
+桌面安装器与 CLI 产物并列发布，覆盖 macOS ARM64、Windows x64、Linux x64 与 Linux ARM64。Electrobun 2.0.1
+不发布 macOS x64 核心。Nightly 映射到 Electrobun canary，stable 映射到 stable。标准格式是 macOS 上的 DMG、
+Windows 上的 setup-EXE 加载荷 ZIP，以及 Linux 上的 setup tar.gz。私有发布流水线保留既有的
+`thinkrail-desktop-*` 下载别名；其收集器为频道与原生目标选择精确的框架产物。macOS 应用归档被私下传输用于
+SRE 定稿，绝不作为更新器载荷发布。运行时更新在下面集成；feed 发布仍由发布方拥有，并受目标策略门控。
 
-### Signing
+### 签名
 
-Signing and notarization use JetBrains-provided services through the private release coordinator;
-public builds contain neither service credentials nor a new Apple-login/keychain flow. Current Windows
-coverage signs the setup stub without rewriting its hash-keyed adjacent payload.
+签名与公证通过私有发布协调器使用 JetBrains 提供的服务；公开构建既不包含服务凭据，也不包含新的 Apple
+登录/钥匙串流程。当前 Windows 覆盖会为 setup stub 签名而不重写其以哈希为键的相邻载荷。
 
-The native macOS build also exposes Electrobun's standard expanded `.app.tar.zst` as a private signing
-input. The approved JetBrains SRE flow signs the expanded app and finalizes a conventional DMG around it,
-then signs/notarizes/staples that container. It does not mutate Electrobun's compressed self-extractor
-payload or use an incorrect pre-metadata sealing hook. Local framework DMGs remain unsigned build outputs;
-only the private pipeline's verified final DMG is a signed release. The handoff and verification contract
-belong to [[module-ci-release]].
+原生 macOS 构建还暴露 Electrobun 标准的展开 `.app.tar.zst` 作为私有签名输入。获批准的 JetBrains SRE 流程
+为展开的应用签名，并围绕它定稿一个常规 DMG，然后为该容器签名/公证/装订。它不改动 Electrobun 的压缩自解包
+载荷，也不使用错误的元数据前封口钩子。本地框架 DMG 仍是未签名的构建产物；只有私有流水线验证过的最终 DMG
+才是一个已签名的发布。交接与验证契约属于 [[module-ci-release]]。
 
-Linux uses native WebKitGTK without CEF and declares Ubuntu 24.04+/glibc 2.38 plus `libgtk-3-0`,
-`libwebkit2gtk-4.1-0`, `libayatana-appindicator3-1`, and `librsvg2-2`. Xvfb software-rendering flags are
-CI-only and are never shipped as user configuration.
+Linux 使用原生 WebKitGTK 而不使用 CEF，并声明 Ubuntu 24.04+/glibc 2.38 加 `libgtk-3-0`、
+`libwebkit2gtk-4.1-0`、`libayatana-appindicator3-1` 与 `librsvg2-2`。Xvfb 软件渲染标志仅供 CI 使用，绝不
+作为用户配置发布。
 
-## Auto-update policy
+## 自动更新策略
 
-Desktop updates check after window readiness and on a jittered six-hour schedule, but stop at an available
-release. Downloading and installation each require an explicit user action; closing Settings or quitting
-normally installs nothing. Same-version and downgrade manifests are ineligible.
+桌面更新在窗口就绪后检查，并按带抖动的六小时计划重复，但停在某个可用发布处。下载与安装各自需要一次显式的
+用户动作；关闭 Settings 或正常退出都不会安装任何东西。同版本与降级清单不合格。
 
-Production checks are enabled only in packaged supported stable/canary applications whose stamped release
-metadata supplies a nonempty HTTPS updater base URL. That metadata is the sole feed authority; development
-and standard artifact-test seams expose no updater. Installations stay on their packaged channel, while the UI
-calls Electrobun's canary channel **nightly**. Release qualification belongs to [[module-ci-release]].
+生产检查只在打包的、受支持的 stable/canary 应用中启用，且其烘焙的发布元数据提供非空的 HTTPS 更新器基础
+URL。该元数据是唯一的 feed 权威；开发与标准 artifact 测试接缝不暴露更新器。安装保持在其打包的频道上，而
+UI 把 Electrobun 的 canary 频道称作 **nightly**。发布资格属于 [[module-ci-release]]。
 
-Electrobun calls and lifecycle state stay behind the desktop `updates` module; controls stay in the web client
-and graceful host shutdown stays in server. The frozen optional `__THINKRAIL_NATIVE_UPDATES__` preload bridge
-exposes typed state, check/download/install actions, and subscription without importing the desktop SDK into
-web code. **Install & Restart** applies the prepared release through the existing quit coordinator; active
-agents and PTYs may terminate, with no second confirmation or renderer-preparation handshake.
+Electrobun 调用与生命周期状态留在桌面 `updates` 模块之后；控件留在 web 客户端，优雅宿主关闭留在 server。
+冻结的可选 `__THINKRAIL_NATIVE_UPDATES__` preload 桥暴露类型化状态、检查/下载/安装动作与订阅，而不把桌面
+SDK 导入 web 代码。**Install & Restart** 通过既有退出协调器应用已准备好的发布；活动 agent 与 PTY 可能被
+终止，没有第二次确认或渲染进程准备握手。
 
-Quit coordination preserves its completion action. Electrobun 2.0.1's first `applyUpdate()` returns on the
-asynchronous `before-quit` veto before arming its replacement helper. The update intent waits for the same
-idempotent host shutdown, waits for that first SDK call to settle, and then resumes `applyUpdate()` under the
-completed guard; ordinary completion still calls only `Utils.quit()`. A failed second handoff reports a
-native error and exits instead of leaving a serverless window. SDK replacement rollback is not
-application-health or user-data rollback. Existing installations without update code/feed identity require
-one manual bootstrap installation.
+退出协调保留其完成动作。Electrobun 2.0.1 的第一次 `applyUpdate()` 在武装其替换 helper 之前，就在异步的
+`before-quit` 否决处返回。更新意图等待同一个幂等的宿主关闭，等待第一次 SDK 调用收敛，然后在已完成的守卫下
+恢复 `applyUpdate()`；普通完成仍然只调用 `Utils.quit()`。第二次交接失败会报告一个原生错误并退出，而不是留下
+一个没有 server 的窗口。SDK 替换回滚不是应用健康或用户数据回滚。没有更新代码/feed 身份的既有安装需要一次
+手动引导安装。
 
-Reference: [pinned updater handoff](https://github.com/blackboardsh/electrobun/blob/v2.0.1/package/src/sdks/main/core/Updater.ts#L2220-L2330).
+参考：[钉住的更新器交接](https://github.com/blackboardsh/electrobun/blob/v2.0.1/package/src/sdks/main/core/Updater.ts#L2220-L2330)。
 
-## Verification
+## 验证
 
-[[module-artifact-tests]] owns expanded-app/first-install smoke, shared host probes, native navigation/
-preload verification, and installer isolation. Every native release target must pass both smoke layers;
-[[module-browser-e2e]] additionally covers wire-backed behavior against the packaged host. No platform's
-native result is inferred from another platform's run. Signed download acceptance requires the private
-release checks described in [[module-ci-release]].
+[[module-artifact-tests]] 拥有扩展应用/首次安装冒烟、共享宿主探测、原生导航/preload 验证与安装器隔离。每个
+原生发布目标都必须通过两层冒烟；[[module-browser-e2e]] 另外覆盖针对打包宿主的线上协议支持行为。任何平台的
+原生结果都不得从另一个平台的运行推断。签名下载验收需要 [[module-ci-release]] 中描述的私有发布检查。
 
-## Deferred
+## 后续
 
-Shared/remote backend profiles, profile selection, multi-window/deep-link routing, CEF, and removing the
-`user32` style-bit shim once blackboardsh/electrobun#558 ships. The update feed publication described above
-remains release-owned.
+共享/远程后端配置、配置选择、多窗口/深链接路由、CEF，以及一旦 blackboardsh/electrobun#558 发布就移除
+`user32` 样式位垫片。上述更新 feed 发布仍由发布方拥有。

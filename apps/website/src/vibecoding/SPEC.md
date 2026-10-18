@@ -2,48 +2,65 @@
 id: submodule-website-vibecoding
 type: submodule-design
 status: active
-title: Vibecoding landing experience
+title: Vibecoding 落地页体验
 parent: module-website
 tags: [website, marketing, vibecoding, react]
 ---
 
-## Responsibility
+## 职责
 
-The audience-specific experience directly served at `https://thinkrail.ai/vibecoding/` and, as
-further routes over the same module, at `https://thinkrail.ai/agentic-development/` and
-`https://thinkrail.ai/agentic-ide/`: its header navigation, hero and quick start, desktop download controls, scripted chat, principles and capabilities, orchestration animation, workflow explanations, call to action, metadata, and route-local presentation. It preserves the approved visual design while the parent website owns route composition, analytics, SEO aggregation, deployment, and cross-route validation.
+直接服务在 `https://thinkrail.ai/vibecoding/` 的、面向特定受众的体验，以及作为同一模块之上的
+额外路由、在 `https://thinkrail.ai/agentic-development/` 与 `https://thinkrail.ai/agentic-ide/`
+提供的同一体验：它的 header 导航、hero 与 quick start、桌面下载控件、脚本化聊天、原则与能力、
+编排动画、工作流说明、行动号召、metadata，以及路由本地的呈现。它保留已批准的视觉设计，而
+父网站拥有路由组合、analytics、SEO 聚合、部署与跨路由校验。
 
-`index.ts` is the only public surface. Each route receives crawlable server-rendered content, then hydrates one React island for stateful interactions.
+`index.ts` 是唯一的公开接口。每个路由都收到可抓取的服务端渲染内容，然后为有状态的交互 hydrate
+一个 React island。
 
-Two props parameterize `Landing` per route. `heroTitle` defaults to the vibecoding copy ("Vibe code
-without losing control."); `/agentic-development/` passes "Agentic development without losing
-control.". `positioning` (`"control" | "compounding"`, default `control`) selects the marketing
-copy variant: `/agentic-ide/` passes `compounding` with hero title "The agentic IDE that gets
-better every time you use it." — a positioning test (2026-02) framing ThinkRail as the IDE that
-improves with use (living specs, reusable skills, upcoming extensions) rather than the control
-framing. Under `compounding`, the hero subtitle, chat-demo script (one added "how do you get better
-over time" exchange; the worktree exchange stays), principles, capabilities (plus a coming-soon
-"Extensions" card), spec-first heading/subtitle, and CTA swap; every other section is shared, and
-copy variants live beside their components, keyed by `Positioning`. Analytics tells the cells apart
-only by the parent's path-derived `content_key` (`agentic-ide` versus `vibecoding` /
-`agentic-development`); the variant adds no event property, analytics import, or CTA location. A
-full module copy was rejected (2026-02): ~25 duplicated files that would drift, against the repo's
-no-duplication rule.
+两个 prop 按路由参数化 `Landing`。`heroTitle` 默认为 vibecoding 的文案（"Vibe code
+without losing control."）；`/agentic-development/` 传入 "Agentic development without losing
+control."。`positioning`（`"control" | "compounding"`，默认 `control`）选择营销文案变体：
+`/agentic-ide/` 传入 `compounding`，hero 标题为 "The agentic IDE that gets
+better every time you use it."——这是一次定位测试（2026-02），把 ThinkRail 框定为随使用而变好的
+IDE（活的规范、可复用的技能、即将到来的扩展），而不是"控制"的框定。在 `compounding` 下，
+hero 副标题、聊天演示脚本（增加一段 "how do you get better over time" 对话；worktree 那段
+对话保留）、原则、能力（外加一张即将到来的 "Extensions" 卡片）、spec-first 标题/副标题以及
+CTA 都会替换；其他每个小节都是共享的，文案变体就放在各自组件旁边，以 `Positioning` 为键。
+Analytics 只通过父模块按路径派生的 `content_key`（`agentic-ide` 对比 `vibecoding` /
+`agentic-development`）区分这些单元；该变体不增加任何事件属性、analytics 导入或 CTA 位置。
+完整复制模块被否决（2026-02）：约 25 个会漂移的重复文件，违背仓库的不重复规则。
 
-The agentic-development and agentic-ide routes reuse the vibecoding identity wholesale: same
-`siteMetadata` title/description, same `/vibecoding/` favicon, OG image, and wordmark asset URLs,
-and a canonical + `og:url` pointing at `https://thinkrail.ai/vibecoding/` (decision, 2026-02:
-near-identical content, so the original stays the search-primary page; the extra URLs serve
-campaigns/tests/direct links and are excluded from the sitemap). `validateBuild.ts` pins all of
-this per route, including each route's hero title and a positioning marker per variant — a dropped
-prop would silently render the defaults.
+agentic-development 与 agentic-ide 路由整体复用 vibecoding 身份：同样的 `siteMetadata`
+title/description，同样的 `/vibecoding/` favicon、OG 图片与字标资源 URL，以及指向
+`https://thinkrail.ai/vibecoding/` 的 canonical + `og:url`（决策，2026-02：内容近乎相同，因此
+原始页面保持为搜索主页面；额外 URL 服务活动/测试/直链，并被排除出 sitemap）。`validateBuild.ts`
+按路由钉住这一切，包括每个路由的 hero 标题以及每个变体的定位标记——丢失一个 prop 会静默渲染
+默认值。
 
-## Boundary
+## 边界
 
-- May depend on React and Lucide plus its own Tailwind entry stylesheet and checked-in assets under `public/vibecoding/`, and on the parent's framework-free `src/installLinkShare.ts` helper (the one parent file it may import; the edge lives in [[module-website]]). It has no workspace dependency.
-- Must not import the parent IDE-shell components or hand-written stylesheet, blog modules, analytics, Astro page composition, package-wide build validation, deployment configuration, another workspace, or a copied UI kit.
-- Tailwind uses `source(none)` and scans this module only. Its preflight, fonts, tokens, utilities, and animations are emitted only in the stylesheet referenced by `/vibecoding/`; the parent landing and blog must never reference that stylesheet or the React renderer/component chunks.
-- The route presents desktop applications only. One typed download model drives compact macOS / Windows / Linux tabs with one compatibility line and restrained actions; macOS exposes Apple Silicon, Windows exposes x64, and Linux exposes x64 plus ARM64 without browser architecture guessing. No command-line product, launcher command, install-command copy control, disclosure, Windows shell state, or analytics import reaches the vibecoding/agentic experience. The parent website's document-level delegation observes its static download links and derives `quick_start` or `final_cta` from the containing section; it also observes the GitHub links (`hero` from `#top`, `header`). On a detected phone or tablet, the quick-start picker adds a "Send link to my computer" action above the OS tabs (after hydration; the static HTML stays desktop-first). It uses the parent helper with the `quick-start` anchor, shows "Link copied" after a clipboard fallback, and carries only the `data-share-install-link` marker that the parent delegation reads. The final CTA does not repeat the picker: it detects a supported desktop OS for one compact download action and links Linux, unknown/mobile, or alternate-platform visitors back to Quick start. Every download uses GitHub's versionless `releases/latest/download` aliases.
-- The initial HTML contains the complete marketing message. JavaScript enhances controls and animation rather than making content discoverable.
-- Every control is keyboard-operable. Motion-heavy effects resolve to a stable final state under `prefers-reduced-motion`; canvas animation pauses when reduced motion is requested or the document is hidden.
-- Components use local Tailwind utilities mapped to this module's semantic tokens. They do not carry raw colour literals or inline style objects; runtime geometry uses DOM/SVG attributes or stylesheet-owned custom properties.
+- 可以依赖 React 与 Lucide，加上它自己的 Tailwind 入口样式表与 `public/vibecoding/` 下检入的
+  资源，以及父模块那个无框架依赖的 `src/installLinkShare.ts` 助手（它唯一可以导入的父文件；
+  这条边位于 [[module-website]]）。它没有工作区依赖。
+- 绝不能导入父模块的 IDE 外壳组件或手写样式表、博客模块、analytics、Astro 页面组合、包范围的
+  构建校验、部署配置、另一个工作区，或复制来的 UI kit。
+- Tailwind 使用 `source(none)`，并且只扫描本模块。它的 preflight、字体、token、工具类与动画
+  只输出到 `/vibecoding/` 引用的那张样式表里；父模块的落地页与博客绝不能引用该样式表或 React
+  renderer/组件 chunk。
+- 该路由只呈现桌面应用。一个类型化的下载模型驱动紧凑的 macOS / Windows / Linux 标签，带一行
+  兼容性说明与克制的动作；macOS 暴露 Apple Silicon，Windows 暴露 x64，Linux 暴露 x64 加 ARM64，
+  且不猜测浏览器架构。没有任何命令行产品、启动器命令、安装命令复制控件、展开项、Windows
+  shell 状态或 analytics 导入进入 vibecoding/agentic 体验。父网站的文档级委派观察其静态下载
+  链接，并从所在小节派生 `quick_start` 或 `final_cta`；它还观察 GitHub 链接（`hero` 来自
+  `#top`，`header`）。在检测到手机或平板时，quick-start 选择器在 OS 标签上方增加一个
+  "Send link to my computer" 动作（在 hydrate 之后；静态 HTML 保持桌面优先）。它使用父助手
+  并带 `quick-start` 锚点，在剪贴板兜底后显示 "Link copied"，并且只携带父委派所读取的
+  `data-share-install-link` 标记。final CTA 不重复该选择器：它检测受支持的桌面 OS 以给出一个
+  紧凑的下载动作，并把 Linux、未知/移动或备选平台的访客链接回 Quick start。每次下载都使用
+  GitHub 无版本号的 `releases/latest/download` 别名。
+- 初始 HTML 就包含完整的营销信息。JavaScript 增强控件与动画，而不是让内容变得可发现。
+- 每个控件都可键盘操作。动效较重的效果在 `prefers-reduced-motion` 下解析为稳定的最终状态；
+  当请求减少动效或文档被隐藏时，canvas 动画暂停。
+- 组件使用映射到本模块语义 token 的本地 Tailwind 工具类。它们不携带原始颜色字面量或内联
+  style 对象；运行时的几何使用 DOM/SVG 属性或由样式表拥有的自定义属性。

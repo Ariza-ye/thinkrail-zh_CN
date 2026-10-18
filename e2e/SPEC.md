@@ -2,433 +2,348 @@
 id: module-browser-e2e
 type: module-design
 status: active
-title: Browser E2E harness
+title: 浏览器 E2E 测试装置
 parent: architecture
 depends-on: [module-server, module-web, module-cli, module-desktop, module-shared, module-artifact-tests]
 references: [module-ci-release]
 tags: [testing, playwright, e2e]
 ---
 
-## Responsibility
+## 职责
 
-The real-browser system gate for ThinkRail's host/UI integration: build the shipped web client, boot an
-isolated host, seed real git and persistence fixtures, drive Chromium through the wire, and clean up every
-machine-global resource it used. The default suite excludes provider-backed `@agent` tests; those remain
-explicit, authenticated, on-demand runs.
+ThinkRail 宿主/UI 集成的真实浏览器系统门禁：构建实际发布的 Web 客户端、启动隔离的宿主、播种真实的
+git 与持久化夹具、通过线上协议驱动 Chromium，并清理它用过的每一项机器全局资源。默认套件排除由提供商
+支撑的 `@agent` 测试；那些测试仍然是显式的、经认证的、按需运行。
 
-## Execution model
+## 执行模型
 
-`bun run e2e` is the complete no-agent gate. It builds the web bundle once and runs machine-adaptive,
-process-level Playwright shards. A shard owns one host and one Playwright worker; serial execution inside
-that lane preserves the suite's destructive reset semantics, while lane-qualified state and ports make
-lanes independent. Playwright splits individual tests across lanes and the parent runner merges their blob
-reports into one normal result. It also merges shard failure ids into Playwright's root last-run file,
-so `--last-failed` remains a valid serial repair loop. No-agent coverage is identical whether the count
-is one or many.
+`bun run e2e` 是完整的 no-agent 门禁。它只构建一次 Web 打包产物，然后运行机器自适应的进程级
+Playwright 分片。一个分片拥有一个宿主和一个 Playwright worker；该泳道内的串行执行保留了套件的破坏性
+重置语义，而带泳道限定的状态与端口让各泳道彼此独立。Playwright 把单个测试分摊到各泳道，父运行器把
+它们的 blob 报告合并为一个正常结果。它还会把分片失败 id 合并进 Playwright 根目录的 last-run 文件，
+因此 `--last-failed` 仍然是有效的串行修复循环。无论数量是一个还是多个，no-agent 的覆盖都完全相同。
 
-The automatic count is half the available CPU parallelism, clamped to 1–8. Developers may explicitly
-select 1–16 lanes; `e2e:serial` is the stable debugging fallback. A focused invocation carrying Playwright
-arguments defaults to one lane unless its shard count is explicit, so an iteration on one spec stays cheap.
-CI splits the suite across machines with `THINKRAIL_E2E_JOB_SHARD=k/N`: the invocation runs slice `k` of
-`N`, and its local lanes subdivide that slice into global Playwright shards `(k-1)·L+i` of `N·L`, so the
-union of all jobs is exactly the suite. The runner owns `--shard`; combining the variable with an explicit
-`--shard` argument is rejected.
-Every public browser E2E runner owns one process-lifetime idle-sleep assertion on macOS before setup or
-build work begins; source, agent, full, binary, and desktop modes all receive it. The assertion uses the
-system `caffeinate` executable with idle-system-sleep scope and the owning runner pid, so display sleep stays
-available and abrupt owner exit releases it. A private inherited owner marker makes composed full-run phases
-reuse the parent's assertion rather than multiplying helper processes. Other operating systems are a no-op,
-and a macOS host that cannot establish the assertion fails before spending test time.
-Direct no-agent use of the Playwright config remains self-contained and builds the web app when the shard
-runner has not already done so. Real-Central execution enters through the public `e2e:agent` or `e2e:full`
-runner; direct Central-mode test execution is rejected (while `--list` remains available), because the public
-runner must own the build before giving Playwright its credential-stripped environment. Standalone agent
-runs always build outside `--list`; ambient skip-build cannot suppress that phase. Only the full runner's
-post-build internal readiness marker may select the already-built agent plan. The plan then adds both
-skip-build and a dedicated Central-runner authorization marker to the Playwright environment; Central
-execution requires both, so skip-build alone cannot bypass the public runner. A focused `e2e:full` invocation
-lists the selection independently in no-agent and agent mode, runs only phases with selected tests, and fails
-when neither mode selected anything; the argument-free full gate and its two-phase `--list` behavior stay
-unchanged. The no-agent, agent, and full runners own the trees they launch. When full composes a phase runner,
-an internal parent-owner marker leaves full as the only signal manager; standalone no-agent and agent runners
-retain ownership. On POSIX, the owner snapshots every descendant PID with its safe non-runner process group,
-forwards SIGINT/SIGTERM to each tracked group exactly once and individually only to PIDs without such a group,
-then force-kills those same non-overlapping targets after a bounded grace even if the root exited. Windows
-first snapshots and retains
-descendant PIDs through PowerShell's `Get-CimInstance Win32_Process`, gracefully falls back when unavailable,
-and uses `taskkill /T` before a root fallback; force targets every retained PID with `taskkill /T /F`. Managed
-roots are process-group leaders only on POSIX. On Windows they remain non-detached with `windowsHide: true`,
-so their ordinary Playwright, host, and build descendants inherit a nonvisual console instead of allocating
-visible console windows; Windows tree termination does not depend on detachment. Unit coverage pins only
-this platform-to-detachment selection; native window visibility is verified with a manual Windows console
-probe. This guarantee does not extend to the separate binary or desktop artifact runners. Tests for primary-modifier
-chords read the page's browser-reported platform through one fixture helper and inject Meta on Apple or
-Control elsewhere; hard-coding the runner host's modifier would exercise the wrong product branch under
-browser/platform emulation.
+自动取值为可用 CPU 并行度的一半，并钳制在 1–8。开发者可以显式选择 1–16 条泳道；`e2e:serial` 是稳定的
+调试后备方案。带 Playwright 参数的聚焦调用默认只使用一条泳道，除非显式给出分片数，因此对单个 spec 的
+迭代仍然廉价。CI 用 `THINKRAIL_E2E_JOB_SHARD=k/N` 把套件分摊到多台机器：该调用运行 `N` 份中的第 `k`
+份，其本地泳道再把这份细分为 `N·L` 个全局 Playwright 分片中的 `(k-1)·L+i`，因此所有作业的并集恰好就是
+整个套件。运行器拥有 `--shard`；把该变量与显式 `--shard` 参数一起使用会被拒绝。
+每个公开的浏览器 E2E 运行器都在 macOS 上、在 setup 或构建工作开始之前持有一个进程生命周期的空闲睡眠
+断言；source、agent、full、binary 和 desktop 模式都会获得它。该断言使用系统的 `caffeinate` 可执行
+文件，作用域为空闲系统睡眠，并使用所属运行器的 pid，因此显示器睡眠仍然可用，且所属进程突然退出时会
+释放它。一个私有的继承式属主标记让组合式 full 运行的各阶段复用父进程的断言，而不是成倍增加辅助进程。
+其他操作系统上是 no-op，而无法建立该断言的 macOS 宿主会在耗费测试时间之前失败。
+直接以 no-agent 方式使用 Playwright 配置仍然自成一体，并在分片运行器尚未构建时构建 Web 应用。
+Real-Central 执行通过公开的 `e2e:agent` 或 `e2e:full` 运行器进入；直接执行 Central 模式的测试会被
+拒绝（而 `--list` 仍然可用），因为公开运行器必须在把剥离了凭据的环境交给 Playwright 之前拥有构建。
+独立的 agent 运行总是在 `--list` 之外构建；环境中的 skip-build 无法抑制该阶段。只有 full 运行器
+构建后的内部就绪标记才能选中所构建好的 agent 计划。该计划随后把 skip-build 和一个专用的 Central
+运行器授权标记都加入 Playwright 环境；Central 执行需要两者，因此仅有 skip-build 无法绕过公开运行器。
+聚焦的 `e2e:full` 调用会在 no-agent 和 agent 模式下各自独立列出所选项，只运行含选中测试的阶段，并在
+两种模式都没有选中任何东西时失败；无参数的 full 门禁及其两阶段 `--list` 行为保持不变。no-agent、
+agent 和 full 运行器拥有它们启动的树。当 full 组合一个阶段运行器时，一个内部的父属主标记让 full 成为
+唯一的信号管理者；独立的 no-agent 和 agent 运行器保留所有权。在 POSIX 上，属主为每个后代 PID 连同其
+安全的非运行器进程组拍快照，对每个被跟踪的进程组恰好转发一次 SIGINT/SIGTERM，并且只对没有此类进程组
+的 PID 单独转发，然后在一个有界宽限期之后强制杀死这些相同的、互不重叠的目标，即使根进程已经退出。
+Windows 先用 PowerShell 的 `Get-CimInstance Win32_Process` 拍快照并保留后代 PID，在不可用时优雅回退，
+并在根回退之前使用 `taskkill /T`；强制终止会对每个保留的 PID 使用 `taskkill /T /F`。被管理的根进程只在
+POSIX 上是进程组组长。在 Windows 上它们保持非分离并带 `windowsHide: true`，因此它们普通的 Playwright、
+宿主和构建后代继承一个非可视化控制台，而不是分配可见的控制台窗口；Windows 的树终止不依赖非分离。
+单元测试覆盖只钉住这一“平台到分离”的选择；原生窗口可见性用一次手动 Windows 控制台探针来验证。该保证
+不延伸到独立的 binary 或 desktop 制品运行器。针对主修饰键组合的测试通过一个夹具辅助函数读取页面由
+浏览器上报的平台，并在 Apple 上注入 Meta、在其他平台注入 Control；硬编码运行器宿主的修饰键会在
+浏览器/平台仿真下走到错误的产品分支。
 
-Provider-backed browser tests (`e2e:agent`) use a dedicated serial real-Central mode; the separate
-headless workflow suite keeps its local PI-auth mode. Concurrent provider turns would alter rate limits,
-cost, and determinism, so neither is sharded. The agent runner builds the web artifact under the caller's
-normal environment, then removes PI's complete ambient provider/cloud credential environment surface before
-starting Playwright or any host. The hosts also receive the same complete hermetic `PATH` as the default
-suite. This split is load-bearing: build
-tooling may need developer-installed executables and caller environment, while exact-model preflight must
-prove Central without an API key, token, Google ADC/project/location, or AWS profile/key/token/container/
-web-identity/config source making another provider available. A drift canary derives every uppercase
-environment literal from pi-ai's pinned credential-discovery distribution and requires it in the denylist;
-defensive cloud-source extras remain even when that distribution does not currently name them. No host may
-discover a real `central`, `pi`, or editor executable. The compiled-binary and
-packaged-desktop suites remain distinct artifact gates. Each has one lane-free, non-overlapping namespace
-per machine; any artifact run and `e2e:serial` still run sequentially in the same worktree. Artifact
-configs distribute individual tests, so a passed-through Playwright `--shard=k/N` splits them evenly
-across CI machines, each booting its own artifact host. A future launcher or
-deployment adds another host adapter for this same suite, never copied feature specs; shared behavior is
-therefore proven through every composition root.
+由提供商支撑的浏览器测试（`e2e:agent`）使用专用的串行 real-Central 模式；独立的无头工作流套件保留其
+本地 PI-auth 模式。并发的提供商轮次会改变速率限制、成本和确定性，因此两者都不分片。agent 运行器在
+调用者的普通环境下构建 Web 制品，然后在启动 Playwright 或任何宿主之前，移除 PI 完整的周边提供商/云
+凭据环境面。各宿主还会收到与默认套件相同的、完整的封闭 `PATH`。这一拆分是承重的：构建工具可能
+需要开发者安装的可执行文件和调用者环境，而精确模型预检必须在不借助 API key、token、Google
+ADC/project/location，或 AWS profile/key/token/container/web-identity/config 来源让另一个提供商
+可用的情况下证明 Central。一条漂移金丝雀从 pi-ai 钉住的凭据发现分发中推导出每一个全大写环境字面量，
+并要求它出现在 denylist 中；防御性的云来源额外项即使该分发当前未列出它们也仍然保留。任何宿主都不得
+发现真实的 `central`、`pi` 或编辑器可执行文件。编译二进制与打包桌面套件仍是彼此独立的制品门禁。
+每一个在每台机器上都有一个无泳道的、互不重叠的命名空间；任何制品运行和 `e2e:serial` 仍然在同一个工作树
+中串行运行。制品配置会分发单个测试，因此透传的 Playwright `--shard=k/N` 会把它们均匀分摊到 CI 机器上，
+每台机器各自启动自己的制品宿主。未来的启动器或部署会为这同一个套件新增另一个宿主适配器，绝不复制
+功能 spec；因此共享行为会在每个组合根上得到证明。
 
-## Chat resource controls
+## 聊天资源控制
 
-Resource wire coverage opens persisted chat fixtures through the real UI and checks the authoritative
-catalog's session/workspace scope, missing-output result, unavailable controls and empty stop-all.
-Its wire connection uses the launched page's port, not the source host's fixed port: binary and
-packaged-desktop adapters launch different endpoints for the same test.
-Historical fixtures are seeded before entering their workspace, so discovery does not race a just-created
-placement's persistence during browser reload. It never seeds a running resource or turns transcript
-text into execution authority. The empty-catalog UI probes cover the inspector's keyboard focus and
-focus return, the absent dock, narrow layouts, welcome/reconnect hydration and old-host capability hiding
-using real responses; the old-host probe changes only the advertised protocol version. The
-retirement focus probe supplies a completed child and persisted-form transcript at the wire seam, selects
-it in the inspector, then downgrades the next welcome; the UI, reconnect, capability retirement and Radix
-focus teardown remain real. This terminal-only fixture is not evidence of
-agent resource execution. Tagged provider-backed probes launch real commands and
-children through agent tools, inspect bounded plain-text logs/transcripts in the inspector, verify chat
-isolation, reload and closed-inspector completion, and exercise individual Stop and confirmed Stop all. They never
-select a model or seed a running-resource catalog. SDK faux-provider unit tests are not evidence of
-browser agent execution. `attention-background-work.live` pins the background-work unread hold end to end:
-while a real background command or detached subagent runs after the parent settled, the host never
-publishes an unread completion and the worktree row shows running, not a dot; with the window unfocused
-(a seen result is read at once), the dot lights only after the woken turn and the running badge clears.
+资源线上协议覆盖通过真实 UI 打开持久化的聊天夹具，并检查权威目录的会话/工作区范围、输出缺失结果、
+不可用的控件和空的全部停止。它的线上协议连接使用所启动页面的端口，而不是 source 宿主的固定端口：
+binary 与打包桌面适配器会为同一个测试启动不同的端点。
+历史夹具在进入其工作区之前播种，因此发现在浏览器重载期间不会与刚创建放置的持久化竞争。它绝不播种
+正在运行的资源，也绝不把对话记录文本变成执行权威。空目录 UI 探针使用真实响应覆盖检查器的键盘焦点与
+焦点归还、缺失的停靠栏、窄布局、欢迎/重连水合以及旧宿主能力隐藏；旧宿主探针只改变所宣告的协议版本。
+退役焦点探针在线上协议接缝处提供已完成子项与持久化形式的对话记录，在检查器中选中它，然后把下一个
+欢迎降级；UI、重连、能力退役和 Radix 焦点拆除都保持真实。这个仅终端的夹具不是 agent 资源执行的证据。
+带标签的、由提供商支撑的探针通过 agent 工具启动真实命令与子项，在检查器中检查有界的纯文本日志/对话
+记录，验证聊天隔离、重载与关闭检查器后的完成，并演练单个 Stop 与经确认的 Stop all。它们绝不选择
+模型，也绝不播种正在运行的资源目录。SDK faux-provider 单元测试不是浏览器 agent 执行的证据。
+`attention-background-work.live` 端到端钉住后台工作的未读保持：在父进程已安定后，当一个真实后台命令
+或分离的子代理仍在运行时，宿主绝不发布未读完成，工作树行显示运行中而不是一个点；在窗口失焦时（已被
+看到的结果会立即读取），只有在被唤醒的轮次之后点才会亮起，并且运行中徽标会清除。
 
-**MCP servers** coverage (`mcp-settings.spec.ts`) runs the server package's stdio fixture through the
-absolute path of the runner's `bun`, since the host's hermetic `PATH` has none. It adds a user server
-through the Settings form while the workspace's persisted chat is open (entering a workspace auto-opens
-its latest chat, so the test waits for that tab first instead of racing it), sees it Connected · 4 tools
-once that chat reloads, and disabled for that chat from the Resources inspector, then removes it; it opens a chat from a not-running
-server's row, reconnects that server per chat once it fails and shows its masked log, and names an
-unreadable user `mcp.json` with an edit hint; and it proves a repository-defined server flags the chat's
-attention marker, waits for Review & approve, and starts once approved. Each test removes the `mcp.json`
-it wrote (the lane's agent dir or the fixture repository's `.pi/`) in `finally`, so no later scenario
-starts servers.
+**MCP servers** 覆盖（`mcp-settings.spec.ts`）通过运行器的 `bun` 绝对路径运行服务器包的 stdio 夹具，
+因为宿主的封闭 `PATH` 里没有任何一个。它在该工作区持久化的聊天打开时通过 Settings 表单添加一个用户
+服务器（进入一个工作区会自动打开其最新的聊天，因此测试先等那个标签页，而不是与它竞争），在该聊天重载
+后看到它显示为 Connected · 4 tools，并从 Resources 检查器中看到它对该聊天是禁用的，然后移除它；它从
+一个未运行服务器的行打开一个聊天，在该服务器失败后按聊天重连它并显示其脱敏日志，并为不可读的用户
+`mcp.json` 给出编辑提示；它还证明仓库定义的服务器会标记聊天的注意标记，等待 Review & approve，并在
+获批后启动。每个测试都在 `finally` 中移除它写下的 `mcp.json`（该泳道的 agent 目录或夹具仓库的
+`.pi/`），因此后续场景不会启动服务器。
 
-Native wheel probes target the actual transcript viewport again after clicking a floating Latest
-button; a pointer left at a removed overlay is not evidence of a gesture delivered to the scroller.
-Disclosure-anchor probes place the complete header below the real sticky breadcrumb before asserting
-fixed-position behavior. Intersection with the scroller alone does not prove that a header is unobscured.
-Pierre surfaces paint plain text first and replace their rows when the worker's highlight lands, which
-is late on slower hosts such as the compiled-binary and packaged-desktop artifacts; pointer probes wait
-for highlighted tokens (`pierreHighlightedTokens`) before measuring or dragging rows.
+原生滚轮探针在点击浮动的 Latest 按钮之后再次瞄准真实的对话记录视口；停留在一个已被移除的覆盖层上的
+指针不是手势被投递给滚动器的证据。披露锚点探针在断言固定位置行为之前，把完整头部放到真实吸顶面包屑
+之下。仅与滚动器相交并不能证明头部未被遮挡。Pierre 表面会先绘制纯文本，并在 worker 的高亮落地时替换
+其行，而在较慢的宿主（如编译二进制与打包桌面制品）上这会很晚；指针探针在测量或拖动行之前等待高亮的
+token（`pierreHighlightedTokens`）。
 
-## Render profiling harness
+## 渲染性能剖析测试装置
 
-`bun run perf:render [--runs N] [--out file] [--cpu N] [--scenario a,b] [playwright args]` is an opt-in
-measurement run, never a gate. It builds `apps/web/dist-profile` (see [[module-web]]), boots the ordinary
-isolated host on it through `playwright.perf.config.ts`, and runs `e2e/perf/*.perf.ts` — a pattern the
-default config does not match. It uses the worktree's serial lane (port block and state dir), so do not
-run it alongside another serial E2E run in the same worktree. Defaults: 5 runs, output
-`$TMPDIR/thinkrail-render-profile.json`. Unknown `--scenario` names fail before the build. A failed
-Playwright run writes no output, so the last good file survives.
+`bun run perf:render [--runs N] [--out file] [--cpu N] [--scenario a,b] [playwright args]` 是一个可选的
+测量运行，绝不是门禁。它构建 `apps/web/dist-profile`（见 [[module-web]]），并通过
+`playwright.perf.config.ts` 在其上启动普通的隔离宿主，然后运行 `e2e/perf/*.perf.ts` —— 一个默认配置
+不匹配的模式。它使用该工作树的串行泳道（端口块与状态目录），因此不要在同一工作树中与另一场串行 E2E
+运行一起跑它。默认值：5 次运行，输出 `$TMPDIR/thinkrail-render-profile.json`。未知的 `--scenario`
+名称会在构建之前就失败。失败的 Playwright 运行不写任何输出，因此上一个可用的文件会幸存下来。
 
-- **Collection.** An init script installs a minimal `__REACT_DEVTOOLS_GLOBAL_HOOK__` before React loads,
-  which puts the root in profile mode. Each commit walks the fiber tree DevTools-style (descend only into
-  re-rendered subtrees) and records, per component name, commits, self time (`selfBaseDuration`) and
-  inclusive time (`actualDuration`, not double-counted for nested same-name instances). Unnamed components
-  are labelled by their nearest named owner. Hooks report under their host component. Labels are bundle
-  function names: a `$N` suffix marks a name the bundler renamed to avoid a clash (`Markdown$1` is
-  react-markdown, not the app's `Markdown`). A named subtree
-  (`markdown`: roots `AssistantMarkdown,Markdown`, override with `THINKRAIL_PERF_MARKDOWN_ROOTS`) sums the
-  self time and renders of every component under its outermost root, so any markdown engine is counted.
-- **Timer precision.** The harness adds COOP/COEP headers to documents and scripts through `page.route` so
-  the page is cross-origin isolated (5 µs timers, not 100 µs); the measurement browser disables Chromium's
-  local-network-access check, which otherwise blocks the WS from a fulfilled document. A run fails if the
-  page is not isolated, or if no profiled commit with nonzero duration was recorded since load, which means
-  the host serves `dist/` instead of `dist-profile/`.
-- **Scenarios.** Chat streaming seeds a persisted transcript and replays a deterministic Pi event stream
-  (`text_delta` chunks, tool calls, `partialResult` updates, `agent_settled`) into the browser at the
-  wire seam with fixed pacing; this measures client rendering only and is not evidence of agent behavior.
-  Region toggles fold and unfold a right tool group, hide and show the right side, and hide and show the
-  bottom over a seeded transcript with a live terminal; it exists to catch a shape change that remounts the
-  center or a neighbouring pane (a regression shows up as `ChatView`/`Markdown`/tool-panel mounts rather
-  than a handful of chrome updates). Live file edits rewrite a worktree file under an open file tab. Large
-  diff opens a 3,000-line Pierre diff and wheel-scrolls it. Runs interleave scenarios; the runner reports
-  medians and run-to-run spread.
-- **Heavy scenarios** (only with `--scenario`; the default set is the four above). `long-stream` replays one
-  ~26k-char seeded markdown answer (headings, nested lists, ts/py/bash/json fences, a GFM table, mermaid) in
-  10–60-char deltas every 15 ms; `long-stream-xl` is the same at ~100k chars. `parallel-agents` opens 20
-  persisted chats as tabs in one workspace and interleaves 20 replays; `background-agents` streams the 19
-  hidden tabs while the visible chat stays idle, so every commit it records is cost the visible UI pays for
-  background work. Both then open a hidden tab and assert its streamed text arrived.
-- **Weak machine.** `--cpu N` applies CDP `Emulation.setCPUThrottlingRate` for the measured window only.
-- **Extra metrics.** Per run: long tasks (count, total, max), rAF frame gaps (p50/p95/max, dropped 60 Hz
-  frames), CDP main-thread task/script/layout/style ms and heap delta, scenario counters (deltas, mounted
-  chats), and markdown subtree root renders, self ms, and self ms per delta. Main-thread time includes
-  Playwright's `routeWebSocket` relay, so compare it only across variants of the same scenario.
-- **Variants.** Run the command from a worktree root to measure that worktree; the output records
-  `rootDir`, `gitHead`, `dirty` and `dirtyTreeHash` (sha256 of `git status --porcelain` plus `git diff HEAD`;
-  untracked file contents are not hashed).
+- **采集。** 一个 init 脚本在 React 加载之前安装最小的 `__REACT_DEVTOOLS_GLOBAL_HOOK__`，这会把根置入
+  profile 模式。每次提交都按 DevTools 的方式遍历 fiber 树（只下潜进入重渲染的子树），并按组件名记录
+  提交次数、自身时间（`selfBaseDuration`）与包含时间（`actualDuration`，对嵌套的同名实例不重复
+  计算）。未命名组件用其最近的具名属主标记。Hooks 在其宿主组件下上报。标签是打包后的函数名：`$N`
+  后缀标记的是打包器为避免冲突而重命名的名字（`Markdown$1` 是 react-markdown，而不是应用自己的
+  `Markdown`）。一个具名子树（`markdown`：根为 `AssistantMarkdown,Markdown`，可用
+  `THINKRAIL_PERF_MARKDOWN_ROOTS` 覆盖）会把其最外层根下每个组件的自身时间与渲染次数相加，因此任何
+  markdown 引擎都会被计入。
+- **定时器精度。** 测试装置通过 `page.route` 为文档与脚本添加 COOP/COEP 头，使页面跨源隔离（5 µs
+  定时器，而不是 100 µs）；测量浏览器禁用 Chromium 的本地网络访问检查，因为该检查否则会阻止来自已
+  兑现文档的 WS。如果页面未被隔离，或自加载以来没有记录到任何持续时间非零的 profile 提交（这意味着
+  宿主提供的是 `dist/` 而不是 `dist-profile/`），运行就会失败。
+- **场景。** Chat streaming 会播种一份持久化的对话记录，并以固定节奏把确定性的 Pi 事件流
+  （`text_delta` 块、工具调用、`partialResult` 更新、`agent_settled`）在线上协议接缝处重放进浏览器；
+  这只测量客户端渲染，不是 agent 行为的证据。Region toggles 在一份带活终端的播种对话记录上折叠与
+  展开右侧工具组、隐藏与显示右侧、隐藏与显示底部；它存在是为了抓住会让中心或相邻面板重新挂载的形状
+  变化（回归会表现为 `ChatView`/`Markdown`/工具面板的挂载，而不是少量 chrome 更新）。Live file
+  edits 重写一个打开文件标签页下的工作树文件。Large diff 打开一个 3,000 行的 Pierre diff 并滚轮
+  滚动它。各次运行交错执行场景；运行器报告中位数与运行间离散度。
+- **重型场景**（仅在带 `--scenario` 时；默认集合是上面四个）。`long-stream` 重放一份约 26k 字符的
+  播种 markdown 答案（标题、嵌套列表、ts/py/bash/json 围栏、一个 GFM 表格、mermaid），每 15 ms 以
+  10–60 字符的增量输出；`long-stream-xl` 是同内容但约 100k 字符。`parallel-agents` 在一个工作区中
+  把 20 个持久化聊天作为标签页打开，并交错执行 20 次重放；`background-agents` 流式输出 19 个隐藏
+  标签页，而可见聊天保持空闲，因此它记录的每次提交都是可见 UI 为后台工作付出的成本。两者随后都打开
+  一个隐藏标签页，并断言其流式文本已经到达。
+- **弱机器。** `--cpu N` 只对被测窗口应用 CDP `Emulation.setCPUThrottlingRate`。
+- **额外指标。** 每次运行：长任务（数量、总计、最大值）、rAF 帧间隔（p50/p95/max、掉落的 60 Hz
+  帧）、CDP 主线程 task/script/layout/style 毫秒数与堆增量、场景计数器（增量、已挂载聊天），以及
+  markdown 子树根渲染次数、自身毫秒数与每个增量的自身毫秒数。主线程时间包含 Playwright 的
+  `routeWebSocket` 中继，因此只能在同一个场景的不同变体之间比较它。
+- **变体。** 从工作树根目录运行该命令即测量该工作树；输出记录 `rootDir`、`gitHead`、`dirty` 和
+  `dirtyTreeHash`（`git status --porcelain` 加 `git diff HEAD` 的 sha256；未跟踪文件的内容不会被
+  哈希）。
 
-## Desktop-backed mode
+## 桌面宿主模式
 
-`bun run e2e:desktop` runs the complete no-agent suite against the host embedded in the packaged
-Electrobun process. A test-only environment seam keeps Electrobun's required native window hidden on a
-neutral local page and publishes the dynamic host origin through a ready file. Playwright is therefore the
-only hydrated application client: the native webview cannot take over exclusive terminal attachment or
-write shared placement while the test page is asserting it. The desktop adapter writes the control file
-only after Playwright finishes, then requires normal graceful application exit.
+`bun run e2e:desktop` 针对打包 Electrobun 进程中内嵌的宿主运行完整的 no-agent 套件。一个仅测试用的
+环境接缝让 Electrobun 必需的本地窗口隐藏在一个中立的本地页面上，并通过一个就绪文件公布动态宿主来源。
+因此 Playwright 是唯一水合的应用客户端：在测试页面断言它的同时，原生 webview 无法接管独占的终端挂接，
+也无法写入共享放置。桌面适配器只在 Playwright 结束之后才写入控制文件，然后要求应用正常优雅退出。
 
-This is separate from `smoke:desktop`: native smoke loads the actual packaged ThinkRail UI in the system
-webview, requires DOM-ready plus host health, and quits through the real Electrobun lifecycle. Linux runs
-that smoke under Xvfb with software rendering enabled only in the test environment. The split proves both
-the native-window path and broad browser behavior without introducing two competing clients.
+这与 `smoke:desktop` 相互独立：原生 smoke 在系统 webview 中加载实际打包的 ThinkRail UI，要求 DOM
+就绪加宿主健康，并通过真实的 Electrobun 生命周期退出。Linux 在 Xvfb 下运行该 smoke，且只在测试环境中
+启用软件渲染。这一拆分同时证明了本地窗口路径与广泛的浏览器行为，而不会引入两个相互竞争的客户端。
 
-JetBrains Central coverage uses a stateful, independently authored fake executable implementing only the
-argv/exit/postcondition surface ThinkRail invokes (`--version`, `status`, `quota --json`, `add pi`,
-`remove pi`, `login`, `update --install`). Its control file holds **space-separated tokens**, because the version a probe reports,
-whether credentials exist, and how an action fails are independent facts about a host: a single-valued control
-made real combinations unrepresentable, and a state that cannot be reached is a failure mode nothing asserts
-(`update --install` refusing while the host is below the minimum needs both at once). It
-materializes a test-owned synthetic PI extension written solely against PI's public API; no Central artifact,
-source fragment, output string, route, constant, binary, or secret is copied. Like the real artifact it both
-introduces a novel provider (never a row) and re-registers the built-in `anthropic` (a configured row
-labelled JetBrains AI with no Sign-out, gone again once the artifact is removed). Browser scenarios cover
-absent/outdated/malformed probes plus an above-minimum version staying ready, update, sign-in/retry, native
-add/remove, synchronous-action
-serialization, watched external add/change/remove, successful current-generation cutover for new chats, old
-live-chat coexistence after Disconnect, and boot/runtime retention after a closed synthetic-extension load
-failure. External replacement waits for the settled configured verdict and verifies that the replacement
-model is visible while the old model is gone. A fast candidate may finish before a browser poll observes
-`configuring`; that pending-work state is checked with a held candidate in the server unit fixture, not a
-minimum-visible-duration assumption in the browser. Unit coverage owns action single-flight, watcher
-debounce/coalescing, stale-candidate rejection, boot with and without the opaque extension, and exact-model
-no-fallback for new or reattached chats after Central is removed. There is no legacy migration, busy-turn drain, reattachment of live chats, compensation,
-affected-chat blocking, or recovery seal to test. Sentinel values in synthetic child output, extension
-diagnostics, and provider routing fields
-are asserted absent from the closed results and rendered settings surface; structural DTO allowlists and
-generic host mapping keep those classes out of WS frames, analytics, logs, and persistence.
+JetBrains Central 覆盖使用一个有状态的、独立编写的假可执行文件，它只实现 ThinkRail 会调用的
+argv/退出/后置条件表面（`--version`、`status`、`quota --json`、`add pi`、`remove pi`、`login`、
+`update --install`）。它的控制文件保存的是**空格分隔的 token**，因为探针上报的版本、凭据是否存在、
+以及某个动作如何失败，都是关于一个宿主的彼此独立的事实：单值控制会让真实组合无法表示，而一个无法到达
+的状态是一种没有任何断言覆盖的失效模式（当宿主低于最低版本时 `update --install` 拒绝，需要同时具备
+这两者）。它会生成一个测试自有的合成 PI 扩展，该扩展只针对 PI 的公开 API 编写；不复制任何 Central
+制品、源码片段、输出字符串、路由、常量、二进制或密钥。与真实制品一样，它既引入一个新的提供商（绝不是
+一行），也重新注册内置的 `anthropic`（一行标记为 JetBrains AI 的已配置行，没有 Sign-out，一旦移除
+该制品就会再次消失）。浏览器场景覆盖缺失/过期/畸形探针，以及高于最低版本时保持就绪、更新、登录/重试、
+原生添加/移除、同步动作串行化、被监视的外部添加/更改/移除、新聊天成功的当代切换、Disconnect 后旧
+活聊天的共存，以及一次关闭的合成扩展加载失败后启动/运行时的保持。外部替换会等待安定的已配置判定，并
+验证替换后的模型可见而旧模型已消失。一个快速的候选可能在浏览器轮询观察到 `configuring` 之前就完成；
+该待定工作状态用服务器单元夹具中一个被按住不放的候选来检查，而不是靠在浏览器里假定最短可见时长。
+单元测试覆盖拥有动作的 single-flight、watcher 的防抖/合并、过期候选拒绝、带与不带不透明扩展的启动，
+以及 Central 被移除后对新聊天或重连聊天的精确模型无回退。没有遗留迁移、忙碌轮次排空、活聊天重挂接、
+补偿、受影响聊天阻塞或恢复封条需要测试。合成子进程输出、扩展诊断和提供商路由字段中的哨兵值都被断言
+不出现在关闭结果和渲染出的设置表面中；结构化 DTO 允许清单与通用宿主映射让这些类别不会进入 WS 帧、
+analytics、日志和持久化。
 
-Quota coverage adds test-owned structured recurring values and closed failure tokens—never real Central
-output. It proves the top-bar readout appears only for healthy + enabled Central, polls at the synchronized
-whole-second interval only while visible, deduplicates host reads, retains stale values with Retry, hides on
-disable/disconnect, and degrades at mobile width; the Providers card pins default/on-off/interval validation
-and persistence. The reviewed-argv assertion rejects any presentation-text quota fallback, while sentinels in
-ignored quota fields prove account/plan/used/top-up/refill/diagnostics never cross the wire or render.
+配额覆盖加入测试自有的结构化循环取值和封闭的失败 token——绝不是真实的 Central 输出。它证明顶栏读数只
+在 Central 健康 + 启用时出现、只在可见时按同步的整秒间隔轮询、对宿主读取去重、在失败时以 Retry 保留
+过期值、在禁用/断开时隐藏，并在移动端宽度下降级；Providers 卡片钉住默认值/开关/间隔的校验与持久化。
+经审查的 argv 断言会拒绝任何展示文本的配额回退，而被忽略的配额字段中的哨兵值则证明
+account/plan/used/top-up/refill/diagnostics 绝不跨过线上协议，也绝不渲染。
 
-The Central specs share one fixture module for panel navigation, lifecycle-state waits, the argv log, and
-the out-of-band host mutations — installing/uninstalling the fake by moving it in and out of the lane's PATH
-directory, and running it directly as a user's own shell would. A host-side invocation deliberately inherits
-none of the host's PATH, so a spec can never reach a real `central`. Because that same log records both
-sides, a spec that injects a host invocation asserts *counts* rather than mere presence — that is what
-distinguishes "the app reacted to an external change" from "the app re-ran the action".
+Central 的各个 spec 共用一个夹具模块，用于面板导航、生命周期状态等待、argv 日志以及带外宿主变更——
+通过把假可执行文件移入和移出该泳道的 PATH 目录来安装/卸载它，以及像用户自己的 shell 那样直接运行它。
+宿主侧调用刻意不继承宿主的任何 PATH，因此 spec 永远无法触达真实的 `central`。因为同一份日志记录双方，
+一个注入宿主调用的 spec 断言的是*计数*而不是仅仅存在——这正是把“应用对外部变更做出了反应”与
+“应用重跑了该动作”区分开的东西。
 
-A second spec covers the lifecycle a user actually walks, one test per situation: Central absent, installed
-but signed out, uninstalled while connected, PI disconnected in-app and again on the host, and a host-side
-logout. Its load-bearing assertions are the ones a state name cannot express — that an uninstall withdraws
-Central's models from new chats while the global artifact survives, so reinstalling repairs by re-probing
-instead of a second `add pi`; that a signed-out host is offered Sign in and **no Connect at all**, with the
-ready claim replaced rather than annotated; and that a logout leaves the connection intact underneath while the
-card renders one state only: the signed-out line without the contradicting "Connected" one, a single Sign in
-with Disconnect withheld as well, and both restored once the user signs back in. The reactive guidance keeps
-its own spec, driven by the case the probe cannot see: credentials present, `add pi` refused anyway.
+第二个 spec 覆盖用户实际走的那条生命周期，每种情形一个测试：Central 缺失、已安装但已登出、连接中被
+卸载、PI 在应用内断开以及在宿主上再次断开、以及一次宿主侧登出。它承重的断言是状态名无法表达的那些——
+卸载会把 Central 的模型从新聊天中撤回，而全局制品仍然存活，因此重装通过重新探测来修复，而不是第二次
+`add pi`；已登出的宿主被提供 Sign in 且**完全没有 Connect**，就绪声明被替换而不是被加注；以及一次
+登出让底层连接保持完整，而卡片只渲染一种状态：没有与之矛盾的 "Connected" 那一行的已登出文案、单个
+Sign in 且同样扣留了 Disconnect，并且在用户重新登录后两者都恢复。响应式引导保留自己的 spec，由探针
+看不到的情形驱动：凭据存在，`add pi` 却仍被拒绝。
 
-The fake models the `Auth` row's shape only — a styled indicator, a padded label, a styled value — and prints
-a sentinel line beside it that must never surface in the UI, since the real command prints the user's licence
-and server. The cached verdict shapes the suite twice, and both accommodations are deliberately the same
-thing a *user* does rather than a reach into the host. A spec that flips the host's credential state waits
-the TTL out and refreshes, so the assertion belongs to the card's copy and not to the cache. And because
-Connect is withheld while the verdict says signed out, every connect-driven scenario refreshes until the
-button appears instead of assuming it — a verdict left behind by an earlier scenario would otherwise hide it,
-exactly as it would for someone returning to the panel inside the window. Each state is also captured as a
-review PNG under `e2e/screenshots/<group>/`
-(gitignored, stable path, one element shot per state, retina, CSS animations fast-forwarded so a
-spring mid-flight never ends up in the picture). Screenshots are evidence, never the assertion — a state that only a picture would catch is a missing `data-testid`. Identical files across
-scenarios are a finding, not a defect: they are how the suite shows two distinct host situations rendering
-one indistinguishable card.
+这个假实现只模仿 `Auth` 行的形状——一个带样式的指示器、一个带内边距的标签、一个带样式的值——并在它
+旁边打印一行哨兵，那行绝不能出现在 UI 中，因为真实命令会打印用户的许可证和服务器。缓存的判定两次塑造
+了这个套件，而这两种迁就都刻意做成*用户*会做的事，而不是伸手进宿主。一个翻转宿主凭据状态的 spec 会
+等过 TTL 并刷新，这样断言属于卡片的文案而不是缓存。而由于判定说已登出时会扣留 Connect，每个由 Connect
+驱动的场景都会刷新直到按钮出现，而不是假定它存在——被前一个场景留下的判定否则会把它藏起来，就像一个人
+在这个窗口期内回到该面板时会遇到的那样。每种状态还会被捕获为 `e2e/screenshots/<group>/` 下的评审 PNG
+（gitignored、路径稳定、每种状态一张元素截图、retina、CSS 动画快进，因此弹簧动画中途不会进入画面）。
+截图是证据，绝不是断言——一张只有图片才能抓住的状态，就是一个缺失的 `data-testid`。跨场景的相同文件
+是一个发现，而不是缺陷：它们正是套件展示两种不同的宿主情形渲染出同一张无法区分的卡片的方式。
 
-The real-Central agent mode is explicit and read-only. Its setup takes the already-authorized global Central
-extension as an opaque source and stages one permission-restricted copy under the lane's isolated HOME; the
-host still resolves only the test-owned Central executable, and that executable refuses every mutating
-action in this mode. The isolated PI agent directory receives `settings.json` only — never the developer's
-`auth.json` or `models.json` — so Central is the sole provider source and unrelated local models cannot enter
-the picker. Setup waits for the watched runtime generation to report configured over the public wire, then
-requires `model.default` to equal the exact `THINKRAIL_E2E_MODEL` pair (the deterministic suite default is
-used when the variable is absent). A missing artifact, failed generation, or unavailable exact pair aborts
-before any provider turn; PI's ordinary first-available fallback is never accepted as test configuration.
-The same copy and hermetic environment seed the private restart host.
+real-Central 的 agent 模式是显式的且只读的。它的 setup 把已授权的全局 Central 扩展当作不透明来源，并
+在该泳道隔离的 HOME 下暂存一份权限受限的副本；宿主仍然只解析测试自有的 Central 可执行文件，而该
+可执行文件在此模式下拒绝每一个会变更的动作。隔离的 PI agent 目录只会收到 `settings.json`——绝不收到
+开发者的 `auth.json` 或 `models.json`——因此 Central 是唯一的提供商来源，无关的本地模型也无法进入
+选择器。Setup 会等待被监视的运行时世代通过公开线上协议报告已配置，然后要求 `model.default` 等于确切的
+`THINKRAIL_E2E_MODEL` 对（变量缺失时使用确定性的套件默认值）。制品缺失、世代失败或确切对不可用都会
+在任何提供商轮次之前中止；PI 普通的“第一个可用”回退绝不被接受为测试配置。同一份副本和封闭环境为
+私有的重启宿主播种。
 
-**Session state** coverage seeds complete transcript states and drives normalized host blockers/runs to pin
-Projects rail presentation: both needs-input and owner-globally unread results render the same static green
-attention dot (“Needs attention”), while genuinely running sessions swap the workspace/project identity
-icon for the shared `RunningIcon` brand badge in the row's own colour. The rail must not substitute
-question/check/result glyphs or a generic spinner. Running alone has no attention dot; queued, hidden/background, and explicitly stopped sessions stay
-quiet; a live blocked question keeps its dot while its orthogonal running badge may coexist. Reconnect/restart
-snapshots, direct-versus-passive activation, owner-global clearing, and snapshot
-retry are covered; live-agent coverage pins `data-running`/`running-icon` (its strokes animate, and stay fully drawn and still under
-reduced motion) and coexistence with
-`data-attention`/`attention-dot`. These are stable visual hooks rather than alternate state models. The retired `session.activityList → []` compatibility method
-remains a focused handler test.
+**Session state** 覆盖会播种完整的对话记录状态，并驱动归一化的宿主阻塞/运行状态来钉住 Projects 侧栏的
+呈现：needs-input 结果和属主全局未读结果都渲染同一个静态的绿色注意点（“Needs attention”），而真正在
+运行的会话则把工作区/项目身份图标换成共享的 `RunningIcon` 品牌徽标，使用该行自己的颜色。侧栏绝不能
+替换成问号/对勾/结果图标，也不能用一个通用转圈。仅运行状态没有注意点；排队、隐藏/后台以及显式停止的
+会话保持安静；一个实时的阻塞提问保留它的点，而其正交的运行中徽标可以共存。重连/重启快照、直接激活与
+被动激活、属主全局清除以及快照重试都被覆盖；实时 agent 覆盖钉住 `data-running`/`running-icon`（它的
+描边会动画，并在减动效下保持完整绘制且静止）以及与 `data-attention`/`attention-dot` 的共存。这些是
+稳定的视觉钩子，而不是另一种状态模型。退役的 `session.activityList → []` 兼容方法仍保留为一个聚焦的
+handler 测试。
 
-**Topbar chrome** (`topbar-chrome.spec.ts`) proves the web side of the desktop title-bar contract without a
-desktop: it injects the three host-published CSS properties (`--window-chrome-inset-left|right`,
-`--window-chrome-drag-region`) from the test and asserts spacer widths, logo/action-cluster offsets, an
-unchanged 40px workbench origin, the header's resolved `-webkit-app-region`, and that Update, quota Retry
-and Settings all live inside the `no-drag` action cluster. In a plain browser the properties are unset, so
-the first scenario pins the zero-inset, `no-drag` baseline and the theme-token header colour.
+**Topbar chrome**（`topbar-chrome.spec.ts`）在没有桌面的情况下证明桌面标题栏契约的 Web 侧：它从测试中
+注入三个宿主公布的 CSS 属性（`--window-chrome-inset-left|right`、`--window-chrome-drag-region`），并
+断言边距块宽度、logo/动作簇偏移、不变的 40px 工作台原点、头部解析后的 `-webkit-app-region`，以及
+Update、配额 Retry 和 Settings 都位于 `no-drag` 动作簇之内。在普通浏览器中这些属性未设置，因此第一个
+场景钉住零内边距、`no-drag` 基线和主题 token 的头部颜色。
 
-Workbench scenarios exercise the normalized frontend-local frame rather than only the pure model: frame
-geometry/tool placement survives workspace switches while resource tabs and attention differ; closing a final
-resource retains its empty group; explicit group removal rehomes hidden-workspace resources; reload restores
-endpoint/surface-qualified local state; a tab initialized with cloned session storage remints its live surface
-id and both tabs retain independent frames through reload; a simultaneous second page neither adopts peer
-file/terminal/chat placement nor misses the peer-created chat's history-only domain event; custom preset CRUD synchronizes, the local default drives explicit frame Reset, and Apply affects only its page. A pristine or invalid local document starts directly from Balanced, and the suite asserts that no current-layout request exists.
+Workbench 场景演练归一化的前端本地帧，而不只是纯模型：帧几何/工具放置在切换工作区时保留，而资源标签页
+与注意状态可以不同；关闭最后一个资源会保留其空组；显式移除组会把隐藏工作区的资源重新安置；重载会恢复
+带端点/表面限定的本地状态；一个用克隆的会话存储初始化的标签页会重新铸造其活表面 id，且两个标签页在
+重载期间都保留各自独立的帧；同时存在的第二个页面既不采纳对端的文件/终端/聊天放置，也不错过对端创建
+聊天的仅历史领域事件；自定义预设的增删改查会同步，本地默认值驱动显式的帧 Reset，而 Apply 只影响它自己的
+页面。一份原始或无效的本地文档直接从 Balanced 开始，且套件断言不存在任何当前布局请求。
 
-Bottom-workbench coverage retains all four alignments with real side-stack ownership of excluded lower
-corners, live alignment during side resizing and narrow-width compression, pointer/keyboard persistence of
-only the separator-owned side ratio, separator hit areas that leave the preceding panel's scrollbar edge alone, independent height/group resizing, zero-body-space folding with
-edge-rail and `Ctrl+F6` restoration, modal-aware visibility chords, PTY continuity while hidden, and process-free default-terminal
-reservation. Terminal creation now exercises the host pending-marker handshake plus independent local
-placement, not a layout revision or peer geometry synchronization. `tool-rails.spec.ts` covers multiple
-sessions per existing pane, independent terminal groups, the pane-cluster rail grammar (clusters mirror
-pane order, boundary drops create panes while entry-half drops join one, a tool paints no target on a
-terminal strip, the pane-header title drags its tool, an unplaced tool sits dimmed in a trailing cluster),
-a terminal pane's selected session surviving fold and reload, linked collapsed regions, keyboard focus without implicit activation, a browser
-history workspace switch during a singleton drag, and DOM continuity across shape changes: it stamps the
-center tabs, chat input, terminal, Projects tree, and Changes toolbar before each fold/hide/show and asserts
-the same nodes survive, which fails if any panel group is remounted. The compressed-resize matrix uses independent cases
-with explicit compression assertions, avoiding accidental collapse caused by the rails' occupied width.
-`rail-layout-regressions.spec.ts` covers node replacement before bottom measurement, explicit drops into
-partially/all-folded destinations (a terminal beside a folded tool pane lands in its own pane), and switch-mid-resize rollback across every resize consumer. It checks
-live geometry during the canceled gesture, unchanged persistence, retained DOM, reload, and subsequent
-resize usability rather than treating a cancellation toast alone as success. `project-home-chrome.spec.ts`
-covers the no-workspace branch: the fresh start screen and Project Home carry the left tool rail and
-plain Projects pane header with no right/bottom rail, the rail entry / Hide / `Mod+B` toggle with their
-focus endpoints, and rail/header geometry that matches the workbench across a workspace round trip.
+Bottom-workbench 覆盖保留了全部四种对齐方式，并对排除在外的下方角落拥有真实的侧边栈所有权；侧边调整
+尺寸与窄宽压缩期间的实时对齐；只有分隔符拥有的侧边比例会被指针/键盘持久化；分隔符命中区域不干扰前一个
+面板的滚动条边缘；独立的高度/组尺寸调整；零主体空间的折叠及其边缘轨道与 `Ctrl+F6` 恢复；模态感知的可见性
+组合键；隐藏期间的 PTY 连续性；以及无进程的默认终端预留。终端创建现在演练宿主待定标记握手加上独立的
+本地放置，而不是布局修订或对端几何同步。`tool-rails.spec.ts` 覆盖：每个既有窗格中的多个会话、独立的
+终端组、窗格簇的轨道语法（簇镜像窗格顺序，边界投放创建窗格而进入半区投放则加入一个，工具在终端条带上
+不绘制任何目标，窗格头部标题拖拽它的工具，未放置的工具在尾部簇中变淡显示）、一个终端窗格所选会话在
+折叠与重载后存续、链接的折叠区域、无隐式激活的键盘焦点、单例拖拽期间的浏览器历史工作区切换，以及跨
+形状变化的 DOM 连续性：它在每次折叠/隐藏/显示之前给中心标签页、聊天输入框、终端、Projects 树和
+Changes 工具栏打上标记，并断言相同节点存活——如果任何面板组被重新挂载，这一点就会失败。压缩调整尺寸的
+矩阵使用独立用例并带显式的压缩断言，避免因轨道占用的宽度造成意外折叠。`rail-layout-regressions.spec.ts`
+覆盖：底部测量之前的节点替换、向部分/全部折叠目的地的显式投放（一个位于折叠工具窗格旁的终端落在它
+自己的窗格里），以及跨每个 resize 消费者的调整尺寸中途切换回滚。它检查被取消手势期间的实时几何、
+不变的持久化、保留的 DOM、重载，以及后续的调整尺寸可用性，而不是把一条取消 toast 单独当作成功。
+`project-home-chrome.spec.ts` 覆盖无工作区分支：全新开始屏幕与 Project Home 都带左侧工具轨道、不带右/
+底轨道的纯 Projects 窗格头部、轨道入口 / Hide / `Mod+B` 开关及其焦点端点，以及在一轮工作区往返中与
+工作台一致的轨道/头部几何。
 
-## Isolation contract
+## 隔离契约
 
-The no-agent setup seeds a test-owned empty `models.json` and never reads or copies developer
-`auth.json` or `models.json`; provider scenarios use synthetic fixtures, and the separately authorized
-real-Central mode keeps its opaque-artifact-only credential contract above. Model-context coverage
-exercises the Default / 1M / Custom selector through the real host: shared and per-provider saves,
-retained live-chat limits versus new-chat metadata, Custom validation and Apply focus, cross-client
-convergence with draft invalidation, sanitized read/write failures with Retry, mobile keyboard use,
-and pre-v76 hiding.
+no-agent 的 setup 播种一个测试自有的空 `models.json`，且绝不读取或复制开发者的 `auth.json` 或
+`models.json`；提供商场景使用合成夹具，而单独授权的 real-Central 模式保留上文的、仅限不透明制品的
+凭据契约。模型上下文覆盖通过真实宿主演练 Default / 1M / Custom 选择器：共享与按提供商的保存、活聊天
+限制与新聊天元数据的区分、Custom 校验与 Apply 焦点、带草稿失效的跳客户端收敛、带 Retry 的已消毒
+读/写失败、移动端键盘使用，以及 pre-v76 隐藏。
 
-General and private-restart fixtures seed additional analytics off with consent already confirmed, so
-unrelated scenarios stay unblocked. They also seed the automatic interview invitation as permanently
-dismissed: the serial agent lane intentionally accumulates accepted prompts across scenarios, while dedicated
-feedback coverage injects and asserts the addressed invitation channel directly. Before any fixture reset
-deletes transcript storage, it lists and disposes every live session through the public wire; disposal aborts
-and settles an unfinished provider turn first, so a test ending mid-turn cannot recreate a headerless JSONL
-behind the next scenario. Consent tests reset the choice over the real settings wire and cover on-by-default preference priming,
-Done/ordinary-close acceptance, immediate off refusal, persistence failures and retries, confirmed reloads,
-cross-client convergence, prompt priority, and pre-v65 fallback.
+通用与私有重启夹具会关闭额外 analytics，并预先确认同意，因此无关场景不会被阻塞。它们还会把自动面谈
+邀请播种为永久已忽略：串行 agent 泳道会有意在场景间累积已接受的提示，而专用反馈覆盖直接注入并断言
+被寻址的邀请通道。在任何夹具重置删除对话记录存储之前，它会通过公开线上协议列出并处置每一个活会话；
+处置会先中止并安定一个未完成的提供商轮次，因此一个在轮次中途结束的测试无法在下一个场景背后重建一个
+无头部 JSONL。同意测试通过真实设置线上协议重置选择，并覆盖默认开启的偏好预填、Done/普通关闭即接受、
+立即关闭即拒绝、持久化失败与重试、已确认重载、跳客户端收敛、提示优先级，以及 pre-v65 回退。
 
-Every concurrent lane derives a distinct data dir, HOME, pi-agent dir, fixture repository, binary cache,
-desktop cache/state plus ready/control files, Playwright transform cache, restart artifacts,
-picker/editor/provider control files, host/restart/binary/desktop ports, and Central fixture artifacts. The
-transform cache is lane-local because Playwright's shared cache assumes a single runner process; sharing it
-lets a cold shard consume another shard's partially written transform. Every host (source, binary, desktop,
-and the restart spec's own) receives `SHELL` pointing at the lane's fixture `login-shell` next to the
-Central/editor stubs: `resolveShellEnv()` always probes the login shell at boot and merges its PATH in, so the
-fixture answers the probe (recognized by shared's `LOGIN_ENV_MARKER`) with that marker and the same hermetic
-PATH the host was given, and otherwise execs the runner's real shell, keeping terminal specs on a genuine
-shell. Without it the probe would merge developer-machine directories into the hermetic PATH (and import the
-developer's login environment) and a spec could reach a real `central`, `pi`, or editor. (The `.bun/bin` directory name is historical: it once marked the PATH as complete to a short-circuit
-that no longer exists.) Folder selection comes from one picker control file across the source,
-binary, and desktop hosts: plain content returns a path and an `error:<message>` directive forces a
-platform-independent failure. The source host also receives empty `DISPLAY` and `WAYLAND_DISPLAY`, so a
-broken control cannot reach a developer's Linux display; native Linux preflight stays unit-covered. Port
-allocation remains stable and collision-safe across
-worktrees: the registry claim distinguishes
-a lane's logical key while checking staleness against the real worktree path. Legacy plain-path claims are
-still valid.
+每条并发泳道都会派生各自独立的数据目录、HOME、pi-agent 目录、夹具仓库、二进制缓存、桌面缓存/状态加
+就绪/控制文件、Playwright 转换缓存、重启制品、选择器/编辑器/提供商控制文件、宿主/重启/二进制/桌面端口，
+以及 Central 夹具制品。转换缓存是泳道本地的，因为 Playwright 的共享缓存假定只有一个运行器进程；共享它
+会让一个冷分片消费另一个分片部分写入的转换。每个宿主（source、binary、desktop 以及重启 spec 自己的）
+都会收到 `SHELL`，指向该泳道位于 Central/编辑器桩旁边的夹具 `login-shell`：`resolveShellEnv()` 总会在
+启动时探测登录 shell 并合并其 PATH，因此夹具用那个标记（由 shared 的 `LOGIN_ENV_MARKER` 识别）和与
+宿主所获相同的封闭 PATH 回答该探测，否则就 exec 运行器的真实 shell，让终端 spec 跑在一个真实 shell 上。
+没有它，探测就会把开发者机器的目录合并进封闭 PATH（并导入开发者的登录环境），而一个 spec 就可能触达真实
+的 `central`、`pi` 或编辑器。（`.bun/bin` 目录名是历史产物：它曾经向一个已不存在的短路把 PATH 标记为
+完整。）文件夹选择在 source、binary 和 desktop 宿主之间共用同一个选择器控制文件：纯内容返回一个路径，
+`error:<message>` 指令则强制一个平台无关的失败。source 宿主还会收到为空的 `DISPLAY` 和 `WAYLAND_DISPLAY`，
+因此一个损坏的控制无法触达开发者的 Linux 显示器；Linux 原生预检仍由单元测试覆盖。端口分配在多个工作树
+之间保持稳定且防冲突：注册表声明区分一条泳道的逻辑键，同时对照真实工作树路径检查陈旧性。遗留的纯路径
+声明仍然有效。
 
-Cross-window placement probes wait for the peer's initial chat hydration before changing its layout;
-creating a terminal can legitimately supersede an in-flight passive restore, which is not placement leakage.
+跨窗口放置探针在改变其布局之前会等待对端的初始聊天水合；创建一个终端可以正当地取代一次进行中的被动
+恢复，而那并不是放置泄露。
 
-Different worktrees may run concurrently. Two complete E2E invocations in one worktree remain sequential;
-the lane ids are deliberately stable across runs so interrupted state is reclaimed rather than leaked.
-No path may fall back to `~/.thinkrail`, the developer's HOME/config trees, or the real pi agent dir. The
-explicit agent-mode setup is the narrow exception: it reads one known global Central artifact into the
-lane-owned copy, never runs from or writes to the source, and removes the copy on setup failure or teardown.
-A sandboxed home is handed to every host as **both `HOME` and `USERPROFILE`**: `homedir()` — pi's own home
-resolution — reads `USERPROFILE` on Windows and ignores `HOME`, so `HOME` alone would silently leak a
-Windows lane into the real profile (see `module-shared`).
+不同工作树可以并发运行。同一个工作树中的两场完整 E2E 调用仍然串行；泳道 id 刻意跨运行保持稳定，因此
+被中断的状态会被回收而不是泄露。任何路径都不得回退到 `~/.thinkrail`、开发者的 HOME/config 树，或真实
+的 pi agent 目录。显式的 agent 模式 setup 是狭窄的例外：它把一个已知的全局 Central 制品读入泳道自有的
+副本，绝不从源运行、也绝不写入源，并在 setup 失败或拆除时移除该副本。一个沙箱化的 home 会作为
+**`HOME` 和 `USERPROFILE` 两者**交给每个宿主：`homedir()`——pi 自己的 home 解析——在 Windows 上读取
+`USERPROFILE` 并忽略 `HOME`，因此仅有 `HOME` 会让一个 Windows 泳道静默泄露到真实配置档中（见
+`module-shared`）。
 
-## Boundary
+## 边界
 
-- **Owns:** browser scenarios and fixtures under `e2e/`, their Playwright configuration/runner entrypoints,
-  isolation and port-allocation rules, report orchestration, and the public `e2e*` package commands.
-  `e2e/fixtures/git.ts` is the one place specs shell out to `git` (`git`, `gitQuiet`, `gitText`, `gitAs`,
-  `commitFile`); `gitAs`/`commitFile` pin a throwaway e2e identity so a seeded commit's authorship never
-  depends on the developer machine's real git config. `e2e/fixtures/pierre.ts` is the one place specs
-  touch `@pierre/diffs`' DOM (`pierreLines`, `pierreLineNumber`, `selectPierreLine`,
-  `pierreCollapsedContext`, `pierreDeletionsSide`): a Pierre release that renames `data-line`,
-  `data-column-number`, `data-unmodified-lines` or `data-deletions` is a one-file repair, and no spec
-  encodes how a line is selected. `e2e/phone-review.spec.ts` is the phone-class gate for the review
-  surface — Pierre file rendering, unified-only diffs, tap-to-comment and inline placement at
-  `PHONE_VIEWPORT` — reached the way the desktop shell reaches a phone today: open at desktop width, then
-  resize and hide the auxiliary stacks.
-- **Consumes:** the built web artifact, the host's public boot/wire behavior, sanctioned server test-fixture
-  exports, CLI binary, the locator from [[module-artifact-tests]], shared retrying teardown helper, git,
-  Chromium, and Playwright. Standalone native/installer smoke and shared artifact probes are owned by
-  that test workspace, outside Playwright discovery.
-- **Forbidden:** fake application backends, provider fakes in production boot paths, browser imports into
-  product modules, default/no-agent tests depending on developer state, agent tests reading anything beyond
-  the explicitly authorized Central artifact, or parallel workers sharing one mutable host.
+- **拥有：** `e2e/` 下的浏览器场景与夹具、它们的 Playwright 配置/运行器入口点、隔离与端口分配规则、
+  报告编排，以及公开的 `e2e*` 包命令。`e2e/fixtures/git.ts` 是 spec 调用 `git` 的唯一地方（`git`、
+  `gitQuiet`、`gitText`、`gitAs`、`commitFile`）；`gitAs`/`commitFile` 钉住一个一次性的 e2e 身份，
+  因此播种提交的作者身份绝不依赖开发者机器上真实的 git 配置。`e2e/fixtures/pierre.ts` 是 spec 触碰
+  `@pierre/diffs` DOM 的唯一地方（`pierreLines`、`pierreLineNumber`、`selectPierreLine`、
+  `pierreCollapsedContext`、`pierreDeletionsSide`）：一个重命名了 `data-line`、`data-column-number`、
+  `data-unmodified-lines` 或 `data-deletions` 的 Pierre 版本只是一次单文件修复，且没有任何 spec 编码
+  了某一行是如何被选中的。`e2e/phone-review.spec.ts` 是评审表面的手机档门禁——Pierre 文件渲染、
+  仅统一视图的 diff、按击评论，以及在 `PHONE_VIEWPORT` 的内联放置——按桌面外壳今天到达手机的方式到达：
+  以桌面宽度打开，然后调整尺寸并隐藏辅助栈。
+- **消费：** 构建好的 Web 制品、宿主的公开启动/线上协议行为、经批准的服务器测试夹具导出、CLI 二进制、
+  来自 [[module-artifact-tests]] 的定位器、共享的重试式拆除辅助函数、git、Chromium，以及 Playwright。
+  独立的原生/安装器 smoke 与共享制品探针由那个测试工作区拥有，在 Playwright 发现之外。
+- **绝不触碰：** 假的应用后端、生产启动路径里的提供商假实现、产品模块里的浏览器导入、依赖开发者状态的
+  默认/no-agent 测试、读取明确授权的 Central 制品之外任何东西的 agent 测试，或共享一个可变宿主的并行
+  worker。
 
-## Verification policy
+## 验证策略
 
-During iteration, run the affected specs and use Playwright's last-failed mode. Flake repairs replace
-irrelevant expensive setup with equivalent fixture state and wait for observable readiness; blanket retries,
-arbitrary sleeps, and assertion weakening are not synchronization policy. Live-provider completion waits on
-the session's streaming state after response evidence appears; the optional rendered `Done` row is not a
-terminal-state contract. Scenarios whose subject is a client-side send transformation assert the exact
-outgoing `session.prompt` frame rather than treating a
-mounted optimistic transcript row as delivery evidence: a fast provider rejection can add a taller error,
-scroll to the latest row, and legitimately virtualize the preceding user row. Chat-order coverage seeds
-multi-round transcripts and asserts both latest edges, their physical **Latest** destinations, host-qualified
-browser-local persistence, and cross-browser isolation without involving a provider. Hydrated-history
-coverage seeds one canonical giant Markdown block and drives real coarse wheel input so initial virtual
-geometry cannot clamp before the row mounts. Chat-title coverage uses persisted Pi transcripts to prove the
-native `/name` path, open-tab and closed-history inline rename paths, keyboard focus recovery, bounded
-long-history scrolling, and reload durability without involving a provider. Visualize coverage
-(`visualize.spec.ts`) independently seeds short historical tool-call/result transcripts through the
-sanctioned session fixture before workspace entry. It pins completed/default-expanded diagrams,
-fullscreen SVG growth, pan/reset/Escape and claimed WebKit pinch gestures, exact comparison pros/cons
-and recommendation, and assistant mermaid fences alongside tool diagrams re-rendering to the host's
-`--container-elevated-bg` after selecting a discovered opposite appearance in real settings. Malformed
-source is seeded as a successful historical tool result (`isError: false`) so both tool and chat exercise
-the renderer's plain-source fallback, not the tool-error branch. These regressions need no provider,
-prompt submission, route mock, or screenshot. Extension on/off coverage (`extensions-settings.spec.ts`) drives the
-real Settings → Extensions switch through `settings.update`, proves it survives a reload, and seeds a
-historical `visualize` call that must still render its diagram while the extension is off; each test restores
-the switch in `afterEach` because the shard shares one host. The provider-backed counterpart in
-`visualize.live.spec.ts` runs first: with the extension off the agent is never offered `visualize`, and the
-existing diagram/comparison tests that follow re-prove the restored tool in the same chat. MCP tool-card coverage
-(`mcp-tool-cards.spec.ts`) seeds historical `mcp__*`, resource and `tool_search` results the same way and pins
-the single shared image strip, the collapsed JSON tree, Full output through the real `mcp.readOutput`
-(a recorded file and an expired one), Sign in deep links into Settings › MCP servers or Providers according
-to pi's reported authentication kind (provider identity remains visible), and the raw-text fallback for a truncated listing; its element shots under `e2e/screenshots/mcp-tool-cards/` are review evidence
-only. Questionnaire paging uses canonical persisted tool-call/ack fixtures to pin six-question rounds beyond
-four, tall-page reveal,
-fresh-chat restored-page reveal, visible review focus, and coarse-pointer focus
-without provider variability; desktop package tests separately pin the stable
-backend-profile/window adapter required across dynamic-port restarts. Streaming-band coverage remains
-`@agent` because only Pi's real row growth exercises that lifecycle. Stream-mount coverage injects
-synthetic `pi.event` frames into the page wire (`fixtures/streamReplay.ts`) under CPU throttling to prove
-a working chat stays shown when it mounts; it is not evidence of provider behavior. Before handoff, every
-app-affecting change runs the complete `bun run e2e` no-agent gate. Artifact-only regressions remain covered by
-`e2e:binary`, `e2e:desktop`, and their shared host probe: a synthetic opaque external extension loads with
-no `pi` executable on `PATH` for default and custom `PI_CODING_AGENT_DIR`; desktop additionally proves its
-staged `.ts` PI runtime and physical resources. Real Central acceptance remains explicitly authorized and
-isolated: the dedicated `@agent` suite stages the opaque artifact, validates the exact model, and proves a
-real turn rather than accepting another provider or a fake agent.
+迭代期间，运行受影响的 spec 并使用 Playwright 的 last-failed 模式。修补不稳定测试时，用等效的夹具状
+态替换无关的昂贵 setup，并等待可观察的就绪；一刀切重试、任意 sleep 和弱化断言都不是同步策略。活提供
+商的完成在响应证据出现后等待会话的流式状态；可选的已渲染 `Done` 行不是终态契约。主题是客户端侧发送转
+换的场景会断言确切的出站 `session.prompt` 帧，而不是把一行已挂载的乐观对话记录行当作投递证据：一次快
+速的提供商拒绝可能会加一条更高的错误、滚动到最后一行，并正当地虚拟化掉前面那行用户消息。聊天顺序覆盖
+会播种多轮对话记录，并断言两端的最新边缘、它们物理上的 **Latest** 目的地、带宿主限定的浏览器本地持久
+化，以及跨浏览器隔离，且不涉及提供商。水合历史覆盖会播种一个规范的巨型 Markdown 块，并驱动真实的粗粒
+度滚轮输入，使初始虚拟几何无法在该行挂载之前被钳制。聊天标题覆盖使用持久化的 Pi 对话记录来证明原生
+`/name` 路径、打开标签页与关闭历史的就地重命名路径、键盘焦点恢复、有界长历史滚动，以及重载耐久性，且
+不涉及提供商。Visualize 覆盖（`visualize.spec.ts`）在进入工作区之前通过经批准的会话夹具独立播种简短
+的历史工具调用/结果对话记录。它钉住已完成/默认展开的图表、全屏 SVG 增长、平移/重置/Escape 与所声明的
+WebKit 捏合手势、精确的比较利弊与建议，以及助手 mermaid 围栏在真实设置中选中一个发现的相反外观之后与
+工具图表一起重渲染到宿主的 `--container-elevated-bg`。畸形源码会作为一条成功的历史工具结果
+（`isError: false`）播种，因此工具与聊天都演练渲染器的纯源码回退，而不是工具错误分支。这些回归不需要
+提供商、提示词提交、路由 mock 或截图。扩展开/关覆盖（`extensions-settings.spec.ts`）通过
+`settings.update` 驱动真实的 Settings → Extensions 开关，证明它能在重载后存续，并播种一个历史
+`visualize` 调用，该调用在扩展关闭时仍必须渲染其图表；每个测试都在 `afterEach` 中恢复该开关，因为分
+片共用一个宿主。`visualize.live.spec.ts` 中由提供商支撑的对应测试先运行：扩展关闭时 agent 绝不会被提
+供 `visualize`，而随后那些既有的图表/比较测试会在同一个聊天里重新证明已恢复的工具。MCP 工具卡覆盖
+（`mcp-tool-cards.spec.ts`）以同样的方式播种历史 `mcp__*`、资源和 `tool_search` 结果，并钉住唯一共享
+的图片条、折叠的 JSON 树、经真实 `mcp.readOutput` 的 Full 输出（一个已记录文件与一个已过期文件）、按
+照 pi 上报的认证类型进入 Settings › MCP servers 或 Providers 的 Sign in 深链（提供商身份保持可见），
+以及被截断列表的纯文本回退；它在 `e2e/screenshots/mcp-tool-cards/` 下的元素截图只是评审证据。问卷翻
+页使用规范的持久化工具调用/回执夹具来钉住超出四题的六题轮次、长页面显露、新聊天恢复页面显露、可见的
+评审焦点，以及粗指针焦点，且不受提供商可变性影响；桌面包测试另行钉住动态端口重启所需的稳定后端配置档
+/窗口适配器。流式带覆盖仍属 `@agent`，因为只有 Pi 真实的行增长才会演练该生命周期。流挂载覆盖在 CPU
+限流下把合成的 `pi.event` 帧注入页面线上协议（`fixtures/streamReplay.ts`），以证明一个工作正常的聊天
+在挂载时保持显示；它不是提供商行为的证据。在交接之前，每个影响应用的改动都会运行完整的 `bun run e2e`
+no-agent 门禁。仅制品的回归仍由 `e2e:binary`、`e2e:desktop` 及其共享宿主探针覆盖：一个合成的、不透明
+的外部扩展在 `PATH` 上没有 `pi` 可执行文件的情况下加载，覆盖默认与自定义 `PI_CODING_AGENT_DIR`；桌面
+还会证明它暂存的 `.ts` PI 运行时与物理资源。真实 Central 验收仍然明确授权且隔离：专用的 `@agent` 套
+件暂存不透明制品、校验确切模型，并证明一个真实轮次，而不是接受另一个提供商或一个假 agent。

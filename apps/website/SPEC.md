@@ -2,69 +2,62 @@
 id: module-website
 type: module-design
 status: active
-title: Project website (thinkrail.ai)
+title: 项目网站（thinkrail.ai）
 parent: architecture
 tags: [website, marketing]
 depends-on: [module-website-analytics]
 references: [module-ci-release]
 ---
 
-## Responsibility
+## 职责
 
-The project's public website at `thinkrail.ai`: the IDE-shell landing, its blog, and the audience-specific
-vibecoding experience at `/vibecoding/` (also served, with per-route hero titles and copy variants
-and a canonical back to `/vibecoding/`, at `/agentic-development/` and `/agentic-ide/`). The landing and blog's creative conceit is that **the site IS
-the IDE**: a faithful HTML/CSS recreation of the ThinkRail shell (title bar, project rail, tab strip,
-files rail, terminal, status bar) whose center "editor" is the normally-scrolling page content. Each
-landing section poses as a file of a `website` workspace (`README.md`, `why.md`, `features/*.md`,
-`INSTALL.md`, `CONTRIBUTING.md`). The **file tree is the source of truth for the page's navigation
-structure**, and its selection reacts to scroll (scroll-spy) like the editor is switching files. The
-top editor **tab strip is derived from that file-tree navigation** — not a hand-maintained list — and
-is interactive: the active tab **follows the currently visible section via the same scroll-spy**, and
-**clicking a tab scrolls to its section**. The strip holds **exactly one navigational tab per unique
-section target**: the tree may stay hierarchical and repeat a target across rows, but duplicate
-targets collapse to a single tab, so scroll-spy always activates exactly one tab per section. The
-strip **scrolls** (`overflow-x: auto`, scrollbar hidden) — the tabs overflow below ~1500px and every one
-must stay reachable. Its bottom divider is drawn **per tab**, not on the strip: a strip border sits
-outside the scrollport, where the active tab cannot paint over it to merge into the content. The
-status bar is a plain copyright footer, not a live line counter.
+位于 `thinkrail.ai` 的项目公开网站：IDE 外壳式的落地页、其博客，以及在 `/vibecoding/`
+提供的面向特定受众的 vibecoding 体验（同一体验也以每路由各自的 hero 标题与文案变体、
+以及指回 `/vibecoding/` 的 canonical，在 `/agentic-development/` 与 `/agentic-ide/` 上提供）。
+落地页与博客的创意巧思是**网站就是 IDE 本身**：用 HTML/CSS 忠实复刻 ThinkRail 外壳
+（标题栏、项目栏、标签条、文件栏、终端、状态栏），其中心的"编辑器"就是正常滚动的页面
+内容。每个落地页小节都伪装成 `website` 工作区的一个文件（`README.md`、`why.md`、
+`features/*.md`、`INSTALL.md`、`CONTRIBUTING.md`）。**文件树是页面导航结构的唯一事实来源**，
+它的选中状态随滚动响应（scroll-spy），就像编辑器在切换文件。顶部编辑器的**标签条由该
+文件树导航派生**——不是手工维护的清单——并且是交互式的：活动标签**通过同一 scroll-spy
+跟随当前可见的小节**，**点击标签会滚动到它的小节**。标签条对**每个唯一的小节目标恰好
+保留一个导航标签**：文件树可以保持层级结构并在多行重复同一个目标，但重复的目标折叠为
+单个标签，因此 scroll-spy 对每个小节始终只激活一个标签。标签条会**滚动**
+（`overflow-x: auto`，滚动条隐藏）——在约 1500px 以下标签就会溢出，而每一个都必须保持
+可达。它的底部隔线**按标签**绘制，不画在标签条上：标签条的边框位于滚动视口之外，活动
+标签无法在那里覆盖它来并入内容。状态栏只是普通的版权页脚，不是实时的行数计数器。
 
-`/vibecoding/` deliberately uses a separate visual grammar: [[submodule-website-vibecoding]] owns the
-animated product story and install experience as a route-local React island with route-local Tailwind.
-It shares the website origin, artifact, analytics initializer, SEO outputs, and deployment—not the
-IDE-shell presentation.
+`/vibecoding/` 刻意使用一套独立的视觉语法：[[submodule-website-vibecoding]] 以路由本地
+（route-local）的 React island 加路由本地 Tailwind 拥有动画产品叙事与安装体验。它与网站
+共享源、产物、analytics 初始化器、SEO 输出与部署——但不共享 IDE 外壳式的呈现。
 
-Not part of the product: nothing in the app depends on the public website, and it never ships in the
-binary.
+不属于产品的一部分：应用里没有任何东西依赖这个公开网站，它也绝不会随二进制一起发布。
 
-## Boundary
+## 边界
 
-- **Independently deployed leaf.** Its only workspace dependency is [[module-website-analytics]]; it
-  must never import contracts, server, shared, or web. It never joins the product host wire;
-  [[submodule-website-attribution]] alone owns an independent, bounded HTTP claim protocol and D1 state.
-- **One static Astro artifact plus same-project claim functions, with a route-local framework exception.**
-  The landing and blog retain vanilla TypeScript + hand-written CSS: no React island and no Tailwind
-  stylesheet or runtime reaches those routes. [[submodule-website-attribution]] alone adds Pages Functions
-  and D1; only `/vibecoding/`, `/agentic-development/`, and `/agentic-ide/` may use the shared React
-  island and Tailwind v4. Astro's React integration and Tailwind Vite plugin are build-wide tooling; build validation
-  requires one island in each allowed route output and rejects islands in the fixed landing, blog,
-  article, and claim outputs. The browser analytics
-  workspace module is compiled into the static output. The `@fontsource-variable/*` packages are
-  build-time asset sources whose woff2 files are emitted into `dist/`. Shared with `apps/web`, they
-  come from the root `workspaces.catalog` — one pin for both apps that keeps the site's faces
-  identical to the app's.
-  - *Why Astro (decision, 2026-08):* the blog + planned docs fired the "bespoke SSG" tripwires
-    (RSS, OG, typed frontmatter, content DX). Astro is Vite underneath — the landing page ported
-    verbatim, `bun test` suites unchanged — and React 19 islands are available only where a route needs
-    one. Rejected: Next.js static export (ships the React runtime to static pages, non-Vite culture),
-    VitePress (Vue), Eleventy (docs features assemble-yourself — the bespoke trap again), Hugo/Zola
-    (non-TS toolchain, token/tests integration lost). The prior bespoke pipeline
-    (`scripts/build-blog.ts` + HTML string templates) is deleted.
-  - *Lint caveat:* Biome parses only `.astro` frontmatter, so `noUnusedVariables`/`noUnusedImports`
-    are disabled for `*.astro` in `biome.json` (template usage is invisible to it — every flag would
-    be a false positive). `astro check` covers the templates instead.
+- **独立部署的叶子模块。** 它唯一的工作区依赖是 [[module-website-analytics]]；它绝不能导入
+  contracts、server、shared 或 web。它从不接入产品宿主的线上协议（wire）；
+  [[submodule-website-attribution]] 单独拥有独立的、有界的 HTTP 认领协议与 D1 状态。
+- **一份静态 Astro 产物加同项目内的认领函数，另有一处路由本地的框架例外。**
+  落地页与博客保留原生 TypeScript + 手写 CSS：没有任何 React island，也没有任何 Tailwind
+  样式表或运行时进入这些路由。[[submodule-website-attribution]] 单独引入 Pages Functions
+  与 D1；只有 `/vibecoding/`、`/agentic-development/` 与 `/agentic-ide/` 可以使用共享的 React
+  island 与 Tailwind v4。Astro 的 React 集成与 Tailwind Vite 插件是构建范围的工具；构建校验要求
+  每个被允许的路由输出中恰好一个 island，并拒绝固定的落地页、博客、文章与认领输出中出现
+  island。浏览器 analytics 工作区模块会被编译进静态输出。`@fontsource-variable/*` 包是
+  构建期资源来源，其 woff2 文件被输出到 `dist/`。它们与 `apps/web` 共享，来自根
+  `workspaces.catalog`——一份 pin 供两个应用使用，使网站的字体与应用完全一致。
+  - *为什么选 Astro（决策，2026-08）：* 博客 + 规划中的文档触发了"自制 SSG"的绊线
+    （RSS、OG、类型化 frontmatter、内容 DX）。Astro 底层就是 Vite——落地页逐字移植、
+    `bun test` 套件保持不变——而 React 19 island 只在某个路由需要时才可用。被否决的方案：
+    Next.js 静态导出（把 React 运行时发到静态页面，且不是 Vite 文化）、VitePress（Vue）、
+    Eleventy（文档功能要自己拼装——又落进自制陷阱）、Hugo/Zola（非 TS 工具链，token/测试
+    集成丢失）。先前的自制流水线（`scripts/build-blog.ts` + HTML 字符串模板）已删除。
+  - *Lint 注意事项：* Biome 只解析 `.astro` 的 frontmatter，因此 `biome.json` 里对 `*.astro`
+    关闭了 `noUnusedVariables`/`noUnusedImports`（模板中的使用对它是不可见的——每个告警
+    都会是误报）。模板改由 `astro check` 覆盖。
 
-The parent owns the route-composition edges; the vibecoding leaf has no sibling dependency:
+父模块拥有路由组合的接缝；vibecoding 叶子模块没有同级依赖：
 
 ```text
 src/pages/{vibecoding,agentic-development,agentic-ide}/index.astro ──▶ src/vibecoding (through index.ts)
@@ -73,300 +66,263 @@ landing + blog shells                                              ──▶ src
 src/main.ts, src/vibecoding                                        ──▶ src/installLinkShare.ts
 ```
 
-`src/installLinkShare.ts` is the one framework-free phone "send link" helper both route families use: phone/tablet
-detection (Android, iPhone/iPad/iPod, or a touch Mac), the share URL, and native-share-then-clipboard delivery. It
-imports nothing, so the vibecoding island can reuse it without reaching the IDE shell.
+`src/installLinkShare.ts` 是两个路由族都使用的、唯一一个无框架依赖的手机"发送链接"助手：
+手机/平板检测（Android、iPhone/iPad/iPod，或带触控的 Mac）、分享 URL，以及先调原生分享、
+失败则写剪贴板的投递方式。它不导入任何东西，因此 vibecoding island 可以复用它而无需
+触碰 IDE 外壳。
 
-- **Fonts are self-hosted; the site makes no external font request.** Packages and stacks are copied
-  from the app's `typography.json`, not imported — and `src/fonts.test.ts` reads that JSON at test time
-  and fails on drift, which is what makes copying safe. `--font-display` mirrors the app's `brand`
-  family — **Orbitron** (`@fontsource-variable/orbitron`, self-hosted), a distinct display face for the
-  brand elements (wordmark + hero heading), falling back to `--font-sans`; section headings and the
-  tagline are the interface face (`--font-sans`), matching the app.
-- **Brand values are copied, not imported.** Theme palettes are lifted at authoring time from
-  `apps/web/src/themes/bundled/*.theme.json` (dark = default, darcula, light, gruvbox) into the site's
-  own CSS custom properties under `[data-theme]`; the site never reaches into `apps/web` at build time
-  (the app's tokens assume the theme engine's runtime swap).
-- **IDE-shell page chrome is single-sourced in components.** `src/components/BaseHead.astro` is the one
-  head the landing and blog use: charset/viewport, favicon, their global stylesheet (which bundles the
-  fonts), and the pre-paint theme guard. `src/components/Analytics.astro` is presentation-free and is
-  included once by every route family. `src/components/IdeShell.astro` is the one IDE shell the landing
-  and blog render through — icon sprite, skip link, title bar (workspace name
-  parameterized: `website` on the landing, `blog` on blog pages, each with the matching
-  `workspace/<name> · from main` branch label), the left project rail, the right files rail +
-  terminal, the status bar, and the `main.ts` script import; the center column is its default slot
-  and the right rail's Files rows its `filetree` slot. The left rail carries the site's real
-  navigation as child rows of the `website` workspace — **Landing** (`/`) and **Blog** (`/blog/`,
-  selected on the index and on every article) as links, **Docs** disabled with a `Coming soon` chip
-  (no tooltip — the tag carries the state) — while the remaining mock rows keep the
-  `data-mock-hint` treatment; the selected row wears the same accent-tinted grammar as the right
-  rail's active file row (one grouped CSS rule). `src/components/Copyright.astro` is the one
-  copyright line (shell statusbar). The dark/light theme model lives in
-  `src/theme.ts` (explicit choice in `localStorage` → `prefers-color-scheme` fallback, live
-  system-follow, legacy `darcula`/`gruvbox` values normalize to dark); the inline FOUC guard in
-  BaseHead is its declared twin — a behavior change updates both.
-- **A colour with a contrast floor gets a `:root` token, never the region-inherited `--accent`.**
-  A region may re-point `--accent` (the light theme's kicker pill does; the hero once did), so
-  descendants reading it can inherit a value chosen for another surface. `--link` and `--focus-ring`
-  are declared once on `:root` as `var(--accent)`, which resolves against the *root* accent —
-  per-theme, but out of reach of a region override.
-- **The primary button (and the hero's brand accents) are per-theme, not a brand constant** (decision
-  reversed 2026-08 on review — the light theme kept the dark theme's bright green): the
-  `--control-primary-*` tokens mirror the app's semantic mapping (`bg = accent`, `hovered =
-  accentHover`, `text = onAccent`, per `apps/web/src/styles/colors.json`), declared on `:root` via the
-  root-token mechanism above, with `--accent-hover` copied per theme from the app's palettes. The hero
-  title follows the theme accent like every other accent-coloured element; `palette.test.ts` pins the
-  hovered-fill label contrast.
-- All marketing copy is static DOM text; JS only *enhances* (scroll-spy, the derived editor-tab strip
-  and its scroll-spy/click navigation, terminal typing, chat streaming replay, theme switcher, copy
-  buttons, star count, install-platform selection). The page must read complete with JS disabled (the
-  editor tabs are a JS-built navigation affordance over content that is already reachable by scrolling
-  and via the file tree), and animations are skipped under `prefers-reduced-motion`.
-- **Enhancement behaviors owned by `main.ts`** (the code carries no rationale — this is it):
-  - *Terminal replay*: the hero install picker keeps the selected OS/shell's primary desktop action and
-    **Browser UI via command line** disclosure together; the launcher command inside static markup is the single source of truth for the terminal,
-    which subscribes and types it before the short install transcript. A generation counter invalidates an
-    in-flight sequence on OS change; clicking the
-    *finished* terminal (or its keyboard-reachable `Replay logo` button, revealed only then) replays
-    the ASCII logo + a GitHub CTA — never the install. The logo banner's characters are never
-    altered; only its font size is fitted to the rail width (re-fitted on resize).
-  - *Worktree note* (left rail): starts visible in markup (reads with JS disabled); an inline script
-    hides it pre-paint and `main.ts` reveals it after 5s — once per session (`sessionStorage`),
-    never again after Understood (`localStorage`), with a 10s inline-script fallback if `main.ts`
-    fails to load. Storage access is fully guarded (retrieving the storage object itself can throw).
-  - *Mock-callout tooltips*: `data-mock-hint` regions (right-rail tabs, the left rail's remaining
-    mock rows) open a click-persistent callout with a GitHub CTA — click-outside/Escape closes,
-    Escape restores focus. A11y contract: the trigger becomes `role="button"` with `aria-label`
-    (from `data-mock-label`), `aria-expanded` + `aria-describedby` on open — no `aria-haspopup`
-    (a `tooltip` is not an allowed popup value). The `.rail-tabs` callout anchors to the panel's
-    live edge; others place beside the trigger, clamped to the viewport and repositioned on resize.
-- The hero's install experience has compact **macOS / Windows / Linux** tabs and makes the stable
-  desktop application the only expanded action in each panel: macOS Apple Silicon DMG, Windows x64
-  setup ZIP, and distinct Linux x64 / ARM64 setup archives. Each panel carries one compatibility line;
-  it does not repeat product name, desktop/stability prose, or format outside the action label. A native
-  **Browser UI via command line** disclosure retains the local launcher and explains that `thinkrail` opens
-  the browser UI, without presenting a second terminal-only interface. Windows
-  adds **PowerShell / Command Prompt (cmd) / WSL** tabs only inside that disclosure: PowerShell runs
-  `irm …/install.ps1 | iex`, Command Prompt launches `powershell -c "irm …/install.ps1 | iex"`, and
-  WSL uses `install.sh`. The closed picker stays under 150px on desktop and 190px on mobile. Versionless
-  GitHub `releases/latest/download` URLs name the public aliases owned by [[module-ci-release]]; the
-  website carries no release version, updater payload name, or private artifact knowledge. Browser hints
-  choose only the initial supported desktop OS; they never hide alternatives, infer Linux CPU architecture,
-  or claim to detect an ambiguous mobile platform. Every panel remains in the static DOM; JS turns the
-  complete fallback into tabs, while `<details>` owns keyboard/no-JS disclosure semantics. The detailed
-  `INSTALL.md` section is one compact platform-row matrix plus one browser-UI-via-command-line disclosure;
-  nightly/version examples
-  live in release documentation rather than the marketing page.
-- **Phone visitors get a "Send link to my computer" action** above the hero picker. It is in the static DOM
-  but `hidden`, and `main.ts` reveals it only on a detected phone or tablet (the desktop picker stays visible
-  below it; no platform is hidden). Activation opens the native share sheet with the current page URL, its
-  query replaced by `utm_source=send_to_computer&utm_medium=share` and its fragment by the hero anchor, so
-  the later desktop visit records a tagged first touch. Without Web Share, or when sharing fails for any
-  reason except the visitor dismissing the sheet, it copies the link and briefly shows "Link copied". The
-  control carries `data-share-install-link` for analytics delegation and nothing else.
+- **字体自托管；网站不发起任何外部字体请求。** 字体包与字体栈从应用的 `typography.json`
+  复制而来，而非导入——并且 `src/fonts.test.ts` 在测试时读取该 JSON，一旦漂移即失败，
+  这正是复制之所以安全的原因。`--font-display` 镜像应用的 `brand` 字族——**Orbitron**
+  （`@fontsource-variable/orbitron`，自托管），用于品牌元素（字标 + hero 标题）的独立展示
+  字体，回退到 `--font-sans`；小节标题与标语使用界面字体（`--font-sans`），与应用一致。
+- **品牌取值是复制的，不是导入的。** 主题调色板在编写时从
+  `apps/web/src/themes/bundled/*.theme.json`（dark = 默认、darcula、light、gruvbox）提取到网站
+  自己的、位于 `[data-theme]` 之下的 CSS 自定义属性；网站在构建时从不伸进 `apps/web`
+  （应用的 token 假定主题引擎在运行时替换）。
+- **IDE 外壳的页面框架（chrome）在组件中单一来源。** `src/components/BaseHead.astro` 是落地页与
+  博客共用的唯一 head：charset/viewport、favicon、它们的全局样式表（打包了字体），
+  以及绘制前主题守卫。`src/components/Analytics.astro` 不含呈现，且每个路由族只包含一次。
+  `src/components/IdeShell.astro` 是落地页与博客渲染所用的唯一 IDE 外壳——图标 sprite、
+  跳过链接、标题栏（工作区名字参数化：落地页为 `website`，博客页为 `blog`，各自配对的
+  `workspace/<name> · from main` 分支标签）、左侧项目栏、右侧文件栏 + 终端、状态栏，
+  以及 `main.ts` 脚本导入；中列是它的默认 slot，而右栏的 Files 行是它的 `filetree` slot。
+  左栏以 `website` 工作区的子行承载网站的真实导航——**Landing**（`/`）与 **Blog**（`/blog/`，
+  在索引页与每篇文章上均选中）为链接，**Docs** 置灰并带 `Coming soon` 小标签（无 tooltip——
+  标签本身承载状态）——而其余 mock 行保留 `data-mock-hint` 处理；选中行使用与右栏活动
+  文件行相同的强调色语法（同一条分组 CSS 规则）。`src/components/Copyright.astro` 是唯一的
+  版权行（外壳状态栏）。深/浅主题模型位于 `src/theme.ts`（`localStorage` 里的显式选择 →
+  回退到 `prefers-color-scheme`，实时跟随系统，历史 `darcula`/`gruvbox` 取值归一化为 dark）；
+  BaseHead 中的内联 FOUC 守卫是它声明的孪生体——行为变更要同时更新两者。
+- **有对比度下限的颜色要得到一个 `:root` token，绝不用区域内可继承的 `--accent`。**
+  某个区域可能会重新指向 `--accent`（浅色主题的 kicker 胶囊就是这么做的；hero 也曾如此），
+  因此读取它的后代可能继承到为另一个表面挑选的取值。`--link` 与 `--focus-ring` 在 `:root`
+  上一次性声明为 `var(--accent)`，它针对*根*强调色解析——按主题变化，但区域覆盖够不到它。
+- **主按钮（以及 hero 的品牌强调色）按主题区分，不是品牌常量**（决策在 2026-08 评审时被
+  反转——浅色主题曾沿用深色主题的亮绿）：`--control-primary-*` token 镜像应用的语义映射
+  （`bg = accent`、`hovered =
+  accentHover`、`text = onAccent`，依据 `apps/web/src/styles/colors.json`），通过上面的根
+  token 机制在 `:root` 上声明，其中 `--accent-hover` 按主题从应用的调色板复制。hero 标题像
+  其他每个强调色元素一样跟随主题强调色；`palette.test.ts` 钉住 hovered 填充上的标签对比度。
+- 所有营销文案都是静态 DOM 文本；JS 只做*增强*（scroll-spy、派生的编辑器标签条及其
+  scroll-spy/点击导航、终端打字、聊天流式回放、主题切换器、复制按钮、star 数、安装平台选择）。
+  页面在禁用 JS 时必须读起来是完整的（编辑器标签是 JS 构建的导航便利设施，其内容本来就可以
+  通过滚动和文件树到达），且动画在 `prefers-reduced-motion` 下跳过。
+- **由 `main.ts` 拥有的增强行为**（代码里不写理由——理由就在这里）：
+  - *终端回放*：hero 安装选择器把所选 OS/shell 的主桌面动作与 **Browser UI via command line**
+    展开项放在一起；静态标记里的启动器命令是终端的唯一事实来源，终端订阅它并在简短的安装
+    记录之前将它打字输出。一个代际计数器在 OS 变更时使进行中的序列失效；点击*已完成*的终端
+    （或它那时才出现的、键盘可达的 `Replay logo` 按钮）会重放 ASCII logo + 一个 GitHub CTA——
+    绝不重放安装。logo 横幅的字符绝不改动；只有它的字号适配栏宽（resize 时重新适配）。
+  - *工作树提示*（左栏）：在标记中初始可见（禁用 JS 时也能读到）；内联脚本在绘制前隐藏它，
+    `main.ts` 在 5 秒后显示它——每会话一次（`sessionStorage`），在点击 Understood 之后不再
+    出现（`localStorage`），若 `main.ts` 加载失败则有 10 秒的内联脚本兜底。对存储的访问完全
+    做了防护（取存储对象本身就可能抛异常）。
+  - *Mock callout tooltip*：`data-mock-hint` 区域（右栏标签、左栏剩余 mock 行）打开一个
+    点击常驻的 callout，带 GitHub CTA——点击外部/Escape 关闭，Escape 恢复焦点。无障碍契约：
+    触发器变为带 `aria-label` 的 `role="button"`（值取自 `data-mock-label`），打开时带
+    `aria-expanded` + `aria-describedby`——没有 `aria-haspopup`（`tooltip` 不是允许的 popup
+    取值）。`.rail-tabs` 的 callout 锚定到面板的实时边缘；其余放在触发器旁边，限制在视口内
+    并在 resize 时重新定位。
+- hero 的安装体验有紧凑的 **macOS / Windows / Linux** 标签，并让稳定版桌面应用成为每个面板中
+  唯一展开的动作：macOS Apple Silicon DMG、Windows x64 setup ZIP，以及各自独立的 Linux x64 /
+  ARM64 setup 归档。每个面板只带一行兼容性说明；它不在动作标签之外重复产品名、桌面/稳定性
+  文案或格式。一个原生的 **Browser UI via command line** 展开项保留本地启动器，并说明
+  `thinkrail` 会打开浏览器 UI，而不呈现第二个仅终端的界面。Windows 只在该展开项里增加
+  **PowerShell / Command Prompt (cmd) / WSL** 标签：PowerShell 运行
+  `irm …/install.ps1 | iex`，Command Prompt 启动 `powershell -c "irm …/install.ps1 | iex"`，
+  WSL 使用 `install.sh`。收起的选择器在桌面上保持在 150px 以内、在移动端保持在 190px 以内。
+  无版本号的 GitHub `releases/latest/download` URL 指向 [[module-ci-release]] 拥有的公开别名；
+  网站不携带任何发布版本、更新器载荷名或私有产物知识。浏览器提示只挑选初始支持的桌面 OS；
+  它们绝不隐藏其他选择、绝不推断 Linux CPU 架构，也不声称能检测有歧义的移动平台。每个面板
+  都保留在静态 DOM 中；JS 把完整的回退呈现变成标签，而 `<details>` 拥有键盘/无 JS 的展开语义。
+  详细的 `INSTALL.md` 小节是一个紧凑的平台行矩阵加一个 browser-UI-via-command-line 展开项；
+  nightly/版本示例存在于发布文档中，而不是营销页面上。
+- **手机访客会在 hero 选择器上方得到一个 "Send link to my computer" 动作**。它存在于静态 DOM 中
+  但是 `hidden`，`main.ts` 只在检测到手机或平板时才显示它（桌面选择器仍在它下方可见；不隐藏
+  任何平台）。激活它会打开原生分享面板，带入当前页面 URL，其 query 被替换为
+  `utm_source=send_to_computer&utm_medium=share`、其 fragment 被替换为 hero 锚点，这样后续的
+  桌面访问会记录到一次带标签的首次触点。没有 Web Share 时，或者分享因访客取消面板之外的任何
+  原因失败时，它会复制链接并短暂显示 "Link copied"。该控件只为 analytics 委派携带
+  `data-share-install-link`，别无其他。
 
-## Analytics and consent
+## 分析（analytics）与同意
 
-`src/analytics.ts` is the site-local facade over [[module-website-analytics]]. It supplies the exact
-production hostname `thinkrail.ai`, the build-time `PUBLIC_POSTHOG_PROJECT_KEY` (never committed;
-production `site.yml` passes it from the `website` environment's secret and fails before building
-without it, while previews and local builds have none and stay silent), and adapts Cookiebot's response-aware Marketing state plus
-consent-ready/accept/decline events to the shared current-value/subscription contract; the shared module owns the PostHog endpoints and GTM identifiers,
-journey persistence, typed capture, privacy configuration, and script loaders. Unknown or denied Marketing
-state stays cookieless and carries no journey ID. Localhost, `astro dev`, every `pages.dev` deployment, the
-`jetbrains.github.io` address, and sibling subdomains send nothing.
+`src/analytics.ts` 是 [[module-website-analytics]] 之上的站点本地门面。它提供确切的生产主机名
+`thinkrail.ai`、构建期的 `PUBLIC_POSTHOG_PROJECT_KEY`（绝不提交；生产 `site.yml` 从 `website`
+环境的 secret 传入它，没有它就会在构建前失败，而预览与本地构建没有这个 key，保持静默），
+并把 Cookiebot 的、能感知响应的 Marketing 状态以及同意就绪/接受/拒绝事件适配到共享的当前值/
+订阅契约；共享模块拥有 PostHog 端点与 GTM 标识符、旅程持久化、类型化捕获、隐私配置与脚本
+加载器。未知或被拒绝的 Marketing 状态保持无 cookie，且不携带旅程 ID。Localhost、`astro dev`、
+每个 `pages.dev` 部署、`jetbrains.github.io` 地址以及同胞子域都不发送任何东西。
 
-`src/components/Analytics.astro` initializes that facade and then the idempotent site event delegation
-once per document; it remains the analytics composition point for the IDE-shell and vibecoding routes.
-Content keys derive from `window.location.pathname`: `/` → `landing`, `/blog/` → `blog/index`, and
-other paths containing only lowercase safe characters become the path without outer slashes (so
-`/blog/<slug>/` → `blog/<slug>`). Keys allow only lowercase letters, digits, hyphens, and path
-separators and are limited to 105 characters, enough for `blog/` plus the maximum 100-character post
-slug; invalid paths emit no content or action events. Query and fragment strings are absent from
-`pathname`; dotted `index.html` paths are not route aliases. New pages and posts need no analytics code
-change. Only pages composed with Analytics load it: the authored `src/pages/404.astro` is a standalone,
-analytics-free page served for unknown URLs, and the standalone `/attribution/claim/` page remains
-analytics-free. Each valid document emits one explicit `content_viewed` with its derived key. Build
-validation recursively checks every emitted `.html` document for exactly one PostHog and GTM loader,
-except the explicit analytics-free `404.html` and `/attribution/claim/` outputs, which must contain
-neither loader nor browser analytics. Route-specific layout, artifact, and SEO checks remain focused
-on their owning routes.
+`src/components/Analytics.astro` 初始化该门面，然后每个文档初始化一次幂等的站点事件委派；它仍
+是 IDE 外壳路由与 vibecoding 路由的 analytics 组合点。内容键从 `window.location.pathname` 派生：
+`/` → `landing`，`/blog/` → `blog/index`，其他只含小写安全字符的路径变成去掉首尾斜杠的路径
+（因此 `/blog/<slug>/` → `blog/<slug>`）。键只允许小写字母、数字、连字符与路径分隔符，并限制
+在 105 个字符以内，足以容纳 `blog/` 加上最大 100 字符的文章 slug；无效路径不发出任何内容或
+动作事件。query 与 fragment 字符串不出现在 `pathname` 中；带点的 `index.html` 路径不是路由
+别名。新页面与新文章无需改动任何 analytics 代码。只有用 Analytics 组合出来的页面才加载它：
+手写的 `src/pages/404.astro` 是独立的、无 analytics 的页面，用于未知 URL，而独立的
+`/attribution/claim/` 页面也保持无 analytics。每个有效文档发出一次显式的 `content_viewed`，
+带其派生的键。构建校验递归检查每个输出的 `.html` 文档，确认恰好一个 PostHog 与 GTM 加载器，
+显式无 analytics 的 `404.html` 与 `/attribution/claim/` 输出例外，它们必须既不含加载器也不含
+浏览器分析（analytics）。路由各自的布局、产物与 SEO 检查仍然聚焦于拥有它们的路由。
 
-At initialization, the current page touch is recorded only when a consented journey already exists;
-journey appearance after initialization does not replay the page URL or referrer, and journey removal
-clears attribution context. Touches carry only bounded UTM values, referrer class, timestamp, and policy
-version; they do not transfer a page key. Website events retain their `content_key` and journey identity,
-so PostHog joins those events to the app's `acquisition_linked.journey_id` for landing/last-page analysis.
-Document-level `click`, middle-button `auxclick`, and disclosure `toggle`
-delegation instruments the static install controls without changing their navigation or no-JS behavior.
-Before each post-initialization install CTA, download, or CLI event, the current navigation touch is
-attempted so consent granted on the page can affect only a subsequent action. Only the four exact stable
-GitHub desktop aliases are downloads. Their CTA location comes from the containing hero, install
-section, quick start, final CTA, or blog post; one recognized activation emits `install_cta_clicked`
-(`desktop`) followed by `download_started`. When a consented journey context is available, the activation
-creates and stores a canonical per-download bridge ID before `download_started`, and that event carries
-the same ID. A later desktop download replaces only the stored latest bridge ID; a download without
-consent remains bridge-less. Opening either landing command-line disclosure emits only
-`install_cta_clicked` (`cli`); closing it does not. That open is browsing, not install intent: a
-primary-button click on a `[data-copy]` control whose value is a known install command emits
-`install_command_copied` with its `sh`/`powershell`/`cmd` shell and hero or install-section location
-(other copy values emit nothing; selecting and copying the text manually is not observed). Any other
-link into the `JetBrains/thinkrail` repository (exact repo, `#`/`?` suffix, or sub-path; never a
-sibling repository or a desktop alias) emits `github_clicked` with a `repo`/`releases`/`other` target
-and a location from the containing blog post, final CTA, quick start, install section, hero (`#readme`
-or the vibecoding `#top`), header, footer, terminal, or mock-callout tooltip — `other` when none
-contains it. GitHub clicks are a separate signal: GTM reporting counts only `download_started` and
-`install_command_copied` as install intent, because a repository visit mixes starring and browsing with
-installing. A primary-button click on a `[data-share-install-link]` control in the hero or quick start
-emits `install_link_share_clicked`; it records the activation, not whether the share sheet completed.
-Each of these events attempts the live navigation touch first, like the existing actions. No page or
-child module carries analytics imports, vendor configuration, or another loader; controls expose only
-the `data-copy` / `data-share-install-link` markers the delegation reads.
+初始化时，只有当已同意的旅程已经存在时，才会记录当前页面触点；初始化之后出现的旅程不会重放
+页面 URL 或 referrer，而旅程的移除会清除归因上下文。触点只携带有界的 UTM 值、referrer 类别、
+时间戳与策略版本；它们不传递页面键。网站事件保留其 `content_key` 与旅程身份，因此 PostHog 能
+把这些事件与应用的 `acquisition_linked.journey_id` 连接起来，用于落地页/末页分析。文档级的
+`click`、中键 `auxclick` 与展开项 `toggle` 委派为静态安装控件加上埋点，而不改变它们的导航或
+无 JS 行为。在每个初始化之后的 install CTA、下载或 CLI 事件之前，都会尝试当前导航触点，因此
+在页面上授予的同意只能影响后续动作。只有那四个确切的稳定 GitHub 桌面别名算作下载。它们的
+CTA 位置来自所在的 hero、安装小节、quick start、final CTA 或博客文章；一次被识别的激活发出
+`install_cta_clicked`（`desktop`），随后发出 `download_started`。当存在已同意的旅程上下文时，
+该激活会在 `download_started` 之前创建并存储一个规范的、按下载区分的 bridge ID，而该事件携带
+同一个 ID。后续的桌面下载只会替换已存储的最新 bridge ID；没有同意的下载保持无 bridge。打开
+任一落地页命令行展开项只发出 `install_cta_clicked`（`cli`）；关闭它则不发出。那次打开属于
+浏览，而不是安装意图：主按钮点击一个 `[data-copy]` 控件、且其值是已知安装命令时，会发出
+`install_command_copied`，带其 `sh`/`powershell`/`cmd` shell 以及 hero 或安装小节位置（其他
+复制值不发出任何东西；手动选中并复制文本不会被观测到）。任何其他指向 `JetBrains/thinkrail`
+仓库的链接（确切仓库、带 `#`/`?` 后缀，或子路径；绝不是同胞仓库或桌面别名）发出
+`github_clicked`，带 `repo`/`releases`/`other` 目标，以及一个来自所在博客文章、final CTA、
+quick start、安装小节、hero（`#readme` 或 vibecoding 的 `#top`）、header、footer、终端或
+mock-callout tooltip 的位置——当没有任何一个包含它时为 `other`。GitHub 点击是独立信号：GTM
+报表只把 `download_started` 与 `install_command_copied` 计为安装意图，因为访问仓库混合了加
+star、浏览与安装。主按钮点击 hero 或 quick start 里的 `[data-share-install-link]` 控件发出
+`install_link_share_clicked`；它记录这次激活，而不记录分享面板是否完成。这些事件中的每一个
+都会先尝试实时导航触点，与现有动作一样。没有任何页面或子模块携带 analytics 导入、厂商配置或
+另一个加载器；控件只暴露委派所读取的 `data-copy` / `data-share-install-link` 标记。
 
-The existing GTM container remains Cookiebot's control plane; route-specific downstream tags use a
-`thinkrail.ai` hostname condition plus Page Path, never another GTM container. Sharing the exact apex
-origin means Cookiebot scans and browser consent state apply to all three route families.
+现有的 GTM 容器仍然是 Cookiebot 的控制面；路由特定的下游标签使用 `thinkrail.ai` 主机名条件加
+Page Path，绝不使用另一个 GTM 容器。共享确切的 apex 源意味着 Cookiebot 扫描与浏览器同意状态
+适用于全部三个路由族。
 
-Site tests pin production-host identity, disabled hosts, the Cookiebot adapter, every route key and
-stable desktop alias, event derivation, and initializer idempotence. The shared package tests the
-PostHog/GTM, journey and capture contracts. The shared contract deliberately has no `posthog-js`
-dependency, pasted bootstrap, or static GTM `noscript` iframe.
+站点测试钉住生产主机身份、被禁用的主机、Cookiebot 适配器、每个路由键与稳定桌面别名、事件
+派生以及初始化器的幂等性。共享包测试 PostHog/GTM、旅程与捕获契约。共享契约刻意不依赖
+`posthog-js`、不粘贴 bootstrap，也不带静态 GTM `noscript` iframe。
 
-The non-indexed `/attribution/claim/` route belongs to [[submodule-website-attribution]]; its
-analytics-free page silently attempts the claim bind on load only when the current Cookiebot
-`CookieConsent` cookie records a Marketing grant or `-1`, then navigates to `/blog/`. That module owns
-the claim protocol and framing protections.
+非索引的 `/attribution/claim/` 路由属于 [[submodule-website-attribution]]；其无 analytics 的页面
+只在当前 Cookiebot `CookieConsent` cookie 记录 Marketing 授权或 `-1` 时，才在加载时静默尝试
+认领绑定，然后导航到 `/blog/`。该模块拥有认领协议与防框架嵌入保护。
 
-## Deploy
+## 部署
 
-Cloudflare Pages project `thinkrail-website` owns production and previews for the static artifact and
-claim Functions. Pinned Wrangler `4.124.0` deploys from `apps/website` so its configuration,
-`functions/`, and `dist` artifact form one deployment. The top-level `ATTRIBUTION_DB` serves production
-and local Pages/D1 workflows; production applies committed attribution migrations before deploy. The
-build compiles the Functions, and a local Pages/D1 smoke starts Pages from the checked-in configuration,
-applies the actual migration, and exercises create, bind, and redeem. `.github/workflows/site.yml` runs
-`bun run --filter @thinkrail/website build` (`astro check`, the Functions typecheck and build, `astro
-build`, and artifact validation) on pushes that
-touch this module, [[module-website-analytics]], the root package manifest, or the lockfile (plus manual
-dispatch). It verifies the provider URL before succeeding. `thinkrail.ai` is the project's custom apex
-domain; provider URLs are deployment probes, not product identities.
+Cloudflare Pages 项目 `thinkrail-website` 为静态产物与认领 Functions 拥有生产与预览。固定版本的
+Wrangler `4.124.0` 从 `apps/website` 部署，使其配置、`functions/` 与 `dist` 产物构成一次部署。
+顶层的 `ATTRIBUTION_DB` 服务生产与本地 Pages/D1 工作流；生产在部署前应用已提交的归因迁移。
+构建会编译 Functions，一次本地 Pages/D1 冒烟从检入的配置启动 Pages、应用真实迁移，并演练
+create、bind 与 redeem。`.github/workflows/site.yml` 在推送触及本模块、
+[[module-website-analytics]]、根包清单或 lockfile 时（外加手动触发）运行
+`bun run --filter @thinkrail/website build`（`astro check`、Functions 的 typecheck 与构建、
+`astro
+build` 以及产物校验）。它在成功之前先验证提供商 URL。`thinkrail.ai` 是项目的自定义
+apex 域；提供商 URL 是部署探针，不是产品身份。
 
-Production concurrency never cancels an in-flight publish. Cloudflare retains successful production
-deployments as rollback targets, so rollback selects the prior `main` deployment instead of running a
-second hosting pipeline.
+生产并发绝不打消进行中的发布。Cloudflare 保留成功的生产部署作为回滚目标，因此回滚选择上一个
+`main` 部署，而不是运行第二条托管流水线。
 
-### PR preview deploys
+### PR 预览部署
 
-`.github/workflows/site-preview.yml` runs the same build command and uploads to branch `pr-<number>` in
-`thinkrail-website`. The Wrangler `env.preview` override gives preview deployments no D1 binding;
-the production-origin guard independently continues to return not-found for preview attribution
-requests before D1 access. The deterministic alias
-`https://pr-<number>.thinkrail-website.pages.dev` is surfaced as one sticky PR comment and one
-`Website preview` commit status covering `/`, `/blog/`, `/vibecoding/`, `/agentic-development/`,
-and `/agentic-ide/`. It waits for all of those routes to serve before publishing the URL.
+`.github/workflows/site-preview.yml` 运行同一条构建命令，并上传到 `thinkrail-website` 中的
+`pr-<number>` 分支。Wrangler 的 `env.preview` 覆盖让预览部署没有 D1 绑定；生产源守卫独立地
+继续在访问 D1 之前对预览归因请求返回 not-found。确定性的别名
+`https://pr-<number>.thinkrail-website.pages.dev` 以一条 sticky PR 评论和一条 `Website preview`
+提交状态呈现，覆盖 `/`、`/blog/`、`/vibecoding/`、`/agentic-development/` 与 `/agentic-ide/`。
+它会等待上述所有路由都能提供服务之后才公布 URL。
 
-Same-repository PRs only receive previews; fork PRs skip because Cloudflare credentials never cross the
-repository boundary. Preview URLs are public and analytics-silent while their PR is open. A separate
-close workflow recognizes the sticky preview marker, deletes every deployment for that PR branch, and
-marks its preview metadata retired; PRs without that marker are no-ops. The shared concurrency group
-prevents cleanup racing an in-flight publish. A newer push cancels only the superseded preview for that
-PR.
+只有同仓库的 PR 会得到预览；fork PR 会跳过，因为 Cloudflare 凭据绝不跨过仓库边界。预览 URL
+在其 PR 打开期间是公开的，且对分析（analytics）保持静默。单独的关闭工作流会识别 sticky 预览
+标记，删除该 PR 分支的每一个部署，并把它的预览元数据标记为已退役；没有该标记的 PR 是无操作。
+共享的并发组防止清理与进行中的发布竞争。更新的推送只取消该 PR 被取代的那个预览。
 
-One-time setup creates `thinkrail-website` with production branch `main`, using
-`CLOUDFLARE_API_TOKEN` (Pages:Edit plus D1:Edit for committed attribution migrations) and
-`CLOUDFLARE_ACCOUNT_ID` repository secrets, then attaches the `thinkrail.ai` custom domain after the
-provider-hosted main deployment is verified. The token permission update must land before the first
-claim-enabled production deployment.
+一次性设置使用 `CLOUDFLARE_API_TOKEN`（Pages:Edit 加 D1:Edit，用于已提交的归因迁移）与
+`CLOUDFLARE_ACCOUNT_ID` 仓库 secret 创建生产分支为 `main` 的 `thinkrail-website`，然后在
+提供商托管的主部署通过验证后挂上 `thinkrail.ai` 自定义域。token 权限更新必须落在第一个启用
+认领的生产部署之前。
 
-### Hosting and retired hostname
+### 托管与已退役的主机名
 
-Cloudflare-managed DNS routes `thinkrail.ai` to the verified `main` deployment. Production rollback
-selects a prior successful `main` deployment through Pages; legacy hosting is not part of the steady
-state.
+Cloudflare 托管的 DNS 把 `thinkrail.ai` 路由到已验证的 `main` 部署。生产回滚通过 Pages 选择
+上一个成功的 `main` 部署；旧托管不属于稳态的一部分。
 
-`vibecoding.thinkrail.ai` is a Cloudflare Single Redirect: hostname match, dynamic target
-`concat("https://thinkrail.ai/vibecoding", http.request.uri.path)`, status 301, and query preservation
-enabled. Its originless proxied `192.0.2.1` record keeps the redirect resolvable without a deployment.
+`vibecoding.thinkrail.ai` 是一条 Cloudflare Single Redirect：主机名匹配、动态目标
+`concat("https://thinkrail.ai/vibecoding", http.request.uri.path)`、状态 301、启用 query 保留。
+它那条无源站的、经代理的 `192.0.2.1` 记录使该重定向在没有部署的情况下依然可解析。
 
-## Blog
+## 博客
 
-The `/blog` subsite is a typed Astro content collection over Markdown posts in `content/blog/`
-(each post: a folder with `index.md` + optional `images/`), rendered by `src/pages/blog/` through
-`src/layouts/BlogLayout.astro`. Published posts that carry live installation guidance follow the
-current desktop-first hierarchy rather than freezing obsolete CLI-only instructions.
+`/blog` 子站是一个类型化的 Astro 内容集合，覆盖 `content/blog/` 里的 Markdown 文章（每篇文章：
+一个含 `index.md` + 可选 `images/` 的文件夹），由 `src/pages/blog/` 通过
+`src/layouts/BlogLayout.astro` 渲染。携带真实安装指引的已发布文章遵循当前的桌面优先层级，
+而不是冻结过时的、仅 CLI 的说明。
 
-- **Schema is the gate** (`src/content.config.ts`, zod): required `title`/`slug`/`date`/`author`,
-  optional `excerpt`/`draft`/`tags`. A malformed or reserved slug, a missing field, an unknown
-  `author` key, or two posts sharing a slug **fails the build** — no silent green deploys. Drafts
-  render in `astro dev` (author preview, hot reload) and are excluded from production builds (`src/blogCollection.ts`, the one
-  query — newest-first, draft-filtered — that the index, post pages, and RSS all share).
-- **URLs are directory-style** (`/blog/<slug>/`), decided while the blog was unpublished so nothing
-  broke; RSS at `/blog/rss.xml` (`@astrojs/rss`). Post pages carry meta description (the excerpt),
-  canonical, OG/article tags.
-- **Code blocks**: Astro's built-in Shiki, dual `github-light`/`github-dark` themes emitted as
-  `--shiki-light`/`--shiki-dark` CSS vars (`defaultColor: false`) so the site's `[data-theme]`
-  switch — not a media query — picks the palette. Styled under `.astro-code` in `src/styles.css`.
-- **YouTube embeds must be cookieless**: authors write plain iframes; the Sätteri HAST plugin
-  `src/youTubeEmbeds.ts` (Astro 7's native Markdown processor — the unified/rehype pipeline is a
-  separate legacy package we don't carry) rewrites `youtube.com/embed` → `youtube-nocookie.com` and
-  adds `title` + `loading="lazy"` when omitted. This keeps the no-consent-banner stance intact.
-- **Chrome: blog pages live inside the IDE shell**, not a separate page frame (decision, 2026-08 —
-  the prior standalone blog header/footer is deleted). `BlogLayout.astro` renders through
-  `IdeShell.astro`: the content sits in the same scrolling editor pane as the landing sections, in a
-  `.blog-main` container sharing their exact geometry (one grouped `.file-section, .blog-main` CSS
-  rule — deliberately *not* the `.file-section` class, whose typography cascade would fight the blog
-  content styles). Opening an article replaces the index in that same central area. **No tab strip on
-  blog pages** (the landing keeps its section tabs; page-level Landing/Blog tabs were explicitly
-  rejected for now). The right rail's Files list shows the published articles (current one
-  active); the terminal keeps its static install transcript — `main.ts` guards make every
-  landing-only enhancement inert (no sections → no scroll-spy, no picker → no terminal replay).
-  Post cards are whole-card links that signal hover on the border alone (no underline, no movement)
-  and share the landing feature cards' surface, which keeps the `--elevated` tag chips visible on
-  them. Theming: BaseHead (theme guard, fonts, analytics) + the `src/theme.ts` toggle via the
-  shell's `main.ts` — same behavior as the landing page, one implementation.
-- **Authors are a shared entity, not a per-post string.** A second collection (`authors`) loads
-  `content/authors.json` through Astro's `file()` loader — one object keyed by author key, schema
-  `name` required + `url` optional (present ⇒ the byline name renders as a link). Posts carry
-  `author: reference("authors")`, **required**, so referential integrity is the framework's check:
-  a misspelled key is a build failure, and a renamed author or a new link updates every post at once.
-  Resolution is centralized as `postAuthor()` in `src/blogCollection.ts`; no page inlines the lookup.
-  Avatar/role fields are deliberately absent — a schema field with no renderer is dead surface;
-  both are additive later.
-  - *Byline placement (decision, 2026-08):* the **post header only**, as the first item of the
-    `.blog-post-meta` row (`author · date · reading time`), sharing the date's hint colour, size, and
-    one grouped `·` separator rule. Index cards, RSS items, OG/`article:author` meta, an end-of-post
-    author card, and `/blog/authors/<key>/` pages were each considered and declined for now — the
-    shared entity keeps every one of them a cheap follow-up.
-- **Author guide**: `content/blog/BLOG.md` documents the frontmatter schema, the author profiles,
-  Markdown features, embeds, and the local preview loop (`bun run dev` hot-reloads posts).
-  them. Theming: BaseHead (theme guard + fonts) + the `src/theme.ts` toggle via the shell's `main.ts`
-  — same behavior as the landing page, one implementation; Analytics remains the separate shared head
-  initializer.
-- **Author guide**: `content/blog/BLOG.md` documents the frontmatter schema, Markdown features,
-  embeds, and the local preview loop (`bun run dev` hot-reloads posts).
-- **Deployment**: alongside the main site via the same `site.yml` workflow; changes to
-  `apps/website/content/blog/**` trigger a rebuild.
+- **Schema 就是门禁**（`src/content.config.ts`，zod）：必填 `title`/`slug`/`date`/`author`，
+  可选 `excerpt`/`draft`/`tags`。格式错误或保留的 slug、缺失字段、未知的 `author` 键，或两篇
+  文章共享同一个 slug，都会**让构建失败**——没有静默的绿色部署。草稿在 `astro dev` 中渲染
+  （作者预览、热重载），并被排除在生产构建之外（`src/blogCollection.ts`，索引、文章页与 RSS
+  共用的那一个查询——最新优先、过滤草稿）。
+- **URL 是目录式的**（`/blog/<slug>/`），在博客尚未发布时就已决定，因此没有东西被破坏；RSS 位于
+  `/blog/rss.xml`（`@astrojs/rss`）。文章页携带 meta description（即摘要）、canonical、
+  OG/article 标签。
+- **代码块**：Astro 内置的 Shiki，双 `github-light`/`github-dark` 主题以
+  `--shiki-light`/`--shiki-dark` CSS 变量输出（`defaultColor: false`），因此由网站的
+  `[data-theme]` 切换——而不是媒体查询——来挑选调色板。在 `src/styles.css` 的 `.astro-code`
+  下样式化。
+- **YouTube 嵌入必须无 cookie**：作者写普通 iframe；Sätteri HAST 插件
+  `src/youTubeEmbeds.ts`（Astro 7 的原生 Markdown 处理器——unified/rehype 流水线是我们不带
+  的独立遗留包）把 `youtube.com/embed` → `youtube-nocookie.com` 改写，并在缺失时补上
+  `title` + `loading="lazy"`。这保住了无同意横幅的立场。
+- **框架：博客页活在 IDE 外壳里**，而不是独立的页面外框（决策，2026-08——先前独立的博客
+  header/footer 已删除）。`BlogLayout.astro` 通过 `IdeShell.astro` 渲染：内容与落地页小节位于
+  同一个可滚动的编辑器窗格中，处在一个共享它们确切几何的 `.blog-main` 容器里（一条分组的
+  `.file-section, .blog-main` CSS 规则——刻意*不是* `.file-section` 类，因为它的排版级联会
+  与博客内容样式打架）。打开一篇文章会在同一中央区域替换索引。**博客页上没有标签条**（落地页
+  保留它的小节标签；页面级的 Landing/Blog 标签目前被明确否决）。右栏的 Files 列表显示已发布
+  的文章（当前一篇为活动）；终端保留其静态安装记录——`main.ts` 的守卫让每个仅落地页的增强
+  都失效（没有小节 → 没有 scroll-spy，没有选择器 → 没有终端回放）。文章卡片是整卡链接，只在
+  边框上示意 hover（无下划线、无位移），并共享落地页特性卡片的表面，这使 `--elevated` 标签
+  小标签在它们上面仍然可见。主题化：BaseHead（主题守卫、字体、analytics）+ 通过外壳
+  `main.ts` 的 `src/theme.ts` 切换——与落地页相同的行为，一份实现。
+- **作者是共享实体，不是逐文章的字符串。** 第二个集合（`authors`）通过 Astro 的 `file()`
+  加载器加载 `content/authors.json`——一个以作者键为键的对象，schema `name` 必填 + `url`
+  可选（存在 ⇒ byline 名字渲染为链接）。文章携带 `author: reference("authors")`，**必填**，
+  因此引用完整性是框架的检查：拼错的键是构建失败，而作者改名或新增链接会一次更新每篇文章。
+  解析集中在 `src/blogCollection.ts` 的 `postAuthor()`；没有页面内联这次查找。Avatar/role
+  字段被刻意省略——没有渲染器的 schema 字段是死表面；两者都是后续可加。
+  - *Byline 位置（决策，2026-08）：* **只在文章头部**，作为 `.blog-post-meta` 行的第一项
+    （`author · date · reading time`），共享日期的提示色、字号以及一条分组的 `·` 分隔符规则。
+    索引卡片、RSS 条目、OG/`article:author` meta、文章末尾的作者卡片，以及
+    `/blog/authors/<key>/` 页面都被各自考虑过并暂时否决——共享实体让其中每一个都成为廉价的
+    后续工作。
+- **作者指南**：`content/blog/BLOG.md` 记录 frontmatter schema、作者档案、Markdown 特性、嵌入，
+  以及本地预览循环（`bun run dev` 会热重载文章）。
+  它们。主题化：BaseHead（主题守卫 + 字体）+ 通过外壳 `main.ts` 的 `src/theme.ts` 切换——
+  与落地页相同的行为，一份实现；Analytics 仍是那个独立的共享 head 初始化器。
+- **作者指南**：`content/blog/BLOG.md` 记录 frontmatter schema、Markdown 特性、嵌入，以及本地
+  预览循环（`bun run dev` 会热重载文章）。
+- **部署**：通过同一个 `site.yml` 工作流与主站一起部署；对
+  `apps/website/content/blog/**` 的改动会触发重新构建。
 
-## Discovery and assets
+## 发现与资源
 
-One apex `robots.txt` allows the public site and points crawlers at Astro's generated sitemap. The
-sitemap derives from the same static route build and therefore covers `/`, the blog index and published
-posts, and `/vibecoding/`; `/agentic-development/` and `/agentic-ide/` are filtered out of the
-sitemap because they canonicalize to `/vibecoding/` (see [[submodule-website-vibecoding]]). Previews keep production
-canonical URLs and do not become a second search identity.
+一份 apex `robots.txt` 允许公开站点，并把爬虫指向 Astro 生成的 sitemap。sitemap 派生自同一个
+静态路由构建，因此覆盖 `/`、博客索引与已发布文章，以及 `/vibecoding/`；
+`/agentic-development/` 与 `/agentic-ide/` 被过滤出 sitemap，因为它们 canonicalize 到
+`/vibecoding/`（见 [[submodule-website-vibecoding]]）。预览保留生产 canonical URL，不会成为
+第二个搜索身份。
 
-`public/favicon.svg` is the IDE-shell landing/blog tab icon: a rounded tile in the brand primary green carrying the
-**header wordmark's TR mark** (same `viewBox` + paths, not redrawn) in black, centred with balanced
-padding for legibility at tab sizes. It is wired via `<link rel="icon" type="image/svg+xml">` in
-`index.html`; there is no `.ico` fallback.
+`public/favicon.svg` 是 IDE 外壳落地页/博客的标签页图标：品牌主绿上的圆角方块，承载黑色的
+**header wordmark 的 TR 标记**（同样的 `viewBox` + 路径，不是重画的），居中并留有均衡的内边距
+以在标签页尺寸下保持可读。它通过 `index.html` 中的
+`<link rel="icon" type="image/svg+xml">` 接入；没有 `.ico` 回退。
 
-`public/og.png` is a capture of the site's own hero inside the IDE shell (dark theme, Landing
-selected, terminal install transcript finished, worktree note visible). The transcript in the
-`features/agent-chat.md` section is from a real `pi` session captured in the app while it worked on
-this repo. Re-capture: `astro preview` the built site, view it at a 1200×630 viewport with
-deviceScaleFactor 2 (dark theme), wait for the terminal replay + the rail note (~7s), screenshot the
-viewport, and downscale the 2400×1260 capture to 1200×630.
+`public/og.png` 是网站自身 hero 在 IDE 外壳内的捕获（深色主题、Landing 选中、终端安装记录
+已完成、工作树提示可见）。`features/agent-chat.md` 小节里的记录来自应用在为本仓库工作时捕获的
+一次真实 `pi` 会话。重新捕获：对构建后的站点执行 `astro preview`，在 1200×630 视口、
+deviceScaleFactor 2（深色主题）下查看它，等待终端回放 + 栏内提示（约 7 秒），对 viewport 截图，
+并把 2400×1260 的捕获缩小到 1200×630。
 
-`public/vibecoding/` owns that route's distinct favicon, 1200×630 Open Graph image, and gradient
-wordmark. Their public URLs remain under `/vibecoding/`, while Vite-generated chunks stay under the
-site-wide `/_astro/` root because one Astro base serves all route families.
+`public/vibecoding/` 拥有该路由独立的 favicon、1200×630 Open Graph 图片与渐变字标。它们的
+公开 URL 仍在 `/vibecoding/` 下，而 Vite 生成的 chunk 仍留在站点范围的 `/_astro/` 根下，
+因为一个 Astro base 服务所有路由族。
