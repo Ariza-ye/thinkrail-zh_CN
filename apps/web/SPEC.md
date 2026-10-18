@@ -142,6 +142,17 @@ harness-installed React DevTools hook (`e2e/perf`, see [[module-browser-e2e]]). 
 build flag in product code and give area totals only; the hook sees every component with zero source
 change. `dist/` therefore has no profiler timers (`actualStartTime` is absent from `dist/assets`).
 
+### Internationalization
+
+The `i18n` module owns application UI catalogs and client-local language preference. All UI modules may
+consume `@thinkrail/ui/i18n` for reactive translation; only composition and language controls use the app
+`i18n` barrel. The shared runtime keeps primitives and extension web halves independent of app internals.
+Default language follows the system, resolving Simplified Chinese or English. Settings → Appearance
+changes System / English / 简体中文 immediately without remounting workbench content. The existing
+native stable preference adapter, or localStorage in a browser, persists the choice; no host settings
+write occurs. Missing translations fall back to the English source. User/agent content, code, paths,
+external errors and protocol identifiers are never translated. See [[submodule-web-i18n]].
+
 ### Dependency graph
 
 - `navigation` → `store`, `transport`, `contracts` (type-only); neither dependency imports it, and `main.tsx` initializes the integration

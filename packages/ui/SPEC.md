@@ -18,7 +18,11 @@ feature state, theme selection, and token generation stay with the app.
 Primitives expose per-file `@thinkrail/ui/<primitive>` subpaths, not a root component barrel; this keeps
 lazy chunks independent and preserves the shadcn convention. `./utils` exposes `cn`; `./theme` exposes
 only `onThemeSwap`, a DOM MutationObserver subscription to the completed `data-theme` signal, with
-explicit cleanup. It knows nothing about the theme catalog or preferences.
+explicit cleanup. It knows nothing about the theme catalog or preferences. `./i18n` supplies a shared,
+React-reactive translation runtime for primitives, the app, and extension web halves. The app installs
+catalogs and selects the effective locale; preference persistence and system-language detection stay
+outside this package. English source messages are fallback keys, with whole-message named interpolation.
+Translations never process user content or protocol identifiers.
 
 Workspace imports may reach `contracts` only. External dependencies are React, Radix, cmdk,
 react-resizable-panels, Remix Icon, class-variance-authority, clsx and tailwind-merge. Host internals,

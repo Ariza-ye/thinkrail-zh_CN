@@ -5,12 +5,14 @@ import { createRoot } from "react-dom/client";
 import { initChatPreferencesPersistence } from "./chat/chatPreferences";
 import { initModelVisibilityPersistence } from "./chat/modelVisibility";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { initI18n } from "./i18n";
 import { initNavigation } from "./navigation";
 import { initProjectExpansionPersistence } from "./panels/projectExpansion";
 import { Shell } from "./shell/Shell";
 import { applyThemePreference, initializeBundledThemes, readThemeHint } from "./themes";
 import { initTransport } from "./transport";
 
+initI18n();
 initializeBundledThemes();
 applyThemePreference(readThemeHint());
 initTransport();
