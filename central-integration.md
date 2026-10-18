@@ -2,112 +2,99 @@
 id: central-integration
 type: architecture-design
 status: active
-title: JetBrains AI via the Central CLI — cross-module lifecycle
+title: 通过 Central CLI 使用 JetBrains AI——跨模块生命周期
 parent: architecture
 depends-on: [module-shared, submodule-server-auth, submodule-server-agent, module-contracts, submodule-web-panels, submodule-server-settings, submodule-web-shell, submodule-web-store]
 covers: [central-lifecycle, central-liveness, central-trust-boundary, central-artifact, central-quota]
 tags: [providers, central]
 ---
 
-## Drivers
+## 驱动因素
 
-JetBrains AI models reach ThinkRail through the user's own `central` CLI, which writes a `pi` extension to
-one global path and reports the account's recurring AI-credit quota. Central therefore behaves as a
-cross-module chain rather than one module boundary. Its end-to-end lifecycle mapping, liveness, and
-quota-read composition live only in that chain.
+JetBrains AI 模型通过用户自己的 `central` CLI 到达 ThinkRail，该 CLI 会把一个 `pi` 扩展写到一个全局路径，并报告
+账号周期性的 AI 额度。因此 Central 表现为一条跨模块的链，而不是一个模块边界。它的端到端生命周期映射、存活性与
+配额读取组合只存在于那条链里。
 
-**Boundary: this node owns the composition and nothing else.** Each module's spec stays authoritative for
-its own surface and is not restated here — the adapter's argv/version/quota-parse contract is
-[[module-shared]], status/action/quota orchestration is [[submodule-server-auth]], runtime generations are
-[[submodule-server-agent]], synchronized quota preferences are [[submodule-server-settings]], wire shapes
-are [[module-contracts]], provider controls are [[submodule-web-panels]], and the global readout is
-[[submodule-web-shell]]. A change that only affects one surface updates that leaf, not this file.
+**边界：本节点拥有组合，除此之外没有别的。** 每个模块的规范对自己的接口保持权威，这里不复述——适配器的
+argv/版本/配额解析契约是 [[module-shared]]，状态/动作/配额编排是 [[submodule-server-auth]]，运行时生成是
+[[submodule-server-agent]]，同步的配额偏好是 [[submodule-server-settings]]，线上协议形状是 [[module-contracts]]，
+提供商控件是 [[submodule-web-panels]]，全局读数是 [[submodule-web-shell]]。只影响一个接口的改动更新那个叶子，
+而不是本文件。
 
-## The chain
+## 这条链
 
-The single end-to-end mapping. Each column is owned by the module in its header; this table is the only
-place the *correspondence* between them is stated.
+唯一的端到端映射。每一列由表头中的模块拥有；这张表是唯一陈述它们之间*对应关系*的地方。
 
-| Disk / CLI truth | `inspectJbcentral` (`shared`) | wire `JbcentralStatus` (`contracts`) | Card (`panels`) |
+| 磁盘 / CLI 真相 | `inspectJbcentral` (`shared`) | 线上协议 `JbcentralStatus` (`contracts`) | 卡片 (`panels`) |
 | --- | --- | --- | --- |
-| no `central` resolvable | `absent` | `absent` | host-OS install command + Recheck |
-| version below `MINIMUM_CENTRAL_VERSION` | `outdated` | `outdated` | guided Update |
-| `--version` unparseable | `malformed-version` | `malformed-version` | reinstall guidance, no native action |
-| probe launch/timeout/exit failure | `probe-failed` | `probe-failed` | recheck guidance |
-| binary present, artifact absent | `supported` | `supported` | Connect |
-| binary + artifact present | `supported` + `configured` | `configured` | Connected / Disconnect |
-| …with `Auth` row `not connected` | — (observation) | `signedOut` flag | Sign in *replaces* the primary action |
-| …with `Proxy` row stopped | — (observation) | `proxyStopped` flag | Start proxy *replaces* Disconnect |
-| rebuild outstanding or action in flight | — | `configuring` | spinner, no action offered |
-| candidate runtime failed to load | — | `load-failed` | Retry / Disconnect |
+| 无法解析到 `central` | `absent` | `absent` | 宿主 OS 安装命令 + 重新检查 |
+| 版本低于 `MINIMUM_CENTRAL_VERSION` | `outdated` | `outdated` | 引导式更新 |
+| `--version` 无法解析 | `malformed-version` | `malformed-version` | 重装指引，无原生动作 |
+| 探针启动/超时/退出失败 | `probe-failed` | `probe-failed` | 重新检查指引 |
+| 二进制存在，产物缺失 | `supported` | `supported` | 连接 |
+| 二进制 + 产物都存在 | `supported` + `configured` | `configured` | 已连接 / 断开连接 |
+| ……且 `Auth` 行为 `not connected` | —（观察） | `signedOut` 标志 | 登录*替换*主操作 |
+| ……且 `Proxy` 行已停止 | —（观察） | `proxyStopped` 标志 | 启动代理*替换*断开连接 |
+| 有待完成的重建或动作进行中 | — | `configuring` | 旋转指示，不提供任何动作 |
+| 候选运行时加载失败 | — | `load-failed` | 重试 / 断开连接 |
 
-### Quota chain
+### 配额链
 
-When quota display is enabled, the visible web shell requests a closed quota snapshot on the configured
-`1–3600` second cadence (30 seconds by default). The host first applies the synchronized setting and the
-same healthy-Central predicate the provider card labels Connected, then server `auth` deduplicates readers
-through one memory-only cache/single-flight and asks `shared` to run the absolute binary as
-`central quota --json`. `shared` admits only recurring `remaining` + `total` numbers; `contracts` carries
-only hidden/available/stale/unavailable states; `shell` renders them immediately left of host connection
-status. Hidden frontends do not poll, disabled/unhealthy state performs no quota read, and no quota value is
-persisted. A lifecycle edge clears the last successful fallback so a later account cannot inherit stale
-numbers from the earlier one.
+当配额显示被启用时，可见的 web 外壳按配置的 `1–3600` 秒节奏（默认 30 秒）请求一份封闭的配额快照。宿主先施加
+同步的设置，以及提供商卡片标记为已连接时所使用的同一条健康 Central 谓词，然后服务端 `auth` 通过一个仅内存的
+缓存/单飞去重读取者，并要求 `shared` 以 `central quota --json` 运行那个绝对二进制。`shared` 只接受周期性的
+`remaining` + `total` 数字；`contracts` 只承载隐藏/可用/陈旧/不可用这些状态；`shell` 把它们立即渲染在宿主连接
+状态的左侧。隐藏的前端不做轮询，被禁用/不健康的状态不执行任何配额读取，且不持久化任何配额值。生命周期边会清除
+最后一次成功的回退值，使后续账号无法继承前一个账号的陈旧数字。
 
-Two facts the lifecycle table encodes that no single module states:
+这张生命周期表编码了两件没有任何单个模块会陈述的事实：
 
-- **`configuring` and `load-failed` have no inspection counterpart.** They are properties of the host's
-  rebuild machinery, not of the host filesystem, so a reader following only `shared` cannot derive them.
-- **The signed-out and proxy-stopped flags are one-directional.** Only a positively observed negative sets
-  them; unknown never does. The card turns each into a *replacement* of the primary action rather than an
-  annotation, because it must never advertise an action that cannot succeed.
+- **`configuring` 与 `load-failed` 没有对应的探查项。** 它们是宿主重建机制的性质，而不是宿主文件系统的性质，因此
+  只跟随 `shared` 的读者无法推导出它们。
+- **登出与代理已停止这两个标志是单向的。** 只有被正面观察到的否定才会设置它们；未知永远不会。卡片把每一个都变成
+  对主操作的*替换*，而不是一条注解，因为它绝不能宣传一个无法成功的动作。
 
-## Decisions
+## 决策
 
-1. **One reviewed artifact joins inspection to runtime loading.** The adapter owns its location, existence
-   verdict, and watcher; the runtime receives only its opaque path. Because configured truth uses existence
-   alone, in-place replacement depends on the watcher rather than the existence poll. The local mechanics
-   remain authoritative in [[module-shared]] and [[submodule-server-agent]].
-2. **No Central-derived text reaches a client.** The process adapter, pre-extension provider allowlist, and
-   closed wire status each enforce one part of that guarantee; their local contracts remain in
-   [[module-shared]], [[submodule-server-agent]], [[submodule-server-auth]], and [[module-contracts]].
-   The built-ins the artifact re-registers (`anthropic`, `openai`, `google-vertex`) are the one place Central
-   *is* visible outside the card: they remain ordinary provider rows labelled `kind: "central"` ("JetBrains
-   AI"), attributed by registration identity so the user can see which providers reach them through Central
-   without any of its configuration crossing the wire.
-   Quota extends the rule with a structured numeric allowlist: account, plan, usage, top-up, refill,
-   diagnostics, and raw output remain host-local and are discarded.
-3. **Quota is a separate read, not provider status and not a host ticker.** Provider lifecycle and quota have
-   different latency/failure semantics, while a host-owned timer would run without a visible consumer.
-   Visible clients own cadence; one host cache/single-flight prevents them multiplying CLI work.
+1. **一个被审查的产物把探查与运行时加载连接起来。** 适配器拥有它的位置、存在性判定与监视器；运行时只接收它那个
+   不透明路径。因为已配置真相只使用存在性，就地替换依赖监视器而不是存在性轮询。本地机制在 [[module-shared]] 与
+   [[submodule-server-agent]] 中保持权威。
+2. **没有任何源自 Central 的文本到达客户端。** 进程适配器、扩展前的提供商允许列表，以及封闭的线上协议状态各自
+   强制这条保证的一部分；它们的本地契约仍留在 [[module-shared]]、[[submodule-server-agent]]、
+   [[submodule-server-auth]] 与 [[module-contracts]]。产物重新注册的内置提供商（`anthropic`、`openai`、
+   `google-vertex`）是 Central 在卡片之外*变得*可见的唯一地方：它们仍是普通的提供商行，标记为
+   `kind: "central"`（“JetBrains AI”），按注册身份归因，使用户能看到哪些提供商通过 Central 到达他们，而 Central
+   的配置不需要任何一部分跨越线上协议。配额用一份结构化数字允许列表扩展这条规则：账号、套餐、用量、充值、补足、
+   诊断与原始输出都留在宿主本地并被丢弃。
+3. **配额是一次单独的读取，不是提供商状态，也不是宿主定时器。** 提供商生命周期与配额有不同的延迟/失败语义，而
+   宿主拥有的定时器会在没有可见消费者的情况下运行。可见客户端拥有节奏；一个宿主缓存/单飞阻止它们成倍放大 CLI
+   工作量。
 
-## Invariants
+## 不变量
 
-1. **Watcher invalidations represent possible edges on the reviewed artifact, not directory activity.** The
-   platform event classification and replacement-recovery mechanics belong only to [[module-shared]].
-2. **Every path into `configuring` has a bounded exit.** Actions are bounded by adapter timeouts; an
-   outstanding rebuild exits when the drain settles. The wire state carries no deadline of its own.
-3. **The rebuild drain settles requested state in bounded time, independent of inbound event rate.** A
-   debounce bounds burst width, not stream length, so it cannot provide this guarantee.
+1. **监视器的失效代表被审查产物上可能的边，而不是目录活动。** 平台事件分类与替换恢复机制只属于
+   [[module-shared]]。
+2. **每条进入 `configuring` 的路径都有有界的出口。** 动作受适配器超时约束；一个未完成的重建在排空过程收敛时退出。
+   线上协议状态自身不携带任何截止时间。
+3. **重建排空在有限时间内收敛所请求的状态，且与入站事件速率无关。** 防抖限制的是突发宽度，不是流的长度，因此它
+   无法提供这条保证。
 
-**Invariant 3 is currently violated and tracked by issue #287.** `runRebuildDrain` discards a completed
-candidate whenever `requestedSequence` changed during preparation, so progress still requires a quiet
-window and activation can starve indefinitely. Artifact-scoped invalidation removes the known source of
-unrelated events but does not change that algorithm.
+**不变量 3 目前被违反，由 issue #287 跟踪。** `runRebuildDrain` 会在准备期间 `requestedSequence` 发生变化时丢弃
+已完成的候选，因此推进仍需要一个安静窗口，激活可能无限期地饿死。按产物划定范围的失效移除了已知的无关事件来源，
+但不改变那个算法。
 
-**Post-mortem.** With the artifact directory absent, the watcher fell back to `pi`'s state directory and
-turned unrelated state writes into rebuild requests. The drain's quiet-window assumption kept
-`configuring` active while repeatedly preparing runtimes. Each leaf contract was locally consistent, but
-no spec owned their liveness in composition.
+**复盘。** 当产物目录缺失时，监视器回退到 `pi` 的状态目录，并把无关的状态写入变成重建请求。排空的安静窗口假设
+使 `configuring` 在反复准备运行时期间保持活跃。每个叶子契约在本地都是自洽的，但没有任何规范拥有它们在组合中的
+存活性。
 
-## Out of scope
+## 范围之外
 
-The adapter's exact argv/schema/timeouts; provider-card and top-bar interaction/copy; settings validation;
-candidate preparation and generation activation; wire field shapes; boot ordering; e2e fixtures. Each stays
-in its own module spec — listed here only so a reader knows this file is not where to change them.
+适配器确切的 argv/模式/超时；提供商卡片与顶栏的交互/文案；设置校验；候选准备与生成激活；线上协议字段形状；引导
+顺序；e2e 夹具（fixture）。每一项都留在自己的模块规范里——在这里列出只是为了让读者知道本文件不是改它们的地方。
 
-## Consumed by
+## 使用方
 
 [[module-shared]] · [[submodule-server-auth]] · [[submodule-server-agent]] ·
 [[submodule-server-settings]] · [[module-contracts]] · [[submodule-web-store]] ·
-[[submodule-web-panels]] · [[submodule-web-shell]] · [[module-cli]] (boot ordering) ·
-[[module-browser-e2e]] (`00-jbcentral*`)
+[[submodule-web-panels]] · [[submodule-web-shell]] · [[module-cli]]（引导顺序） ·
+[[module-browser-e2e]]（`00-jbcentral*`）

@@ -1,25 +1,22 @@
-# Contributing to ThinkRail
+# 为 ThinkRail 做贡献
 
-Thanks for your interest in ThinkRail! Contributions of all kinds are welcome — bug
-reports, fixes, features, docs, and feedback.
+感谢你对 ThinkRail 的关注！各类贡献都受欢迎——bug 报告、修复、功能、文档与反馈。
 
-By contributing, you agree that your contributions will be licensed under the
-[Apache License 2.0](LICENSE), and you agree to abide by our
-[Code of Conduct](CODE_OF_CONDUCT.md).
+参与贡献即表示你同意你的贡献按 [Apache License 2.0](LICENSE) 授权，并且你同意遵守我们的
+[行为准则](CODE_OF_CONDUCT.md)。
 
-## Reporting bugs and requesting features
+## 报告 bug 与请求功能
 
-Open a GitHub issue. Before filing, search existing issues to avoid duplicates. For
-bug reports, include:
+开一个 GitHub issue。提交之前先搜索已有 issue，避免重复。bug 报告请包含：
 
-- What you did, what you expected, and what actually happened
-- Your OS, Bun, and Node versions
-- Relevant logs or a minimal reproduction
+- 你做了什么、你期望什么，以及实际发生了什么
+- 你的 OS、Bun 与 Node 版本
+- 相关日志或一个最小复现
 
-## Development setup
+## 开发环境搭建
 
-**Prerequisites:** [Bun](https://bun.sh) 1.4.0 (the repository's pinned package manager and runtime),
-Node.js ≥ 22.19 (required by the in-process `pi` engine), and an authenticated `pi` provider for agent work.
+**前置要求：** [Bun](https://bun.sh) 1.4.0（本仓库锁定的包管理器与运行时）、Node.js ≥ 22.19（进程内 `pi`
+引擎所需），以及用于 agent 工作的已认证 `pi` 提供商。
 
 ```bash
 git clone <repo-url>
@@ -28,13 +25,11 @@ bun install
 bun run dev
 ```
 
-`bun run dev` boots the host and the web client together and cleans up on `Ctrl+C`. Source/dev runs and
-locally unstamped builds expose no application updater: update a checkout with Git and rebuild it.
-Running `thinkrail update` from source installs a published binary; it does not pull, install
-dependencies, or rebuild the checkout. On-disk app state (projects, workspaces, worktrees) lives under
-`~/.thinkrail`.
+`bun run dev` 同时启动宿主与 web 客户端，并在 `Ctrl+C` 时清理。源码/dev 运行以及本地未盖章的构建不提供应用
+更新器：用 Git 更新工作副本并重新构建它。从源码运行 `thinkrail update` 会安装已发布的二进制；它不会拉取代
+码、安装依赖，也不会重建工作副本。磁盘上的应用状态（项目、工作区、工作树）位于 `~/.thinkrail` 下。
 
-To run the launchers:
+要运行启动器：
 
 ```bash
 bun run --filter @thinkrail/cli dev  # browser launcher
@@ -43,24 +38,21 @@ bun run desktop:dev                  # package and open the Electrobun app
 bun run desktop:build                # package without opening it
 ```
 
-Desktop commands use the standard Electrobun CLI/configuration. Its pre-build hook builds the shared UI
-and stages ThinkRail's PI/native resources; Electrobun owns preload bundling and installer creation.
-Create host-native installers with `bun run desktop:package:stable` or `bun run desktop:package:canary`;
-`canary` is Electrobun's internal name for the public **nightly** channel. Native/installer smoke and shared
-CLI/desktop probes live in `packages/artifact-tests`, outside the application packages. Run
-`bun run smoke:desktop` after a dev build; installer smoke takes an artifact path and channel via
-`bun run smoke:desktop:installer <path> <stable|canary>`. Local installer smoke is not notarization
-verification: the coordinated macOS release pipeline signs Electrobun's expanded app archive and finalizes
-the DMG, and that intermediate archive is not a public download.
+桌面相关命令使用标准的 Electrobun CLI/配置。它的构建前钩子构建共享 UI 并暂存 ThinkRail 的 PI/原生资源；
+Electrobun 拥有 preload 打包与安装器创建。用 `bun run desktop:package:stable` 或
+`bun run desktop:package:canary` 创建宿主原生安装器；`canary` 是 Electrobun 对公开 **nightly** 通道的内部叫法。
+原生/安装器冒烟测试与共享的 CLI/桌面探针位于 `packages/artifact-tests`，在应用包之外。dev 构建之后运行
+`bun run smoke:desktop`；安装器冒烟测试通过 `bun run smoke:desktop:installer <path> <stable|canary>` 接收产物路径
+与通道。本地安装器冒烟测试不是公证验证：协调式的 macOS 发布流水线会为 Electrobun 展开后的应用归档签名并最终
+确定 DMG，而那个中间归档不是公开下载。
 
-## Repository layout
+## 仓库布局
 
-[`architecture.md`](architecture.md) lists every app and package with its role and allowed dependencies;
-each module carries its own `SPEC.md`.
+[`architecture.md`](architecture.md) 列出每个应用与包及其角色和允许的依赖；每个模块都带有自己的 `SPEC.md`。
 
-## Testing and linting
+## 测试与 lint
 
-Run the fast gates before opening a PR (they also run as the husky pre-commit hook):
+打开 PR 之前运行快速门禁（它们也作为 husky pre-commit 钩子运行）：
 
 ```bash
 bun run lint        # biome
@@ -68,9 +60,8 @@ bun run typecheck   # tsc across all packages
 bun run test        # unit tests (root tooling + each package)
 ```
 
-Every change that touches the app is verified by the end-to-end suite against the
-real UI. The no-agent gate builds once and automatically uses isolated parallel
-shards (half the available CPUs, capped at eight):
+每一个触及应用的改动都由端到端套件针对真实 UI 验证。无 agent 的门禁只构建一次，并自动使用隔离的并行分片
+（可用 CPU 的一半，上限为八）：
 
 ```bash
 bunx playwright install chromium                    # one-time
@@ -85,40 +76,30 @@ bun run e2e:full                                    # everything; needs pi auth
 bun run e2e:agent                                   # only @agent; remains serial
 ```
 
-Use focused or last-failed runs while iterating, then run the complete `bun run e2e`
-once before handoff. On macOS, every public browser E2E command prevents idle system sleep for the
-runner's lifetime while allowing the display to sleep normally. Agent-driven specs are tagged `@agent`
-and run against a real provider on an **isolated** `pi` agent dir — never your real `~/.pi/agent`.
+迭代期间使用聚焦运行或 last-failed 运行，然后在交接之前完整跑一次 `bun run e2e`。在 macOS 上，每个公开的
+浏览器 E2E 命令都会在 runner 的生命周期内阻止系统空闲休眠，同时允许显示器正常休眠。agent 驱动的规范标记为
+`@agent`，在**隔离的** `pi` agent 目录上针对真实提供商运行——绝不是你真实的 `~/.pi/agent`。
 
-## Module boundaries
+## 模块边界
 
-ThinkRail is built as a set of clearly bounded, fractal modules: each package is a
-module, and directories inside a package are modules too. A sub-module exposes its
-public surface through an `index.ts` barrel; siblings import through that barrel,
-never its internals. Every module has a `SPEC.md` that states what it owns, what it
-exposes, and what it must not reach into. Keep changes within these boundaries, and
-cover a module's public surface with tests where practical.
+ThinkRail 被构建为一组边界清晰、分形的模块：每个包是一个模块，包内的目录也是模块。子模块通过 `index.ts`
+barrel 暴露它的公开接口；同级模块通过那个 barrel 导入，绝不导入它的内部实现。每个模块都有一份 `SPEC.md`，
+写明它拥有什么、暴露什么，以及绝不触碰什么。把改动保持在这些边界之内，并在可行时用测试覆盖模块的公开接口。
 
-## Specification-driven development
+## 规范驱动开发
 
-ThinkRail is developed spec-first: hierarchical, interconnected specs live in the
-repo alongside the code — top-level specs at the root
-([`goal-and-requirements.md`](goal-and-requirements.md),
-[`architecture.md`](architecture.md)) and a co-located `SPEC.md` for every module.
-**The spec leads the code:** a change that moves or blurs a boundary, contract, or
-decision updates the relevant `SPEC.md` first, then the code and the tests that pin
-it. See [`AGENTS.md`](AGENTS.md) for the spec workflow.
+ThinkRail 采用规范优先的方式开发：分层的、互相连接的规范与代码一起放在仓库里——顶层的规范在仓库根目录
+（[`goal-and-requirements.md`](goal-and-requirements.md)、[`architecture.md`](architecture.md)），每个模块则在
+它旁边有一份 `SPEC.md`。**规范先于代码：** 移动或模糊某个边界、契约或决策的改动，先更新相关的 `SPEC.md`，
+再更新代码以及钉住它的测试。规范工作流见 [`AGENTS.md`](AGENTS.md)。
 
-## Submitting changes
+## 提交改动
 
-1. [Fork the repository](https://docs.github.com/articles/fork-a-repo) and create a
-   branch off `main`.
-2. Make your change, keeping it focused. Match the surrounding code style and the
-   conventions in `AGENTS.md`.
-3. Add or update tests and specs, and run the checks above.
-4. Open a [pull request](https://docs.github.com/articles/creating-a-pull-request)
-   against `main` with a clear description of *what* changed and *why*.
+1. [Fork 仓库](https://docs.github.com/articles/fork-a-repo) 并从 `main` 开一个分支。
+2. 做出你的改动，保持聚焦。与周边代码风格以及 `AGENTS.md` 中的约定保持一致。
+3. 新增或更新测试与规范，并运行上面的检查。
+4. 针对 `main` 开一个 [pull request](https://docs.github.com/articles/creating-a-pull-request)，
+   清晰描述改动了*什么*以及*为什么*。
 
-Write commit messages and PR descriptions that explain the reasoning behind the
-change, not just the mechanics. A maintainer will review your PR and may suggest
-adjustments before merging.
+提交信息与 PR 描述要解释改动背后的理由，而不只是操作步骤。维护者会复查你的 PR，并可能在合并前提出调整
+建议。
