@@ -1,30 +1,29 @@
 ---
 name: starting-a-new-project
-description: "Use when the workspace is empty, has no code, and the user brings a raw project idea. Normally reached via setting-up-a-project; not for an existing project."
+description: "当工作区为空、没有代码，而用户带来一个未成形的项目想法时使用。通常经由 setting-up-a-project 到达；不适用于已有项目。"
 ---
 
-# Starting a new project
+# 启动新项目
 
-The workspace is empty: no code, no decisions. Turn the user's idea into one clear, living product
-document — `goal-and-requirements.md`. Later features, behavior changes, and bug fixes go through
-`brainstorming`.
+工作区是空的：没有代码，没有决策。把用户的想法变成一份清晰、持续演进的产品文档 ——
+`goal-and-requirements.md`。之后的 feature、行为变更和 bug 修复走 `brainstorming`。
 
-**Hold the writing-specs bar.** Read that concept skill before saving anything — it carries the
-short / honest / on-rails rules and the goal-doc shape every section you save must meet.
+**守住 writing-specs 的标准。** 在保存任何东西之前先读那个概念技能 —— 它带着 short / honest /
+on-rails 三条规则，以及你保存的每一节都必须满足的目标文档形态。
 
-## Method
+## 方法
 
-1. **Build on what's already said.** Never re-ask what the request already told you.
-2. **Infer, then confirm** — propose a concrete draft and let the user correct it; a suggestion beats an
-   open question. Compose `ask_user_question` rounds per the **asking-user-questions** concept skill
-   (read it before the first round — it carries the round, option, confirmation, and degradation norms).
-3. **Smallest useful first build.** It is smaller than the user expects; every capability in it must
-   justify itself. Ideas cut from it are handed back to the user, not saved (see writing-specs).
-4. **Save incrementally.** Create the file as soon as the first section is settled, then add each
-   confirmed section in template order. Don't batch; don't invent unconfirmed content.
-5. A skipped question is not a blocker — proceed on the current model and note real gaps inline.
+1. **在已经说过的内容之上构建。** 绝不重新询问请求已经告诉你的东西。
+2. **先推断，再确认** —— 提出一个具体的草稿让用户来纠正；一个建议胜过开放式问题。按
+   **asking-user-questions** 概念技能的要求组织 `ask_user_question` 轮次（在第一轮之前先读它 ——
+   它带着关于轮次、选项、确认与降级的规范）。
+3. **最小可用的第一版构建。** 它比用户预期的要小；其中的每一项能力都必须能自证必要。被砍掉的
+   想法交回给用户，而不是被保存（见 writing-specs）。
+4. **增量保存。** 第一节一确定就创建文件，然后按模板顺序逐个加上每个已确认的节。不要批处理；
+   不要虚构未确认的内容。
+5. 被跳过的问题不是阻塞项 —— 按当前模型继续，并就地把真实的空白记下来。
 
-## Working model (infer from the request; never ask these directly)
+## 工作模型（从请求中推断；绝不直接问这些）
 
 ```
 audience:   personal | public | both        domain: what space this is in
@@ -32,61 +31,56 @@ tech:       stack mentioned, or null         scope:  small | large
 depth:      light | standard | full          creator_is_user: does the maker use it?
 ```
 
-`depth` scales the document: `light` = a one-liner idea → a few lines; `full` = named competitors /
-multiple user types → a full PRD. It can only grow during the conversation, never shrink.
+`depth` 决定文档的规模：`light` = 一句话的想法 → 几行；`full` = 有名字的竞争对手 / 多种用户类型 →
+一份完整的 PRD。它在对话过程中只能变大，绝不缩小。
 
-## Fast path — pre-filled brief
+## 快速路径 —— 预先写好的简报
 
-If the request already reads like a spec (several headings or a multi-section brief), parse it, treat those
-sections as **confirmed**, save them immediately, and only pursue what's genuinely missing and required by
-`depth`. Don't ask the user to confirm what they already wrote. Save in the goal-doc shape, not the
-brief's: a version or roadmap split (`MVP` / `v1` / `v2` / later) becomes Capabilities for what is in
-scope and Non-Goals only for what the brief rules out by decision; the rest goes back to the user
-unsaved (writing-specs). The one always-offered extra is alternatives research (below).
+如果请求读起来已经像一份规范（有几个标题，或多节的简报），就解析它，把这些节视为**已确认**，立刻
+保存它们，只去追那些真正缺失、且 `depth` 要求的内容。不要让用户去确认他们已经写下的东西。按目标
+文档的形态保存，而不是按简报的形态：版本或路线图式的切分（`MVP` / `v1` / `v2` / 之后）变成“能力”
+一节中在范围内的部分，只有简报明确按决策排除的部分才进“非目标”；其余内容未保存，交回给用户
+（writing-specs）。唯一总是提供的额外项是备选方案调研（见下）。
 
-## Flow
+## 流程
 
-1. **Orient** — one line: "Let's nail the goal and scope, then I'll save it as `goal-and-requirements.md`."
-2. **Overview** — infer it (`depth`-sized: a sentence → a paragraph naming what it replaces) and confirm.
-3. **Problem** — one tailored question referencing the domain (never generic); turn the answer into a
-   statement (who / what they do today / the specific breakdown) and confirm. Skip if the Overview already
-   implies it.
-4. **Route** from the model — don't ask "who's this for" unless genuinely ambiguous:
-   personal / first-person pain / `depth=light` → **Personal spec**; public / named users / `depth=full`
-   → **PRD**.
-5. **Elicit the branch's sections** (below), inferring and confirming each, saving as you go.
-6. **Research alternatives** (always offered, never forced): `web_search` + `fetch_content` for the
-   closest open-source projects / products, then offer to add an **Alternatives Considered** section
-   (name, one-line gap, URL). On a pre-filled brief, ask permission first.
-7. **Review** the full draft in plain markdown and confirm, then finalize.
+1. **定位** —— 一句话：“我们先把目标和范围定下来，然后我把它保存为 `goal-and-requirements.md`。”
+2. **概述** —— 推断它（按 `depth` 定规模：一句话 → 一段点名它替代了什么的话）并确认。
+3. **问题** —— 一个引用该领域的、量身定制的问题（绝不用通用问题）；把答案变成一句陈述
+   （谁 / 他们今天在做什么 / 具体的痛点）并确认。如果概述已经暗示了它，就跳过。
+4. **从模型出发路由** —— 不要问“这是给谁用的”，除非确实含糊：个人 / 第一人称的痛点 /
+   `depth=light` → **Personal spec**；公开 / 具名用户 / `depth=full` → **PRD**。
+5. **引出该分支的各节**（见下），逐一推断并确认，边做边保存。
+6. **调研备选方案**（总是提供，绝不强加）：用 `web_search` + `fetch_content` 找最接近的开源项目 /
+   产品，然后提出可以加一节**考虑过的备选方案**（名字、一句话差距、URL）。对于预先写好的简报，
+   先征求许可。
+7. **评审**整份草稿的纯 markdown 版本并确认，然后定稿。
 
-### Personal spec (sections)
+### Personal spec（各节）
 
-`# Title` + one-line tagline · **Overview** · **Problem** · **Capabilities** (only what the tool is useless
-without) · **Tech Notes** (the stack, once chosen).
+`# Title` + 一行标语 · **概述** · **问题** · **能力**（只留没有它这个工具就没用的部分） ·
+**技术说明**（选定的技术栈）。
 
-### PRD (sections)
+### PRD（各节）
 
-`# Title` + tagline · **Overview** · **Problem Statement** · **Target Users** (roles, not demographics) ·
-**Jobs to Be Done** ("When [situation], I want [motivation], so I can [outcome]") · **Key User Story**
-(one concrete scenario) · **Goals** (verb-first, measurable) · **Non-Goals** · **Success Metrics** /
-**Success Conditions** · **Capabilities** (each justified against a Goal or success condition) ·
-**Non-Functional Requirements** (only if they exist) · **Technology** (Aspect | Choice |
-Rationale).
+`# Title` + 标语 · **概述** · **问题陈述** · **目标用户**（角色，不是人口统计特征） ·
+**要完成的任务**（“当[情形]，我想要[动机]，以便[结果]”） · **关键用户故事**（一个具体场景） ·
+**目标**（动词开头、可衡量） · **非目标** · **成功指标** / **成功条件** · **能力**（每一项都要对照
+某个目标或成功条件自证必要） · **非功能性需求**（只在确实存在时） · **技术**（方面 | 选择 | 理由）。
 
-Skip any section the model already answers or that `depth` doesn't warrant (`light` → skip Goals/NFRs,
-binary Success Conditions instead of metrics). Reject vague goals inline: "'Better UX' isn't a goal —
-'first result in under 30s' is."
+凡是模型已经回答的节，或 `depth` 不足以支撑的节，都跳过（`light` → 跳过目标/非功能性需求，用二值
+的“成功条件”代替指标）。就地驳回含糊的目标：“‘更好的 UX’不是目标 —— ‘首次结果在 30 秒内’才是。”
 
-## Saving
+## 保存
 
-- `spec_create` once, `path: "goal-and-requirements.md"`, a slug `id`, `type: "goal-and-requirements"`,
-  `title`, `status: "draft"`; replace the scaffold with the chosen template + the sections settled so far.
-- `edit` to add each confirmed section in template order.
-- `spec_update` `status: draft → active` once the user approves the reviewed draft.
+- 一次 `spec_create`，`path: "goal-and-requirements.md"`，一个 slug 形式的 `id`，
+  `type: "goal-and-requirements"`、`title`、`status: "draft"`；用选定的模板 + 目前已确定的各节
+  替换掉脚手架。
+- 用 `edit` 按模板顺序加上每个已确认的节。
+- 用户批准评审过的草稿后，用 `spec_update` 把 `status: draft → active`。
 
-## Next
+## 下一步
 
-State plainly that the spec is saved and evolves with the project. Suggest the natural next step —
-sketch `architecture.md`, then build each feature through `brainstorming`. There is no board/ticket
-hand-off — say it and stop: **this workflow ends here**.
+平实地说明规范已经保存，并会随项目演进。建议自然的下一步 —— 先勾出 `architecture.md` 的轮廓，
+然后通过 `brainstorming` 逐个构建每项 feature。这里没有看板/工单式的交接 —— 说完就停：**本工作流
+在此结束**。

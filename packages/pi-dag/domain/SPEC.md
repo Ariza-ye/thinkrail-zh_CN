@@ -2,45 +2,41 @@
 id: submodule-pi-dag-domain
 type: submodule-design
 status: active
-title: DAG contracts and pure domain rules
+title: DAG 契约与纯领域规则
 parent: module-pi-dag
 tags: [backend, dag]
 ---
 
-## Responsibility
+## 职责
 
-Own typed graph/command schemas, public DTOs, persisted domain evidence and pure graph validation,
-readiness, stale propagation and authorization. Graph/command and persisted-record types are inferred
-from their validation schemas; public read projections stay distinct. Persisted records distinguish
-versions, attempts, activations, proposals and gates. Decoding requires self-consistent artifact
-identities and resolves every evidence target, worker-call receipt and output selection; dispositions
-must carry the decisions/files their meaning requires, and each gate decision actor is re-authorized
-against its stored policy. Delegation birth metadata is checked against
-the same stored birth schema before entering state; the broader delegation contract is not duplicated.
+拥有类型化的图/命令 schema、公开 DTO、持久化的领域证据，以及纯图校验、就绪判断、
+过期传播与授权。图/命令类型与持久化记录类型都由各自的校验 schema 推断得出；
+公开的读取投影保持彼此独立。持久化记录区分版本、尝试、激活、提案与门禁。
+解码要求产物身份自洽，并解析每一个证据目标、worker 调用回执和输出选择；
+处置结果必须携带其语义所需的决策/文件，每个门禁决策的 actor 都要按其已存储的策略重新
+授权。委派诞生元数据在进入状态之前，按同一套已存储的诞生 schema 校验；
+更宽泛的委派契约不在此重复。
 
-## Boundary
+## 边界
 
-The barrel exposes contracts, schemas, validation/error helpers and pure graph/state operations to
-package siblings. Allowed external dependencies are typebox and type-only public pi/delegation types.
-Forbidden: filesystem, provider/session instantiation, transport, runtime or persistence imports.
-The parent spec owns sibling dependency edges. Public package exports select client contracts; private
-persisted state is not automatically published through the package barrel.
+barrel 向同包兄弟模块暴露契约、schema、校验/错误辅助函数与纯图/状态操作。
+允许的外部依赖是 typebox 以及仅类型的公开 pi/delegation 类型。禁止：文件系统、
+provider/会话实例化、传输层、runtime 或 persistence 导入。父规范负责兄弟依赖边。
+包的公开导出挑选客户端契约；私有持久化状态不会经由包的 barrel 自动发布。
 
-## Invariants
+## 不变量
 
-Validate the full graph before commit: safe unique ids, acyclic connections, declared compatible
-ports with exactly one producer, one explicit fork base, and no skipped fork source. Required inputs
-need producers. Readiness consumes accepted, current, authorized evidence, not terminal status alone.
-Affected descendants include waiting/paused work. Authorization is trusted binding provenance;
-`human-or-controller` is exhaustive, so owner callbacks satisfy neither caller kind and decide no gate.
-Cancellation does not decide a gate: unresolved current-attempt
-gates still protect skip and dependency edits, even when their execution was cancelled. Explicit retry
-supersedes that attempt but preserves the node's release/input policy. Omitted `inputAuthority`
-means human-only, even before the first input gate: weakening that policy or removing the node
-requires human provenance, just like an explicit human-only policy.
-Revisions never erase prior evidence. Edit preparation computes the validated graph, affected nodes
-and required authority once; the runtime reuses that result only if the acquired state still has the
-prepared version and matches the caller's expected version. This includes authority stamped on the
-replay receipt: an ownership handoff cannot reuse authorization from an older snapshot.
-Pending continuations store only their payload. Decoding still accepts the obsolete optional
-`sourceActivation` field so previously saved continuations remain readable; it has no control authority.
+在提交之前校验整张图：安全且唯一的 id、无环连接、声明且兼容的端口（每个端口恰好一个
+生产者）、一个显式的 fork 基线，以及没有被跳过的 fork 源。必需的输入需要生产者。
+就绪判断消费的是已被接受、当前有效、已获授权的证据，而不只是终态。
+受影响的子孙节点包括等待中/已暂停的工作。授权是受信任的绑定来源；
+`human-or-controller` 是穷尽枚举，因此 owner 回调既不属于这两种调用方，
+也不决定任何门禁。取消不决定门禁：即使其执行已被取消，当前尝试中尚未解决的门禁仍然保
+护 skip 与依赖编辑。显式 retry 会取代该尝试，但保留节点的发布/输入策略。省略
+`inputAuthority` 意味着仅限人类，且在第一个输入门禁之前就已经如此：
+削弱该策略或移除该节点需要人类来源，与显式的仅限人类策略完全一样。
+修订永不擦除既有证据。编辑准备会一次性算出已校验的图、受影响的节点与所需权限；
+runtime 只有在获取到的状态仍具有该准备版本、且与调用方的期望版本匹配时才复用该结果。
+这包括盖在重放回执上的授权：所有权交接不能复用更早快照中的授权。待处理的继续只存储其
+负载。解码仍然接受已废弃的可选字段 `sourceActivation`，以便先前保存的继续记录保持可
+读；该字段没有控制权限。

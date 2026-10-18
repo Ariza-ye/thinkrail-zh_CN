@@ -1,94 +1,83 @@
 ---
 name: spec-graph
-description: "Use when locating, reading, creating, updating, or validating project specs, or when work is governed by or may alter a documented boundary, contract, invariant, behavior, or architecture decision."
+description: "Use when locating, reading, creating, updating, or validating project specs（定位、阅读、创建、更新或校验项目规范），or when work is governed by or may alter a documented boundary, contract, invariant, behavior, or architecture decision（或工作受某个已记录的边界、契约、不变量、行为或架构决策管辖、或可能改变它）。"
 ---
 
-# Spec graph
+# 规范图
 
-## Specs are the ground truth
+## 规范是事实来源
 
-- Specs describe the architecture, decisions, contracts, and boundaries behind the code — the intent
-  that the code alone does not reveal. Treat them as authoritative.
-- **Consult the owning spec when it governs the work.** When work depends on, checks, explains, or
-  may alter a documented boundary, contract, invariant, behavior, or architecture decision, use
-  `spec_grep` / `spec_get` / `spec_graph` to find the applicable record and align with it. If a change contradicts a recorded
-  decision, surface and reconcile the contradiction rather than silently diverging.
-- **Keep lookup proportional.** Specs are the map for decisions and boundaries; code confirms the
-  implementation. A localized fix, explanation, or check that changes no documented decision may
-  inspect only the files it needs without reading unrelated specs.
-- **Keep them honest.** A change that moves or blurs a boundary, or overturns a decision, updates the
-  spec as part of the same change. Specs that drift from the code stop being ground truth.
+- 规范描述代码背后的架构、决策、契约与边界——即代码本身无法揭示的意图。把它们当作权威。
+- **当某个规范管辖该工作时，查阅拥有它的那份规范。** 当工作依赖于、检查、解释或可能改变某个已记录的边界、契约、
+  不变量、行为或架构决策时，用 `spec_grep` / `spec_get` / `spec_graph` 找到适用的记录并与之一致。若某项变更与已记录的
+  决策矛盾，请指出并调和这一矛盾，而不是静默地偏离。
+- **让查阅保持相称。** 规范是决策与边界的地图；代码确认实现。一个本地化的修复、解释或检查若不改变任何已记录的决策，
+  可以只检查它需要的文件，而无需阅读无关的规范。
+- **让它们保持诚实。** 一次移动或模糊了边界的变更，或推翻了某个决策的变更，要作为同一项变更的一部分更新
+  规范。与代码漂移的规范就不再是事实来源。
 
-## What a spec is
+## 什么是规范
 
-- A durable, declarative document. It states the world as it is — the intent, decisions, contracts, and
-  boundaries behind the code — not plans, tasks, phases, or a work journey.
-- Concise and readable. It captures what is *not* obvious from the code; it never restates the code.
-- The bar: reading the relevant specs should be enough to understand an area and to formulate a task to
-  improve it.
+- 一份持久的、声明式的文档。它陈述世界的现状——代码背后的意图、决策、契约与
+  边界——而不是计划、任务、阶段或一次工作历程。
+- 简洁且可读。它记录代码中*不*显而易见的东西；它绝不复述代码。
+- 标准是：读相关的规范就足以理解一个领域，并能拟定一个改进它的任务。
 
-### Keep specs lean
+### 让规范保持精炼
 
-- **Explain intent, not inventory.** Describe what a module is for, what it owns, and where its boundaries
-  are — not a file-by-file transcript of its directory. The reader can see the files; the spec exists for
-  what the files *don't* say.
-- **Record the edges that matter.** State the module's boundary (allowed / forbidden deps) and the
-  dependency edges between its sub-modules. List a part only when its role or its edges aren't obvious from
-  its name — e.g. a small table that carries a real dependency DAG earns its place; a table that just
-  pairs `foo.ts` with "the foo tool" is noise, so say it in a sentence instead.
-- **Say each thing once.** A fact lives in exactly one spec; others link to it by `id` rather than restate
-  it. If a paragraph is being copied between specs, move it to the spec that owns the concept and point at
-  it. Duplicated prose drifts and turns into contradictions.
-- **Prefer prose to exhaustive tables**, and cut anything that only paraphrases code, filenames, or a
-  sibling spec.
+- **解释意图，而不是清单。** 描述一个模块为何存在、它拥有什么、它的边界
+  在哪里——而不是逐文件的目录抄录。读者能看到文件；规范存在的意义是记录文件*没有*说的东西。
+- **记录那些要紧的边。** 陈述模块的边界（允许 / 禁止的依赖）以及其子模块之间的
+  依赖边。只有当某部分的角色或其边从名称上看不出来时才列举它——例如，一张承载真实依赖 DAG 的小表才有它的位置；
+  一张只是把 `foo.ts` 与“foo 工具”配对的表就是噪声，改用一句话说明。
+- **每件事只说一次。** 一个事实只住在一份规范里；其他规范通过 `id` 链接它而不是复述它。
+  如果某段话正在规范之间被复制，把它移到拥有该概念的规范里并指向它。重复的散文会漂移并变成矛盾。
+- **宁可写散文，也不要穷举的表**，并删掉任何只是改写代码、文件名或某份同胞规范的内容。
 
-## The graph
+## 图
 
-- `parent` links form a hierarchy that mirrors the code structure: a `SPEC.md` sits beside the module it
-  describes (fractal — a package and its sub-directories each have one), and root documents sit at the
-  repository root.
-- `depends-on`, `references`, and `implements` form a dependency layer across the tree.
+- `parent` 链接构成一个镜像代码结构的层级：一个 `SPEC.md` 就放在它所描述的模块旁边
+  （分形——一个包及其每个子目录各有一份），而根文档位于仓库根。
+- `depends-on`、`references` 与 `implements` 构成一层横跨整棵树的依赖层。
 
 ## Frontmatter
 
-- Required: `id` (a unique slug), `type`, `title`.
-- Optional: `status` (lifecycle), `parent` (single link), `depends-on` / `references` / `implements`
-  (link lists), `covers`, `tags`.
-- A file is a spec when its frontmatter carries `id` and `type`.
-- `status` tracks a spec's lifecycle: `draft` (being written) → `active` (in force), then `stale` (drifting
-  from the code), `done`, or `deprecated`. It's optional, but keep it current as a spec firms up or ages.
-- Types:
-  - `goal-and-requirements` — the product goal and scope; the root of the graph.
-  - `architecture-design` — system-wide topology, cross-cutting decisions, and invariants.
-  - `module-design` — a package or module's responsibility and boundary.
-  - `submodule-design` — the same, for a directory-level module inside a package.
-  - `task-spec` — a temporary working document for a piece of work; not durable, and removed once the
-    work lands.
+- 必需：`id`（一个唯一的 slug）、`type`、`title`。
+- 可选：`status`（生命周期）、`parent`（单个链接）、`depends-on` / `references` / `implements`
+  （链接列表）、`covers`、`tags`。
+- 一个文件只要其 frontmatter 携带 `id` 和 `type`，它就是一份规范。
+- `status` 跟踪一份规范的生命周期：`draft`（正在撰写）→ `active`（生效中），然后是 `stale`（正与代码
+  漂移）、`done` 或 `deprecated`。它是可选的，但在规范逐渐稳固或老去时保持其最新。
+- 类型：
+  - `goal-and-requirements`——产品目标与范围；图的根。
+  - `architecture-design`——系统范围的拓扑、横切决策与不变量。
+  - `module-design`——一个包或模块的职责与边界。
+  - `submodule-design`——同上，针对包内目录级的模块。
+  - `task-spec`——为某份工作而存在的临时工作文档；不持久，工作在落地后即被移除。
 
-## Tools
+## 工具
 
-Read:
-- `spec_grep` — search within specs (content, narrowed by metadata filters).
-- `spec_get` — a spec's frontmatter, its resolved links, and its path. Read the body with the normal
-  `read` tool using that path.
-- `spec_graph` — a bounded slice of the graph: a subtree, ancestors, or a node's neighbors, to a depth.
+读取：
+- `spec_grep`——在规范内部搜索（内容，按元数据过滤收窄）。
+- `spec_get`——一份规范的 frontmatter、其已解析的链接，以及其路径。用常规的
+  `read` 工具按该路径读取正文。
+- `spec_graph`——图的一个有界切片：一个子树、祖先，或某个节点的邻居，以及深度。
 
-Manage:
-- `spec_create` — a new spec with scaffolded frontmatter and headings.
-- `spec_update` — a spec's frontmatter (fields and links). It does not touch the body.
-- `spec_delete` — remove a spec.
-- `spec_validate` — report dangling links, duplicate ids, and parent cycles.
+管理：
+- `spec_create`——一份带脚手架 frontmatter 与标题的新规范。
+- `spec_update`——一份规范的 frontmatter（字段与链接）。它不触碰正文。
+- `spec_delete`——移除一份规范。
+- `spec_validate`——报告悬空链接、重复 id 与父级环路。
 
-Prose is written and edited with the normal `write`/`edit` tools; the spec tools own frontmatter and
-structure.
+散文用常规的 `write`/`edit` 工具来写入与编辑；规范工具拥有 frontmatter 与
+结构。
 
-## Working with specs
+## 与规范协同工作
 
-1. **Orient when specs govern the work.** From a known root or the module you are touching, use
-   `spec_graph` for the neighborhood, `spec_get` for a node's metadata, and `read` for its body. Use
-   `spec_grep` to find specs by content.
-2. **Align.** Reconcile the change with the decisions and contracts the specs record; surface
-   contradictions before diverging.
-3. **Update.** When the change alters a boundary, contract, or decision, update the spec — frontmatter
-   (including `status`) with `spec_update`, prose with `edit` — and add `spec_create` for a new module.
-4. **Check.** Run `spec_validate` after structural changes.
+1. **当规范管辖这项工作时先定位。** 从一个已知的根或你正在触碰的模块出发，用
+   `spec_graph` 看邻域、用 `spec_get` 看一个节点的元数据、用 `read` 读它的正文。用
+   `spec_grep` 按内容查找规范。
+2. **对齐。** 让变更与规范记录的决策和契约保持一致；在偏离之前先指出矛盾。
+3. **更新。** 当变更改变了某个边界、契约或决策时，更新规范——frontmatter
+   （包括 `status`）用 `spec_update`，散文用 `edit`——并为新模块补上 `spec_create`。
+4. **检查。** 结构性变更之后运行 `spec_validate`。

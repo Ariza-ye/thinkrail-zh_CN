@@ -2,156 +2,152 @@
 id: module-pi-background-commands
 type: module-design
 status: active
-title: pi-background-commands — explicit, session-owned background commands
+title: pi-background-commands——显式的、会话自有的后台命令
 parent: architecture
 tags: [pi-extension, background-commands, public-surface-checked]
 ---
 
-## Responsibility
+## 职责
 
-An explicit background-command capability for Pi: start a noninteractive command without holding
-the agent turn, inspect its recent output, and stop that exact command. Ordinary `bash` is unchanged.
-The user-approved scope is log-only commands; no PTY, terminal tabs, automatic handoff, stdin,
-restart/rerun, daemon discovery, or arbitrary-process management.
+为 Pi 提供一个显式的后台命令能力：启动一条非交互式命令而不占用
+agent 轮次、检查其近期输出，并停止那一条确切的命令。常规 `bash` 保持不变。
+用户批准的范围是仅日志的命令；没有 PTY、终端标签页、自动交接、stdin、
+重启/重跑、守护进程发现或任意进程管理。
 
-## Boundary
+## 边界
 
-- **Owns:** one session-bound command service, its opaque command identities, admission, runtime
-  snapshots, bounded output, cancellation and completion-delivery bookkeeping; the
-  `background_command` Pi tool and a default vanilla-Pi extension entry.
-- **Public surface:** `BACKGROUND_COMMAND_COMPLETION_MESSAGE`, `BackgroundCommandInput`,
+- **拥有：** 一个与会话绑定的命令服务、其不透明的命令身份、准入、运行时
+  快照、有界输出、取消与完成投递的记账；`background_command` Pi 工具，
+  以及一个默认的原生 Pi 扩展入口。
+- **Public surface（公开接口）：** `BACKGROUND_COMMAND_COMPLETION_MESSAGE`, `BackgroundCommandInput`,
   `BackgroundCommandsExtensionOptions`, `createBackgroundCommandsExtension`,
   `createBackgroundCommands`, `default`, `BackgroundCommandCompletion`,
   `BackgroundCommandCompletionBinding`, `BackgroundCommandContext`, `BackgroundCommandHandle`,
   `BackgroundCommandOutput`, `BackgroundCommandSnapshot`, `BackgroundCommandStart`,
   `BackgroundCommandStatus`, `BackgroundCommands`, `BackgroundCommandsBinding`,
-  `BackgroundCommandsOptions`.
-- **Allowed deps:** public package-root Pi SDK APIs and `typebox` as peers; Node standard libraries.
-  Execution delegates to Pi's exported `createLocalBashOperations`, not a copied spawn runner.
-- **Forbidden:** ThinkRail packages, web/TUI widget ownership, Pi private imports, delegation
-  ownership, workspace PTYs, and generic resource-provider/plugin machinery. Wire DTOs are mirrored
-  in contracts, never imported from or re-exported through this package.
+  `BackgroundCommandsOptions`
+- **允许的依赖：** 公开的包根 Pi SDK API，以及作为 peer 的 `typebox`；Node 标准库。
+  执行委派给 Pi 导出的 `createLocalBashOperations`，而不是一个复制来的 spawn 运行器。
+- **绝不触碰：** ThinkRail 各包、web/TUI 小组件所有权、Pi 私有导入、委派
+  所有权、工作区 PTY，以及通用的资源提供商/插件机制。线上协议 DTO 在 contracts 中被镜像，
+  绝不从本包导入，也绝不通过本包再导出。
 
-## Session binding and execution
+## 会话绑定与执行
 
-The root `index.ts` is the only import surface; `src/` is private implementation. A service exposes
-start/list/find/change-subscription/dispose, plus completion binding and replay; a command handle
-exposes its snapshot, output and idempotent stop. Controllers and subprocess details stay private.
+根 `index.ts` 是唯一的导入面；`src/` 是私有实现。一个服务暴露
+start/list/find/change-subscription/dispose，外加完成绑定与重放；一个命令句柄
+暴露其快照、输出与幂等停止。控制器与子进程细节保持私有。
 
-The embedder binds one service to one immutable session identity and supplies current session
-context plus effective shell settings. The standalone extension supplies the equivalent binding from
-Pi's public context/settings APIs, respecting project trust. Cwd, shell path/command prefix and
-`PI_SESSION_*`/model/reasoning environment follow Pi's current session values at command launch;
-user-provided environment overrides and host-selected cwd are not additional tool inputs.
+嵌入方把一个服务绑定到一个不可变的会话身份，并提供当前的会话
+上下文与生效的 shell 设置。独立扩展从 Pi 的公开上下文/设置 API 提供等价的绑定，
+并遵循项目信任。Cwd、shell 路径/命令前缀以及
+`PI_SESSION_*`/模型/reasoning 环境，在命令启动时遵循 Pi 当前的会话值；
+用户提供的环境覆盖与宿主选定的 cwd 不是额外的工具输入。
 
-`createBackgroundCommands({ sessionId, getContext, canDeliverCompletion? })` captures the immutable
-identity; synchronous `getContext()` is evaluated for every accepted launch. Its projection carries
-`cwd`, optional `sessionFile`, `model` (provider/id), `thinkingLevel`, `shellPath`, `commandPrefix`,
-and `exposeSessionEnvironment` (default true). Embedders project their effective in-memory settings;
-standalone Pi reads `SettingsManager.create` with the latest tool context's project-trust decision
-at launch. Pi does not expose its live SettingsManager on ExtensionContext. The environment preserves
-process values, removes stale Pi session/model markers, and injects only this launch's current values.
-Because Pi's `getShellEnv` is not public, managed-bin PATH parity uses public `getAgentDir()` plus
-`bin`, preserving an existing entry and the environment's PATH-key casing. Tests compare the complete
-environment against the public native bash definition; no production code uses that definition or its
-unbounded temporary-output accumulator. An optional second factory argument, `createOperations`, is
-an executor-construction seam for external-boundary tests, defaulting to Pi's public local executor.
+`createBackgroundCommands({ sessionId, getContext, canDeliverCompletion? })` 捕获那个不可变的
+身份；同步的 `getContext()` 会在每一次被接受的启动时求值。其投影携带
+`cwd`、可选的 `sessionFile`、`model`（provider/id）、`thinkingLevel`、`shellPath`、`commandPrefix`，
+以及 `exposeSessionEnvironment`（默认 true）。嵌入方投影其生效的内存中设置；
+独立的 Pi 在启动时以最新工具上下文的项目信任决策读取 `SettingsManager.create`。
+Pi 不会在 ExtensionContext 上暴露其实时的 SettingsManager。该环境保留
+进程值、移除过期的 Pi 会话/模型标记，并且只注入本次启动的当前值。
+由于 Pi 的 `getShellEnv` 不是公开的，受管 bin 的 PATH 一致性改用公开的 `getAgentDir()` 加
+`bin`，并保留既有条目与环境里 PATH 键的大小写。测试把完整环境与公开的原生 bash 定义作比较；
+没有任何生产代码使用那个定义或其无界的临时输出累加器。可选的第二个工厂参数 `createOperations`
+是供外部边界测试使用的执行器构造接缝，默认使用 Pi 的公开本地执行器。
 
-The shell command itself stays foreground; backgrounding means the tool does not await its outcome.
-Each command owns an AbortController independent of the parent turn. Pi supplies output callbacks,
-exit status and process-tree termination. A timeout is optional and means terminate, never switch
-execution modes. No default timeout is imposed on intentionally long-lived commands.
+shell 命令本身保持前台；转入后台意味着该工具不 await 其结果。
+每条命令拥有一个独立于父轮次的 AbortController。Pi 提供输出回调、
+退出状态与进程树终止。超时是可选的，且意味着终止，绝不切换执行模式。
+不会对有意长期运行的命令施加任何默认超时。
 
-`background_command` has four actions: `start` (command, optional display name and timeout),
-`list`, `output` (command id), and `stop` (command id). Starts acknowledge acceptance with the opaque
-id and current snapshot. The id field is `id` on output/stop; action-specific extra fields are
-rejected, including path, cwd, env, PID and stdin controls. Every other action is scoped to the bound
-session; command ids are not PIDs, paths, or authorization tokens. Repeating stop is safe, and stop never creates a command.
-Tool prompt guidance requires managed commands to avoid shell detachment such as `&`/`nohup`;
-this is not a shell sandbox and does not promise to recover descendants that escape supervision.
+`background_command` 有四个动作：`start`（命令、可选的显示名与超时）、
+`list`、`output`（命令 id）与 `stop`（命令 id）。start 以那个不透明的 id 与当前快照确认
+已接受。id 字段在 output/stop 上是 `id`；动作专属的额外字段会被
+拒绝，包括路径、cwd、env、PID 与 stdin 控件。其他每个动作都限定在已绑定的
+会话内；命令 id 不是 PID、路径或授权令牌。重复 stop 是安全的，而 stop 绝不创建一条命令。
+工具的提示词指引要求受管命令避免诸如 `&`/`nohup` 的 shell 分离；
+这不是一个 shell 沙箱，也不承诺回收逃出监管的后代进程。
 
-## Runtime and retention
+## 运行时与保留
 
-Command states are `running`, `stopping`, `completed`, `error`, and `stopped`. Only executor
-settlement establishes a terminal state: exit zero is completed, a nonzero exit or unsignalled null
-exit is error, and a requested cancellation is stopped after settlement. A stop request alone is
-not proof the process exited. Error text is bounded to 4 KiB, and failed launch remains inspectable.
-Timeouts are executor errors (natural failure notifications), not user-stop requests.
+命令状态是 `running`、`stopping`、`completed`、`error` 与 `stopped`。只有执行器的
+落定才确立终结状态：退出零为 completed，非零退出或无信号的空
+退出为 error，而一次被请求的取消在落定之后为 stopped。仅有停止请求并不
+证明该进程已退出。错误文本封顶 4 KiB，启动失败仍然可检查。
+超时是执行器错误（自然的失败通知），不是用户停止请求。
 
-A session admits at most eight active commands and retains its newest twenty terminal records;
-excess starts fail explicitly rather than queue. Active/stopping work is never evicted. Display
-names are bounded to 200 characters and commands to 64 KiB. Each output record retains only the
-latest 2,000 lines or 50 KiB, whichever is reached first, with UTF-8-safe trimming and an explicit
-truncation indication. Reads are non-consuming, and output snapshots REPLACE earlier snapshots.
-Line counting includes an empty final line after a trailing newline. Incremental UTF-8 decoding
-preserves characters split between executor chunks; invalid/incomplete terminal bytes use normal
-UTF-8 replacement decoding. This intentionally provides recent logs, not an archive: there are no
-uncapped temporary files or second durable command index. Eviction releases the output even when a
-caller still holds an old handle.
+一个会话最多接纳八条活跃命令，并保留其最新二十条终结记录；
+超出的 start 显式失败而不是排队。活跃/停止中的工作绝不被淘汰。显示
+名封顶 200 个字符，命令封顶 64 KiB。每条输出记录只保留
+最新的 2,000 行或 50 KiB，先到者为准，采用 UTF-8 安全的裁剪与显式的
+截断指示。读取是非消耗式的，而输出快照替换更早的快照。
+行计数包含结尾换行之后的一个空末行。增量 UTF-8 解码
+保留被分割在执行器块之间的字符；无效/不完整的终结字节使用常规的
+UTF-8 替换解码。这有意提供近期日志，而不是归档：没有
+无上限的临时文件，也没有第二个持久化的命令索引。淘汰会释放输出，即使
+调用方仍持有一个旧句柄。
 
-Records/output survive browser reloads, client disconnection, chat placement closure and parent-turn
-Stop while the owning host/session remains live. They are lost on host restart; historical Pi
-acknowledgements never recreate active records. Completed command notices in Pi's transcript retain
-a bounded diagnostic excerpt, not the full log. Missing/evicted output reports unavailable.
+当拥有它的宿主/会话仍然存活时，记录/输出能挺过浏览器重新加载、客户端断开、聊天放置关闭与父轮次的
+Stop。它们在宿主重启时丢失；历来的 Pi
+确认绝不重建活跃记录。Pi 对话记录中已完成命令的通知保留
+一小段有界的诊断摘录，而不是完整日志。缺失/已被淘汰的输出报告不可用。
 
-Actual session disposal closes admission, disables completion wake-ups, signals every active command
-before awaiting any one, and participates in the embedder's bounded shutdown. Workspace archive and
-chat deletion use that same lifetime path. No idle timer kills quiet work. Abrupt host death and
-escaped daemon descendants cannot be promised cleanly terminated or recoverable; never reconstruct
-control authority from a persisted PID.
+真正的会话销毁会关闭准入、禁用完成唤醒、在等待任何一个活跃命令之前
+向每个活跃命令发信号，并参与嵌入方的有界关停。工作区归档与
+聊天删除走同一条生命周期路径。没有空闲计时器会杀死安静的工作。宿主的突然死亡与
+逃逸的守护进程后代无法被承诺干净终止或可恢复；绝不从持久化的 PID
+重建控制权威。
 
-`list()` returns snapshot copies; `find(id)` returns this service's handle or undefined. `stop()` is
-synchronous and returns the post-request snapshot; it does not await or manufacture settlement.
-`output` is a non-consuming `{ text, truncated }` snapshot, or undefined after eviction.
-`onChange(listener)` returns an unsubscribe and reports admission, stopping and terminal/eviction
-changes, never byte updates. Observer errors cannot interrupt command cleanup.
-`dispose({ timeoutMs? })` closes admission immediately and shares one promise across concurrent
-callers. Its default wait budget is 5 seconds; a host can select a shorter nonnegative budget. Expiry
-ends waiting, not execution authority: unsettled commands remain `stopping`, and any eventual executor
-settlement still establishes `stopped`. All active commands are signalled before awaiting any one.
+`list()` 返回快照副本；`find(id)` 返回本服务的句柄或 undefined。`stop()` 是
+同步的，返回请求后的快照；它不等待也不制造落定。
+`output` 是一个非消耗式的 `{ text, truncated }` 快照，或在淘汰之后为 undefined。
+`onChange(listener)` 返回一个取消订阅函数，报告准入、停止中以及终结/淘汰
+变化，绝不报告字节更新。观察者的错误不能中断命令清理。
+`dispose({ timeoutMs? })` 立即关闭准入，并在并发的
+调用方之间共享同一个 promise。其默认等待预算是 5 秒；宿主可以选一个更短的非负预算。到期
+结束的是等待，而不是执行权威：未落定的命令仍为 `stopping`，而任何最终的执行器
+落定仍会确立 `stopped`。所有活跃命令都会在等待任何一个之前先被发信号。
 
-An injected service belongs to the embedder, not an extension instance: resource reload rebinds
-completion delivery without dropping its jobs. The standalone extension disposes its own service
-on session shutdown. Completion claims live with the retained records so rebind cannot deliver the
-same outcome twice or silently lose a retained completion during the reload gap. Standalone resource
-reload is a Pi session-shutdown event and disposes standalone-owned work; only injected services have
-an owner outside that extension lifetime.
+被注入的服务属于嵌入方，而不属于某个扩展实例：资源重新加载会重新绑定
+完成投递而不丢弃它的任务。独立扩展在会话关停时销毁自己的服务。
+完成认领与保留的记录同住，因此重新绑定既不能重复投递
+同一个结果，也不能在重新加载的间隙静默丢失一条已保留的完成。独立的资源
+重新加载是一次 Pi 会话关停事件，会销毁独立扩展拥有的工作；只有被注入的服务拥有
+位于该扩展生命周期之外的拥有者。
 
-`bindCompletion({ deliver, canDeliverCompletion? })` replaces the current synchronous delivery
-binding, immediately replays pending retained outcomes, and returns an identity-safe unbind function.
-`flushCompletions()` retries pending outcomes against the current binding without polling. Both the
-service binding's and the delivery binding's optional predicates must permit delivery. A host closes
-its predicate during a provisional deletion tombstone, then calls `flushCompletions()` after rollback;
-confirmed deletion calls `dispose()`. A resource-reload gap has no delivery binding and is replayed
-on the next bind. Claims are made before synchronous send to prevent reentrant duplication; a thrown
-send keeps the record pending. A successful send means acceptance by Pi's public fire-and-forget API,
-not confirmation of an eventual provider response. Eviction also removes a pending claim: there is no
-unbounded second notification queue.
+`bindCompletion({ deliver, canDeliverCompletion? })` 替换当前的同步投递
+绑定、立即重放待处理的已保留结果，并返回一个身份安全的解绑函数。
+`flushCompletions()` 针对当前绑定重试待处理结果，而不做轮询。无论是
+服务绑定的还是投递绑定的可选判定都必须允许投递。宿主在一个临时删除墓碑期间
+关闭其判定，随后在回滚之后调用 `flushCompletions()`；已确认的删除则调用 `dispose()`。一次资源重新加载
+的间隙没有投递绑定，会在下一次绑定时被重放。认领在同步发送之前做出，以防可重入的重复；
+一次抛出的发送会让该记录保持待处理。成功的发送意味着被 Pi 的公开即发即忘 API 接受，
+而不是确认最终的提供商响应。淘汰也会移除一个待处理的认领：不存在
+无界的第二个通知队列。
 
-## Completion and controls
+## 完成与控件
 
-Natural completion sends one displayed Pi custom message with a bounded result excerpt and schedules
-a follow-up turn, matching the existing detached-subagent convention. The agent can inspect more
-retained output explicitly rather than poll to wait for completion. The exported
-`BACKGROUND_COMMAND_COMPLETION_MESSAGE` is `background-command-completion`; message details omit the
-full command and retain only a 40-line/4-KiB diagnostic output excerpt plus bounded snapshot metadata.
-Messages are displayed with `deliverAs: "followUp"`, with `triggerTurn: true` for natural outcomes and
-`false` for stopped commands. An explicit user/tool stop records the cancellation without starting
-an idle parent; it does not abort a parent already running. Actual
-session shutdown suppresses delivery into the dying session.
+自然完成会发送一条被显示的 Pi 自定义消息，其中包含一段有界的结果摘录，并安排
+一个后续轮次，与既有的分离式子代理约定一致。agent 可以显式检查更多已保留的输出，
+而不是轮询等待完成。导出的 `BACKGROUND_COMMAND_COMPLETION_MESSAGE` 是 `background-command-completion`；
+消息 details 省略完整命令，只保留一段 40 行/4 KiB 的诊断输出摘录加上有界的快照元数据。
+消息以 `deliverAs: "followUp"` 显示，自然结果配 `triggerTurn: true`，
+已停止的命令配 `false`。一次显式的用户/工具停止记录该取消，而不启动一个
+空闲父级；它不会中止一个已在运行的父级。真正的
+会话关停会抑制向那个垂死会话的投递。
 
-The tool and the host UI call the same handles. A service change subscription reports catalog or
-lifecycle changes, not every byte of output; output is read separately while inspected. Native
-`tool_execution_update` stops being a delivery path once the start acknowledgement resolves.
+工具与宿主 UI 调用同样的句柄。服务的变更订阅报告目录或
+生命周期变化，而不是输出的每一个字节；输出在被查看时单独读取。一旦启动确认 resolve，
+原生 `tool_execution_update` 就不再是投递路径。
 
-## Verification obligations
+## 验证义务
 
-Exercise admission and eviction, bounded multibyte output, natural/nonzero/null exits, launch errors,
-per-job stop isolation, parent-abort independence, duplicate stop, notification/reload races and
-bounded disposal. Integration checks use real local commands and Pi's public executor; provider-driven
-coverage verifies tool use and completion through a real Pi session. Windows CI runs the package
-suite natively, including the descendant marker used by shutdown/process-tree coverage; visible-console
-behavior still needs a native visual probe rather than a Unix-only claim. The package suite uses Bun
-tests, controlled executor settlement, real local shell commands, and Pi AgentSessions driven by the
-SDK's faux provider. Live-provider host E2E remains the embedder's acceptance check, distinct from
-these in-package tests.
+检验准入与淘汰、有界的多字节输出、自然/非零/空退出、启动错误、
+按任务的停止隔离、父级中止的独立性、重复停止、通知/重新加载竞态，以及
+有界的销毁。集成检查使用真实的本地命令与 Pi 的公开执行器；由提供商驱动的
+覆盖通过一个真实 Pi 会话验证工具使用与完成。Windows CI 原生运行该包的
+测试套件，包括关停/进程树覆盖所用的后代标记；可见控制台
+的行为仍需要一次原生可视化探测，而不是一个仅限 Unix 的主张。包测试套件使用 Bun
+测试、受控的执行器落定、真实的本地 shell 命令，以及由 SDK 的 faux provider 驱动的 Pi AgentSession。
+真实提供商下的宿主 E2E 仍是嵌入方的验收检查，与这些包内测试不同。

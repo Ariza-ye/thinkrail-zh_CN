@@ -2,55 +2,54 @@
 id: submodule-spec-graph-tools
 type: submodule-design
 status: active
-title: Spec-graph tools (pi wrappers)
+title: Spec-graph 工具（pi 包装）
 parent: module-spec-graph
 depends-on: [submodule-spec-graph-core]
 tags: [spec-graph, pi-extension]
 ---
 
-## Responsibility
+## 职责
 
-The seven `pi` custom tools that expose the spec model to the agent — `spec_grep`, `spec_get`,
-`spec_graph`, `spec_create`, `spec_update`, `spec_delete`, `spec_validate`. Each is a **thin wrapper** over
-`core/`: parse the typebox params, call a `core/` function, format a text result + structured `details`.
-None edit prose.
+把规范模型暴露给 agent 的七个 `pi` 自定义工具——`spec_grep`、`spec_get`、
+`spec_graph`、`spec_create`、`spec_update`、`spec_delete`、`spec_validate`。每一个都是 `core/` 之上的
+**薄包装**：解析 typebox 参数、调用一个 `core/` 函数、格式化一个文本结果 + 结构化的 `details`。
+它们都不编辑散文。
 
-## Boundary
+## 边界
 
-- **Owns:** tool registration, param schemas, and result formatting; the per-root `SpecIndex` cache and the
-  `spec_create` scaffold headings (`shared.ts`).
-- **Public surface:** the `index.ts` **barrel** exporting `registerSpecTools(pi)`; the extension entry
-  (`../index.ts`) is the only caller.
-- **Allowed deps:** `core/` (via its barrel), `@earendil-works/pi-coding-agent` (types + `registerTool`),
-  `@earendil-works/pi-ai` (`StringEnum`, from the package root), `typebox`, Node built-ins
-  (`node:fs`/`node:path`, write tools only).
-- **Forbidden:** reaching into `core/` leaf files (import only the barrel); any `@thinkrail/*` package.
+- **拥有：** 工具注册、参数 schema 与结果格式化；按根的 `SpecIndex` 缓存以及
+  `spec_create` 的脚手架标题（`shared.ts`）。
+- **Public surface（公开接口）：** 导出 `registerSpecTools(pi)` 的 `index.ts` **barrel**；扩展入口
+  （`../index.ts`）是唯一的调用方。
+- **允许的依赖：** `core/`（经由其 barrel）、`@earendil-works/pi-coding-agent`（类型 + `registerTool`）、
+  `@earendil-works/pi-ai`（`StringEnum`，来自包根）、`typebox`、Node 内建模块
+  （`node:fs`/`node:path`，仅写入工具）。
+- **绝不触碰：** 深入 `core/` 的叶子文件（只导入 barrel）；任何 `@thinkrail/*` 包。
 
-## Leaves
+## 叶子
 
-One leaf per tool (`grep.ts` → `spec_grep`, and so on), each wrapping the corresponding `core/` function
-and depending on `shared.ts` (the index cache + result/scaffold helpers), which depends on `core/`. Leaves
-don't depend on each other; `index.ts` composes them. `spec_create`/`spec_update`/`spec_delete` write the
-file; the other four are read-only.
+每个工具一个叶子（`grep.ts` → `spec_grep`，依此类推），各自包装对应的 `core/` 函数
+并依赖 `shared.ts`（索引缓存 + 结果/脚手架辅助函数），而它依赖 `core/`。叶子
+之间互不依赖；`index.ts` 组合它们。`spec_create`/`spec_update`/`spec_delete` 写
+文件；其他四个是只读的。
 
-## Invariants
+## 不变量
 
-- Tools never edit prose; `spec_update` is frontmatter-only and never un-specs a file — it won't remove or
-  blank `id`/`type`, and won't rename `id`. It sets/removes scalar fields and adds/removes entries across
-  every list field (`depends-on`/`references`/`implements` + `covers`/`tags`) via `addList`/`removeList`;
-  `set` refuses a list field (it would list-coerce a scalar into one wrong entry). The edit is applied in
-  place by `core`'s `updateFrontmatterText`, so comments, nested/unknown fields, field order, and the
-  file's line endings are preserved.
-- Frontmatter field keys the tools read/write come from `core`'s `FIELDS` registry, and params over a
-  finite vocabulary use `StringEnum` seeded by the `core/` tuple (`spec_create.type` ← `SPEC_TYPES`,
-  `spec_create.status` ← `SPEC_STATUSES`, `spec_graph.direction` ← `SLICE_DIRECTIONS`,
-  `spec_graph.edge` ← `LINK_KINDS`) — never re-typed literals, so a `core` rename flows here with no edit
-  (pinned by `tools/tools.test.ts`).
-- `spec_create` writes only what the index can later read back, and it checks that in three places: the
-  target path goes through `core`'s `resolveSpecPath` (which also yields the canonical relative path the
-  tool reports, so its `Created <path>` never disagrees with what `spec_get` will say), the assembled
-  bytes must parse back as a spec before anything is written, and the write itself is exclusive
-  (`flag: "wx"`) so the existence check cannot be raced or satisfied by a link.
-- The spec root is `ctx.cwd`; one `SpecIndex` is reused per root (freshness handled in `core/` — see
-  `module-spec-graph`). `spec_update` reads via `recordForId` to reuse the scan's cached read; write tools
-  just write, and the next read picks the change up.
+- 工具绝不编辑散文；`spec_update` 仅改 frontmatter，且绝不把一个文件变成非规范——它不会移除或
+  清空 `id`/`type`，也不会重命名 `id`。它通过 `addList`/`removeList` 设置/移除标量字段，并在
+  每个列表字段（`depends-on`/`references`/`implements` + `covers`/`tags`）上增删条目；
+  `set` 拒绝列表字段（那会把一个标量按列表强制成一个错误条目）。该编辑由
+  `core` 的 `updateFrontmatterText` 就地应用，因此注释、嵌套/未知字段、字段顺序以及
+  文件的行尾符都被保留。
+- 这些工具读写的 frontmatter 字段键来自 `core` 的 `FIELDS` 注册表，而建立在有限词表之上的参数
+  使用由 `core/` 元组播种的 `StringEnum`（`spec_create.type` ← `SPEC_TYPES`、
+  `spec_create.status` ← `SPEC_STATUSES`、`spec_graph.direction` ← `SLICE_DIRECTIONS`、
+  `spec_graph.edge` ← `LINK_KINDS`）——绝不是重新手写的字面量，因此 `core` 的一次重命名会随之流到这里而无需改动
+  （由 `tools/tools.test.ts` 钉住）。
+- `spec_create` 只写索引日后能读回的内容，并在三处检查这一点：目标路径经过 `core` 的
+  `resolveSpecPath`（它还会产出该工具所报告的规范相对路径，因此其 `Created <path>` 永不与
+  `spec_get` 会说的内容不一致）、组装出的字节在写入任何内容之前必须能解析回一个规范，以及写入本身是排他的
+  （`flag: "wx"`），因此存在性检查既无法被竞争绕过，也无法被一个链接满足。
+- 规范根是 `ctx.cwd`；每个根复用同一个 `SpecIndex`（新鲜度在 `core/` 中处理——见
+  `module-spec-graph`）。`spec_update` 通过 `recordForId` 读取，以复用扫描的缓存读取；写入工具
+  只负责写，下一次读取会拾取该变更。

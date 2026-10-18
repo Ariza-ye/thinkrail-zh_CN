@@ -2,186 +2,170 @@
 id: module-pi-dag
 type: module-design
 status: active
-title: pi-dag — durable, host-owned orchestration
+title: pi-dag — 持久、宿主拥有的编排
 parent: architecture
 depends-on: [module-pi-delegation]
 tags: [dag, pi-extension, backend]
 ---
 
-## Responsibility
+## 职责
 
-A portable backend DAG service and pi extension over [[module-pi-delegation]], independent of
-`pi-subagents` and ThinkRail. Pi owns every model invocation, session, compaction and usage record;
-this package owns graph scheduling, durable evidence, gates, commands and recovery. It is not
-bundled into ThinkRail and exposes no UI or wire implementation.
+一个基于 [[module-pi-delegation]] 的可移植后端 DAG 服务与 pi 扩展，独立于
+`pi-subagents` 与 ThinkRail。Pi 拥有每一次模型调用、会话、压缩（compaction）
+和用量记录；本包拥有图调度、持久证据、门禁、命令与恢复。它不会被打进 ThinkRail，
+也不暴露任何 UI 或线上协议实现。
 
-## Boundary
+## 边界
 
-Public package surface: `createDagService`, `createDagExtension`, the default standalone extension,
-and the typed command/read/binding contracts. Four reads (`listDags`, `getDag`, `getOutput`,
-`listHistory`) and one `execute` dispatcher are the controller surface. No raw AgentSession,
-checkpoint CRUD, generic query language, alternate spawner or public effect engine.
+包的公开接口：`createDagService`、`createDagExtension`、默认的独立扩展，
+以及类型化的命令/读取/绑定契约。四个读取（`listDags`、`getDag`、`getOutput`、
+`listHistory`）与一个 `execute` 分发器构成 controller 接口。没有裸 AgentSession、
+检查点 CRUD、通用查询语言、替代的 spawner 或公开的效果引擎。
 
-Allowed dependencies: `pi-delegation` through its barrel, public pi/typebox peer APIs and `node:*`.
-Forbidden: ThinkRail workspace packages, `pi-subagents` policy, pi private fields and sibling internals.
-Internal dependency edges are `extension → runtime + domain + pi-delegation`,
-`runtime → domain + persistence + pi-delegation`, and `persistence → domain`.
-The extension uses domain schemas/contracts directly; its standalone composition creates the delegation
-service, while its injected adapter never owns that service. Public DTOs are shared types, not another state owner. Worker tool adapters
-are runtime-local and receive narrow callbacks, never a controller client. Each submodule uses a barrel.
+允许的依赖：经由其 barrel 的 `pi-delegation`、公开的 pi/typebox peer API 与
+`node:*`。禁止：ThinkRail 工作区包、`pi-subagents` 策略、pi 私有字段与兄弟内部。
+内部依赖边是 `extension → runtime + domain + pi-delegation`、
+`runtime → domain + persistence + pi-delegation` 与 `persistence → domain`。
+扩展直接使用 domain schema/契约；其独立组合会创建委派服务，而它注入的适配器绝不拥有
+该服务。公开 DTO 是共享类型，而不是另一个状态所有者。worker 工具适配器是 runtime
+本地的，接收狭窄的回调，绝不是 controller 客户端。每个子模块都使用 barrel。
 
-## Ownership and execution context
+## 所有权与执行上下文
 
-A DAG is a resource, never a fabricated parent session. A scoped service owns live execution;
-conversation bindings own only control/notice attachment. An injected service remains host-owned.
-ThinkRail's selected integration policy is workspace ownership; other hosts may apply conversation
-or service lifetime policies by invoking the same controls. No ownership-mode scheduler is added.
-A trusted `owner` binding may perform lifecycle controls, but is not a human and cannot approve or
-bypass human-only release. Sessionless construction uses an explicit execution context.
+一个 DAG 是一种资源，绝不是伪造的父会话。带作用域的服务拥有在线执行；
+会话绑定只拥有控制/通知的挂接。注入的服务仍然由宿主拥有。ThinkRail
+选定的集成策略是工作区所有权；其他宿主可以通过调用相同的控制来采用会话或服务生命周期
+的策略。不新增所有权模式的调度器。受信任的 `owner` 绑定可以执行生命周期控制，
+但它不是人类，不能批准或绕过仅限人类的发布。无会话构造使用显式的执行上下文。
 
-Resource acquisition eagerly retains execution dependencies even when created paused with zero
-workers. Exact runtime injection is preferred; standalone registry projection reuses delegation's
-opaque provider replay. Retained objects are borrowed, not frozen or secretly disposed. The supplying
-owner guarantees their usability for its chosen lifetime; unavailable models/auth paths fail loudly,
-never fall back or borrow the latest controlling chat's defaults. No blanket extension-provider ban.
+即使以零 worker 的暂停状态创建，资源获取也会急切保留执行依赖。首选精确的 runtime
+注入；独立注册表的投影复用委派的不透明 provider 重放。保留的对象是被借用的，
+不是被冻结或被悄悄处置的。提供方 owner 保证它们在其选定的生命周期内可用；
+不可用的模型/认证路径会大声失败，绝不回退，也不借用最近控制聊天的默认值。
+没有一刀切的扩展 provider 禁令。
 
-Standalone owners are process-rooted by canonical root/scope, survive chat switches, close on quit
-and quiesce on reload. Process loss restores paused; no model invocation survives host exit. The
-owner's `close` settles only its resources and preserves resumable state and unrelated parent children.
+独立 owner 按规范化的 root/scope 以进程为根，能在聊天切换中存活，在退出时关闭，
+在重载时静默。进程丢失会恢复为暂停；没有模型调用能在宿主退出后存活。owner 的
+`close` 只了结它自己的资源，并保留可恢复状态与无关的父级子节点。
 
-## Commands and evidence
+## 命令与证据
 
-Mutation identity is caller-supplied `commandId`; non-create requests also name `dagId` and
-`expectedVersion`. Receipt lookup rechecks its stored authority, then deduplicates before validating or
-authorizing the replacement payload and before version/target checks. Changed payload under an
-accepted id fails. Replay recovers the original receipt before touching new execution/history inputs.
-After process ownership is acquired, the service rechecks receipts before version checks because the
-previous owner may have committed between the passive read and its death; deterministic create follows
-the same rule. A receipt acknowledges durable intent, not dispatch, consumption or completion. Actual tool-call ids
-are provenance. Expected failures are typed result values; ambiguous I/O requires identical replay.
+变更身份是调用方提供的 `commandId`；非创建请求还要给出 `dagId` 与
+`expectedVersion`。回执查找会重新检查其已存储的权限，然后在校验或授权替换负载之前、
+在版本/目标检查之前去重。在已被接受的 id 下改动负载会失败。重放会在触碰新的执行/历史
+输入之前恢复原始回执。获得进程所有权之后，服务在版本检查之前重新检查回执，
+因为先前的 owner 可能在前一次被动读取与其死亡之间提交了；确定性的创建遵循同样的规则。
+回执确认的是持久意图，而不是派发、消费或完成。真实的工具调用 id 是来源凭证。
+预期失败是带类型的结果值；歧义的 I/O 要求完全相同的重放。
 
-One node has immutable numbered attempts; each attempt owns one real pi session and numbered
-activations. Continue/answer reuse it; retry creates a new session from graph-selected inputs/history.
-Save childbirth metadata and declarative shaping, not mutable handle aliases or runtime credentials.
-Attempt shaping is one immutable configuration file; current defaults live in the definition, not a
-second mutable profile. Missing thinking configuration resolves to `off` if neither the definition
-nor the host context supplies it. Delegation's birth scope is retained verbatim and need not equal
-this service's storage scope; the resource id binds the two owners.
-Outputs, input answers, decisions, consumed inputs and history captures are immutable evidence.
-Storage version and graph revision are distinct; streaming deltas do not advance storage versions.
+一个节点拥有不可变的编号尝试；每个尝试拥有一个真实的 pi 会话与编号的激活。
+继续/回答会复用它；retry 会从图选定的输入/历史创建新会话。保存诞生元数据与声明式塑形，
+而不是可变的句柄别名或 runtime 凭证。尝试塑形是一个不可变配置文件；
+当前默认值存在于定义中，而不是第二个可变配置文件。如果定义与宿主上下文都没有提供
+thinking 配置，则解析为 `off`。委派的诞生 scope 按原样保留，不必等于本服务的存储
+scope；资源 id 绑定这两个所有者。输出、输入回答、决策、已消费输入与历史捕获都是不可
+变证据。存储版本与图修订彼此不同；流式增量不会推进存储版本。
 
-A single acyclic connection collection expresses named data, control and explicit `context: fork`.
-No marker means fresh. At most one inherited conversation base per destination; joins never merge
-conversations. Node-source forks require accepted output/history release and cannot allow skipping.
-Main forks capture a fixed seed on first use, before the invoking tool batch; subsequent main forks
-reuse it. Delegation owns canonical capture/validation/forking; this service owns retained bytes and
-release authorization. Retry does not implicitly fork the failed attempt. Workers share the checkout.
+单一的无环连接集合表达具名数据、控制与显式的 `context: fork`。没有标记意味着 fresh。
+每个目标最多一个继承的会话基；join 绝不合并会话。节点源 fork 要求已接受的输出/历史发
+布，且不得允许跳过。主 fork 在首次使用时就捕获一个固定种子，早于调用它的工具批次；
+后续的主 fork 复用它。委派拥有规范化的捕获/校验/fork；本服务拥有保留的字节与发布授权。
+retry 不会隐式 fork 失败的尝试。worker 共享同一个检出。
 
-## Settlement, gates and controls
+## 了结、门禁与控制
 
-Workers expose only `dag_submit_result` and `dag_request_input`. The trusted mapping enables curated
-extensions and unions both tools into the effective allowlist (within its 64-tool bound). These calls must be the sole tool in
-the batch, durably record a proposal/request, and request termination; they are not settlement.
-Automatic acceptance requires settled `completed` plus final `stop`/`toolUse`, valid explicit output,
-satisfied gates and resolved interventions. Error/length/aborted/absent evidence never auto-accepts.
-Manual acceptance preserves the real outcome and cannot bypass gates. Workers approve nothing.
-Input requests default to human authority; approval gates explicitly choose human or human-or-controller.
-Cancelling a human input gate does not authorize weakening its established policy. An unavailable
-history capture blocks fork consumers independently of otherwise authorized output-only consumers;
-output approval cannot authorize a later history export. Rejecting that later export does not revoke
-already accepted ordinary outputs. A rejection stays authoritative for its exact capture scope;
-unrelated edits do not recreate the same gate.
+worker 只暴露 `dag_submit_result` 与 `dag_request_input`。受信任的映射会启用精选扩展，
+并把这两个工具并入有效允许清单（在其 64 个工具的界限内）。这些调用必须是批次中唯一的
+工具，持久记录一次提案/请求，并请求终止；它们不是了结。自动接受要求已了结的
+`completed` 加上终态 `stop`/`toolUse`、有效且显式的输出、已满足的门禁与已解决的干预。
+错误/长度/中止/缺失的证据绝不自动接受。手动接受保留真实结果，且不能绕过门禁。worker
+不批准任何东西。输入请求默认由人类拥有权限；批准门禁显式选择人类或人类或
+controller。取消一个人工输入门禁并不授权削弱其已确立的策略。不可用的历史捕获会阻塞
+fork 消费者，这与另行获得授权的纯输出消费者相互独立；输出批准不能授权后来的历史导出。
+拒绝那次更晚的导出并不会撤销已经接受的普通输出。拒绝对其确切的捕获范围保持权威；
+无关的编辑不会重建同一个门禁。
 
-Create is paused. Resume permits admission; pause stops new admission without aborting running work.
-Interrupt cooperatively stops queued/active work and holds it for continuation; cancel requires retry.
-DAG-wide controls leave never-admitted nodes pending because they have no attempt to continue/retry;
-an exact cancel of such a node rejects and directs callers to explicit skip. Dispose is terminal but
-retains readable history. Restart restores paused; uncertain dispatches need
-explicit reconciliation proving old work is no longer live before continue/retry. No blind replay.
+创建即暂停。resume 允许准入；pause 停止新的准入而不中止正在运行的工作。interrupt
+协作式地停止排队/活动的工作，并把它留作继续；cancel 需要 retry。DAG
+全局控制让从未准入的节点保持待处理，因为它们没有可继续/重试的尝试；
+对这类节点的精确取消会拒绝，并引导调用方使用显式 skip。dispose 是终态的，
+但保留可读的历史。重启会恢复为暂停；不确定的派发需要显式的对账，证明旧工作已不再存活，
+之后才能继续/重试。没有盲目重放。
 
-Steering is literal, active-invocation-only and best-effort. An observed enqueue before a proposal may
-close as offered when the run settles, never as proof of consumption. Late, rejected or uncertain
-interventions block automatic acceptance until a later eligible proposal or explicit supersession.
-Queue cleanup prevents controls leaking into another activation. Answers use literal continuation,
-not steering, and never bypass pause. All run/control promises are awaited outside the state queue.
+引导（steer）是字面的、仅限活动调用且尽力而为的。在提案之前观察到的入队，
+可以在运行了结时作为已提供而关闭，绝不可作为已消费的证明。迟到、被拒或不确定的干预会
+阻塞自动接受，直到更晚的合格提案或显式取代出现。队列清理防止控制泄漏到另一个激活。
+回答使用字面的继续，而不是引导，且绝不绕过 pause。所有运行/控制 promise
+都在状态队列之外被 await。
 
-Edits are atomic typed put/remove operations. Reject changes invalidating active work until explicit
-interruption settles. Mark affected consumed attempts stale, including paused/waiting descendants;
-supersede their proposals/gates and require retry. Never silently rerun descendants. Skip releases
-only eligible non-fork control dependencies; no fabricated named data/history. Policy edits, skip,
-manual acceptance or seeds cannot bypass human-only release.
+编辑是原子的类型化 put/remove 操作。使活动工作失效的变更会被拒绝，直到显式中断了结。
+把受影响的已消费尝试标记为过期，包括暂停/等待中的子孙节点；取代它们的提案/门禁并要求
+retry。绝不静默重跑子孙节点。skip 只释放合格的、非 fork 的控制依赖；
+不伪造具名数据/历史。策略编辑、skip、手动接受或种子都不能绕过仅限人类的发布。
 
-## Durability and reads
+## 持久性与读取
 
-Local atomic per-DAG snapshots contain state/history/receipts/intents/notices. Sync immutable payloads
-before references; sync/replace the snapshot before ACK. There is one controlling process per resource,
-with exclusive ownership checked before mutations; dead-owner recovery is not lease-expiry stealing.
-Reads do not claim ownership. They distinguish local, other/indeterminate and inactive ownership;
-inactive execution is projected paused/uncertain without writing a snapshot. Unknown/corrupt state
-fails closed. Dispatch follows committed intent,
-then commits observation. Unobserved effects remain uncertain after process loss; no exactly-once
-external-side-effect claim. A failed commit cannot publish speculative in-memory state.
+本地按 DAG 的原子快照包含 state/history/receipts/intents/notices。
+在引用之前同步不可变负载；在 ACK 之前同步/替换快照。每个资源有一个控制进程，
+变更之前检查独占所有权；死 owner 恢复不是租约到期的窃取。读取不声索所有权。
+它们区分本地、其他/不确定与 inactive 所有权；inactive 的执行被投影为
+paused/uncertain，且不写入快照。未知/损坏状态 fail closed。派发先遵循已提交的意图，
+然后提交观察。未被观察的效果在进程丢失后保持不确定；不宣称外部副作用恰好一次。
+失败的提交不能发布投机的内存状态。
 
-`getDag` is a complete version-consistent current graph/node/gate projection, not private storage.
-It includes frozen consumed inputs/configuration, inherited and exported capture provenance/release
-status, and acceptance decisions even for control-only nodes with no named output ports. Current
-activation gates include their dispositions and decisions, not only pending questions.
-Large immutable content uses captured files with identity, SHA-256, byte length and a freshly resolved
-path. Existing file tools read them; `getOutput` reads named proposals, not arbitrary transcripts.
-History pages are version-pinned and default to 20, at most 100; expired cursors fail explicitly.
-Each history row exposes its immutable event manifest plus freshly resolved references to its captured
-bodies, so historical definitions, gate questions, outputs and terminal text remain accessible without
-a per-entity query or dependence on the private storage layout.
+`getDag` 是一份完整的、版本一致的当前图/节点/门禁投影，而不是私有存储。
+它包含冻结的已消费输入/配置、继承并导出的捕获来源/发布状态，以及对没有具名输出端口的
+纯控制节点也包含的接受决策。当前激活门禁包含它们的处置与决策，而不只是待处理的问题。
+大体量的不可变内容使用已捕获文件，带身份、SHA-256、字节长度与刚解析出的路径。
+既有的文件工具读取它们；`getOutput` 读取具名提案，而不是任意对话记录。
+历史分页被版本钉住，默认 20，最多 100；过期游标会显式失败。每个历史行暴露其不可变的
+事件清单，加上对已捕获正文刚解析出的引用，因此历史定义、门禁问题、
+输出与终态文本都保持可访问，无需按实体查询，也不依赖私有存储布局。
 
-Initial admission bounds: 128 nodes, 512 connections, 32 ports per node, 128-byte ids, 1 MiB serialized
-definitions, 16 MiB per submitted value/artifact or materialized literal payload, and 32 MiB per
-captured history. Multiple inputs must also fit the literal-payload bound; use artifact references
-and explicitly selected file tools for larger working sets. At most one current
-proposal or input request per activation is eligible; past evidence stays in history. Snapshot bodies
-use captured references/previews so all admitted current identities/topology remain visible. Bounds
-are conservative safety limits, not a cap on total historical work. They are validated at mutation
-and capture boundaries, never enforced by silently truncating a read.
+初始准入界限：128 个节点、512 条连接、每个节点 32 个端口、128 字节的 id、1 MiB
+的序列化定义、每个提交值/产物或物化字面负载 16 MiB，以及每次捕获的历史 32 MiB。
+多个输入也必须符合字面负载界限；更大的工作集请使用产物引用与显式选定的文件工具。
+每次激活最多只有一个当前提案或输入请求合格；过去的证据留在历史中。
+快照正文使用捕获的引用/预览，使所有已准入的当前身份/拓扑保持可见。
+界限是保守的安全限制，不是对历史工作总量的上限。它们在变更与捕获边界被校验，
+绝不通过静默截断一次读取来强制执行。
 
-Notices are durable milestones, delivered passively to attached idle conversations, with readiness
-wakeup and revocation/relevance rechecks. Pi submission is not durable transcript ACK; DAG history
-remains authoritative. No notice starts a model turn.
+通知是持久的里程碑，被动投递给已挂接的空闲会话，带就绪唤醒与吊销/相关性复查。Pi
+的提交不是持久的对话记录 ACK；DAG 历史仍然是权威。没有通知会启动一个模型轮次。
 
-## Portable pi adapter
+## 可移植的 pi 适配器
 
-`createDagExtension({ service, executionContext? })` returns a factory over a host-owned service.
-The optional synchronous projection returns the current explicit resource context without acquiring
-providers or validating credentials; default standalone projection uses the public registry, cwd,
-model and thinking setting. Commands bind the actual controller session id and tool-call boundary,
-preserve caller `commandId`/`expectedVersion`, and never accept model-supplied actor/session cuts.
-A short-lived invocation signal combines tool cancellation with the conversation lifetime. A separate
-notice-only binding lives for the conversation; no execution context is retained in that binding.
+`createDagExtension({ service, executionContext? })` 返回一个基于宿主拥有服务的工厂。
+可选的同步投影返回当前的显式资源上下文，而不获取 provider 或校验凭证；
+默认的独立投影使用公开注册表、cwd、模型与 thinking 设置。命令绑定真实的 controller
+会话 id 与工具调用边界，保留调用方的 `commandId`/`expectedVersion`，
+且绝不接受模型提供的 actor/会话切点。一个短命的调用信号把工具取消与会话生命周期结合
+起来。一个单独的仅通知绑定为该会话而存在；该绑定中不保留任何执行上下文。
 
-Five controller tools map directly to the service: `dag_create`, `dag_edit`, `dag_control`,
-`dag_decide`, and `dag_read`. The last has only `list`, `get`, `output`, `history` variants over the
-four named reads. Results carry the complete structured `DagResult` and readable content preserving
-all current identities/topology; bulk text remains captured references. The `tool_result` hook marks
-structured failures through pi's public `isError` override, without throwing away their details or
-keeping an error-id stash. An ACK is not worker completion.
+五个 controller 工具直接映射到服务：`dag_create`、`dag_edit`、`dag_control`、
+`dag_decide` 与 `dag_read`。最后一个只针对四个具名读取提供 `list`、`get`、`output`、
+`history` 变体。结果携带完整的结构化 `DagResult` 与可读内容，保留所有当前身份/拓扑；
+大体量文本仍然是捕获的引用。`tool_result` 钩子通过 pi 公开的 `isError`
+覆写来标记结构化失败，既不丢弃它们的详情，也不保留错误 id 暂存。ACK 不是 worker
+完成。
 
-`/dag <JSON command request>` is the standalone operator path: validate the same request, require a
-real interactive confirmation, then bind human authority. Denial or unavailable UI performs no command.
-Controller tools never elevate themselves to human authority. The operator uses the current explicit
-history boundary; neither path imports arbitrary sessions. Host code can instead bind trusted humans
-through the service directly.
+`/dag <JSON command request>` 是独立的操作员路径：校验同一个请求，
+要求真实的交互式确认，然后绑定人类权限。拒绝或 UI 不可用时不会执行任何命令。
+controller 工具绝不把自己提升为人类权限。操作员使用当前显式的历史边界；
+两条路径都不导入任意会话。宿主代码可以改为直接通过服务绑定受信任的人类。
 
-The zero-config default installs the same adapter with lazy process-rooted owners keyed by canonical
-agent storage root and canonical cwd scope. A versioned global registry, not module-cache lifetime,
-holds owners. New/resume/fork shutdown reasons revoke only the old conversation; reload/quit quiesce
-all standalone owners (including undisplayed scopes) before replacement/exit. Incompatible retained
-registry versions fail loudly rather than adopting old-code runtime objects. Injected services are
-never closed by the adapter. Idle-only passive notices use pi messages with `triggerTurn: false`,
-wake on `agent_settled`, and detach on revocation. No raw session or second execution loop is exposed.
+零配置默认安装同一个适配器，使用惰性的、以进程为根的 owner，键由规范化的 agent
+存储根与规范化的 cwd scope 组成。一个带版本的全局注册表（而非模块缓存的生命周期）
+持有 owner。new/resume/fork 的关闭原因只吊销旧会话；reload/quit 在替换/退出之前让所
+有独立 owner（包括未显示的 scope）静默。不兼容的保留注册表版本会大声失败，
+而不是采用旧代码的 runtime 对象。注入的服务绝不由此适配器关闭。仅空闲的被动通知使用
+带 `triggerTurn: false` 的 pi 消息，在 `agent_settled` 上唤醒，并在吊销时脱开。
+不暴露裸会话或第二执行循环。
 
-## Verification
+## 验证
 
-Public-interface tests pin replay/CAS, graph validation, gates and indirect authority bypass, stale
-waiting attempts, immutable outputs/history, fork fan-out, pause/interrupt/cancel/continue/retry,
-paused recovery, uncertain dispatch, ownership exclusion, failed commits and passive notices.
-Delegation tests own pi history mechanics, retained contexts, literal queues and settlement barriers.
-A focused integration uses real pi sessions with deterministic local provider behavior; no provider
-secrets or paid calls are needed for the default suite. Existing parent/subagent tests remain gates.
+公开接口测试钉住重放/CAS、图校验、门禁与间接权限绕过、过期的等待尝试、
+不可变输出/历史、fork 扇出、pause/interrupt/cancel/continue/retry、暂停恢复、
+不确定派发、所有权互斥、失败的提交与被动通知。委派测试拥有 pi 历史机制、保留上下文、
+字面队列与了结屏障。一个聚焦的集成用例使用真实的 pi 会话与确定性的本地 provider
+行为；默认套件不需要 provider 密钥或付费调用。既有的父级/子代理测试仍然是门禁。

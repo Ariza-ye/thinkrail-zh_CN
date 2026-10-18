@@ -1,193 +1,170 @@
 ---
 name: todos
-description: "Use when the user asks for a shared plan, a task needs at least three substantive execution steps, or a loose TODO is pending. Without an explicit plan request, not for one-shot answers or checks, or one- to two-step work that is not already in the list."
+description: "当用户要求一份共享计划、某个任务需要至少三个实质性执行步骤，或有一个待处理的散项 TODO 时使用。没有明确的计划请求时，不适用于一次性回答或检查，也不适用于尚未在列表中的一到两步工作。"
 ---
 
-# Chat TODO plan
+# 对话 TODO 计划
 
-## What it is
+## 它是什么
 
-- A plan **scoped to this chat** — your tasks for the conversation. Shown to the user in the Todo
-  panel; lives with the session (not committed to the repo).
-- **Group = task, item = step.** One user ask = one group; its title is the *outcome* ("Fix login
-  redirect"), not the process. The steps inside are the items — each has a **title**, a **status**
-  (`pending` → `in_progress` → `done`), and an optional **note**. The note is **agent-facing working
-  detail** — the human's default plan view shows titles + status and keeps notes behind a disclosure —
-  so it's where your own tracking, reminders, and the done-criterion live (e.g. "login e2e green"),
-  never a place the user must read to follow along. A task's own status is never stored — it derives from its steps.
-- **Loose items are the shared raw-input queue — and they sit at the END of the plan.** Both sides
-  write there: the user adds from the UI, and you may drop an unprocessed note with `todo_add` (no
-  `group`, no `after`). Loose is *pre-work* — raw kernels and half-formed asks, never a step you are
-  about to execute. `todo_list` renders them **last**, after every group, on purpose: an item added
-  mid-task queues *after* your current work. So **finish (or resume) the task you're on before you pick
-  up a loose item** — don't jump to a freshly-added item and abandon a step you had in progress.
-- **Promote a loose item the moment you take it into work — with `todo_promote <loose-id>`.** One
-  atomic call: the loose item disappears from the queue and a group inherits its id and title. No
-  duplicate window, no `todo_remove` dance, and if the session dies right after, the plan still
-  honestly shows the user's ask as its own group. Then `todo_add group:"<same title>"` the first
-  substantive step and flip it `in_progress` — even a one-liner like "Investigate the ask and sketch
-  the plan" is a real step, so the user sees her task is being worked on from the first beat. Only
-  pass `title:` to `todo_promote` when the user's wording is unusable as a group title; otherwise keep
-  it verbatim. Size doesn't matter: a pending loose item is already in the plan, so even a 1–2-step
-  one becomes a small group. Don't rewrite or drop a loose item for any other reason, and never
-  author a group via `todo_add group:` + `todo_remove` for a user-origin loose item — that's the old
-  two-step dance `todo_promote` replaces.
-- It is **shared and live**: you maintain it, and the **user edits it while you work** — adding tasks,
-  removing ones they've dropped. The stored list is the **source of truth**; what you remember is only
-  a snapshot. **Re-read it (`todo_list`)** to stay in sync, don't trust your memory of it.
-- It is **the user's status window** — how they follow what's happening at a glance, without reading
-  the chat. Short, concrete step titles; statuses always current.
+- 一份**限定在本对话内**的计划 —— 你为这次对话要做的任务。它在 Todo 面板里展示给用户；随会话
+  存在（不提交进仓库）。
+- **分组 = 任务，条目 = 步骤。** 用户的一次请求 = 一个分组；它的标题是*结果*（“修复登录跳转”），
+  而不是过程。里面的步骤就是条目 —— 每个条目有一个**标题**、一个**状态**
+  （`pending` → `in_progress` → `done`），以及一个可选的**备注**。备注是**面向 agent 的工作
+  细节** —— 人的默认计划视图只显示标题 + 状态，备注收在折叠之后 —— 所以它是放你自己的追踪、提醒
+  和完成判据的地方（例如“登录 e2e 通过”），绝不是用户为了跟上进度而必须去读的地方。任务自身的
+  状态从不存储 —— 它由它的步骤推导而来。
+- **散项是共享的原始输入队列 —— 而且它们坐在计划的末尾。** 两边都往那里写：用户从 UI 添加，你也
+  可以用 `todo_add` 丢进一条未处理的备注（不带 `group`，不带 `after`）。散项属于*工作前*的东西
+  —— 原始的种子和半成形的请求，绝不是你即将执行的步骤。`todo_list` 故意把它们渲染在**最后**，
+  排在每个分组之后：任务进行中添加的条目排在*你当前的工作之后*。所以在捡起一个散项之前，先
+  **完成（或接回）你手上的任务** —— 不要跳到一个刚加进来的条目上，把你进行中的步骤丢下。
+- **在你把一个散项纳入工作的那一刻就晋升它 —— 用 `todo_promote <loose-id>`。** 一次原子调用：
+  散项从队列里消失，一个分组继承它的 id 和标题。没有重复窗口，不用 `todo_remove` 来回折腾，而且
+  即使会话紧接着就挂了，计划仍然诚实地把用户的请求显示为它自己的分组。然后
+  `todo_add group:"<same title>"` 加上第一个实质性步骤，并把它翻成 `in_progress` —— 哪怕只是
+  一句“调查该请求并勾出计划”这样的单行，也是一个真实的步骤，这样用户从第一拍就看到她的任务正在被
+  处理。只有当用户的措辞不能用作分组标题时，才给 `todo_promote` 传 `title:`；否则就原样保留。
+  体量无关紧要：一个待处理的散项已经就在计划里了，所以哪怕它只有 1–2 步，也会变成一个小分组。
+  不要为任何其他理由改写或丢弃散项，也绝不要用 `todo_add group:` + `todo_remove` 为用户来源的
+  散项另造一个分组 —— 那正是 `todo_promote` 取代的旧式两步舞。
+- 它是**共享且实时的**：你维护它，而**用户会在你工作时编辑它** —— 添加任务、删除他们放弃的任务。
+  存储的列表是**唯一事实来源**；你记住的只是一份快照。要**重新读它（`todo_list`）**以保持同步，
+  不要相信你对它的记忆。
+- 它是**用户的状态窗口** —— 他们一眼跟住正在发生什么的方式，不必去读对话。步骤标题要短而具体；
+  状态永远是最新的。
 
-## Granularity
+## 粒度
 
-| Size of the ask | Shape in the plan |
+| 请求的规模 | 在计划里的形态 |
 | --- | --- |
-| 1–2 execution steps, including a one-shot answer, check, or edit | no list unless the user asks for one |
-| 3–7 substantive steps | one group |
-| more than ~10 steps | those are tasks, not steps — split into several groups |
+| 1–2 个执行步骤，包括一次性的回答、检查或编辑 | 除非用户要求，否则不建列表 |
+| 3–7 个实质性步骤 | 一个分组 |
+| 超过约 10 个步骤 | 那些是任务，不是步骤 —— 拆成几个分组 |
 
-Steps are **verifiable** and ≈ commit-sized: "easy to check off as you go", not "phase 1".
+步骤是**可验证的**、且约等于一次提交的体量：“一边做一边就能轻松勾掉”，而不是“第一阶段”。
 
-**A step is a substantive, human-meaningful outcome — not your bookkeeping.** The plan is the user's
-status window, so every step must be something the *user* cares to see done. Process/meta chatter that
-only keeps *you* oriented is not a step: "make a plan", "read the files", "think about the approach",
-"review my changes" — don't mint items for these. Keep the plan to the real, checkable outcomes; put
-any working memory you need in the step's `note` (agent-facing), not as its own item.
+**一个步骤是实质的、对人有意义的结果 —— 不是你的记账。** 计划是用户的状态窗口，所以每个步骤都
+必须是*用户*在意看到完成的事。只为了让*你*保持方向的流程性/元层面的絮叨不是步骤：“制定计划”、
+“读文件”、“想一想方案”、“评审我的改动” —— 不要为这些铸造条目。把计划限制在真实的、可检查的
+结果上；你需要的工作记忆放进该步骤的 `note`（面向 agent），而不是做成一个独立条目。
 
-**Each field answers one question, in one shape — don't let them blur:** the **title** is what the step
-does (imperative, about the change/outcome, not the process); the **`note`** is your private working
-detail; the **`summary`** is what changed and *why* (it must NOT restate the title — add the decision
-or constraint the title can't show); the **`verification`** is how it was proven, in the normalized
-shape `check → result` (or the honest "not verified").
+**每个字段只回答一个问题、只用一种形态 —— 不要让它们糊在一起：** **title** 是这个步骤做什么
+（祈使句，关于改动/结果，而不是过程）；**`note`** 是你私下的工作细节；**`summary`** 是改了什么
+以及*为什么*（它绝不能复述标题 —— 补上标题无法展示的决策或约束）；**`verification`** 是它如何被
+证明，用归一化的形态 `check → result`（或者诚实的“未验证”）。
 
-## Working with it
+## 如何使用
 
-1. **Publish a useful plan, not a speculative one.** Once the task is understood enough to identify
-   at least three substantive execution steps, or to satisfy the user's explicit request for a plan,
-   use `todo_write` with one group per task. Clarifying questions may come first when their answers
-   change the plan. Publish the plan before execution, then refine it only when the work materially
-   changes.
-2. **Work tasks strictly in order, one step at a time:**
-   - Flip a step to `in_progress` when you start it, `done` when you finish. Starting a new step
-     auto-returns any other `in_progress` step to `pending` — so finish (mark `done`) before moving on,
-     or the previous step visibly falls back to open.
-   - Don't start the next group while the current one has open steps. The one exception: a genuinely
-     **blocked** task — record why in the step's `note`, tell the user, and move on to the next group.
-   - Re-read with `todo_list` before choosing each next item, after user input, and before completion.
-     New loose items are appended at the end — take them up (promoted) after the in-progress step. If
-     an item you planned is gone, the user dropped it: skip it and do not re-add it.
-   - The tool results help you: after a `done` they name the task's next step; when nothing is
-     `in_progress` they remind you to flip the step you're on. Act on those nudges.
-3. **A qualifying new ask mid-session gets a new group** (`todo_add` with `group:`, one per step, or
-   several calls for several steps). An ordinary 1–2-step chat ask gets that group only when the user
-   explicitly requested a plan; otherwise finish the in-progress task, then handle it directly. When
-   that short ask is already a pending loose item, promote it into its own group instead. Never mix a new ask's steps into the current group. **A step discovered
-   inside the current task** slots in with `todo_add after: <current step id>`; an anchor on a loose
-   item is rejected. Do not rebuild the plan with `todo_write` for that.
-4. **Reconcile before completion.** Read `todo_list` once more before the final handoff. If open
-   steps remain, either do them or clearly say what is left and why.
+1. **发布一份有用的计划，而不是臆测式的计划。** 一旦任务已经理解到足以识别出至少三个实质性执行
+   步骤，或足以满足用户明确的计划请求，就用 `todo_write`，每个任务一个分组。当澄清问题的答案会
+   改变计划时，可以先问澄清问题。在执行之前发布计划，之后只有当工作发生实质变化时才细化它。
+2. **严格按顺序处理任务，一次一个步骤：**
+   - 开始时把步骤翻成 `in_progress`，完成时翻成 `done`。开始一个新步骤会把其他任何
+     `in_progress` 的步骤自动打回 `pending` —— 所以先完成（标记 `done`）再往前走，否则上一个
+     步骤会明显地退回未完成。
+   - 当前分组还有未完成的步骤时，不要开始下一个分组。唯一的例外：一个确实**被阻塞**的任务 ——
+     在步骤的 `note` 里记下原因，告诉用户，然后转向下一个分组。
+   - 在选择每个下一条目之前、在用户输入之后、以及完成之前，都用 `todo_list` 重新读。新的散项
+     追加在末尾 —— 在进行中的步骤之后（晋升后）再接手它们。如果你计划过的某个条目不见了，那是
+     用户丢掉了它：跳过它，不要重新加回去。
+   - 工具结果会帮你：在一次 `done` 之后，它们会点名该任务的下一个步骤；当没有任何步骤是
+     `in_progress` 时，它们会提醒你把当前步骤翻过去。要照着这些提示行动。
+3. **会话中一个合格的新请求会得到一个新分组**（`todo_add` 带 `group:`，每个步骤一次，或一个步骤
+   多次调用）。一个普通的 1–2 步对话请求，只有当用户明确要求了计划时才得到那个分组；否则先完成
+   进行中的任务，然后直接处理它。当那个短请求已经是一个待处理的散项时，改为把它晋升成自己的分组。
+   绝不把新请求的步骤混进当前分组。**在当前任务内部发现的步骤**用
+   `todo_add after: <current step id>` 插进去；锚定在散项上会被拒绝。不要为此用 `todo_write`
+   重建计划。
+4. **完成之前先对账。** 在最终交接之前再读一次 `todo_list`。如果还有未完成的步骤，要么做掉它们，
+   要么清楚说明剩下什么以及为什么。
 
-## Completion summaries (the review trail)
+## 完成摘要（评审痕迹）
 
-The user reviews your work from the summary + the diff. The diff shows *what*; the summary must carry
-everything the diff cannot show — intent, decisions, and honesty about verification. Write it for the
-reviewer, not for yourself.
+用户从摘要 + 差异（diff）来评审你的工作。差异展示的是*什么*；摘要必须承载差异无法展示的一切 ——
+意图、决策，以及关于验证的诚实交代。为评审者而写，不是为你自己写。
 
-- **A step that changed code gets a summary AND a verification when you mark it done** — pass both
-   on the same `todo_update` call that sets `status: done`. `summary` is **Markdown, written structured**
-   (a short lead sentence + a bullet list when it has parts), covering **what changed** and **why** —
-   especially decisions that are NOT visible in the diff (a rejected alternative, a constraint you worked
-   around) — not one run-on paragraph. Research/analysis/verification-only steps that produced no code
-   changes need neither.
-- **Verification is its own field, named, never claimed.** Pass `verification` as one or more checks in
-   the normalized shape `check → result` — the exact check you ran and its outcome ("`bun test src/todos`
-   → 34 pass", "typecheck → green") — or the honest **"not verified"**. It renders as **Markdown** on the
-   plan page, so when you ran several checks write them as a **bullet list** (one `- check → result` per
-   line), not one run-on line crammed with `;` separators; a single check stays one line. The UI shows it
-   as a status badge on the review card, so a vague or missing line is visible at a glance. Never write "tests pass" for tests you didn't run. And never make a
-   check pass by weakening it — if you changed, skipped, or deleted a test as part of the step, the
-   summary must say so explicitly: a reviewer who finds it themselves stops trusting every other
-   summary.
-- **A step that changed code also gets a `commitSubject`.** The host commits that step's delta on the
-   user's branch and uses this line as the commit subject verbatim, so write it as a **commit message,
-   not a plan step**: one imperative line about the *change*, and in **this repository's existing
-   style** — run `git log --oneline -20` and match what you see (Conventional Commits ⇒
-   `type(scope): subject`; a prose-subject repo ⇒ prose). It must be pushable as-is: no `todo:`
-   prefix, no item ids, no tool attribution. Omit it and the host falls back to the step title, which
-   reads as a plan step in `git log` — so don't rely on that.
-- **Disclose scope drift.** Anything you touched beyond the step's own ask — an adjacent refactor, a
-   drive-by rename, a new dependency — goes in the summary ("also touched X because Y"). The
-   signature failure of agent changes is solving the asked problem *plus* neighbors; undisclosed
-   extras are what reviewers distrust most.
-- **Point at the risk.** When one part of the change deserves the reviewer's closest look — a
-   contract/API change, tricky concurrency, an area you're least sure of — name it in one clause
-   ("closest look: the rollback path").
-- **When the last open item flips done, write the overall plan summary** with `todo_plan_summary`
-   (the `todo_update` result nudges you at exactly that moment): a handoff note across all tasks, not a
-   step list. It is **cumulative — it covers EVERYTHING done across the whole plan**, not the last step
-   alone. When the plan gained new work and finished again, a summary from the earlier completion is
-   still there (the done-flip nudge surfaces it): **extend that text — carry every earlier point forward
-   and add the new work — never rewrite it down to only the most recent step.**
+- **改了代码的步骤在你把它标记为完成时，既要摘要也要验证** —— 在设置 `status: done` 的同一次
+  `todo_update` 调用里把两者都传上。`summary` 是**Markdown，结构化成文**（一句短短的引导句 +
+  当它有多个部分时的项目符号列表），覆盖**改了什么**和**为什么** —— 尤其是差异里*看不到*的决策
+  （被否决的替代方案、你绕过的某个约束）—— 而不是一大段不分句的长文。研究/分析/仅验证、没产生
+  代码改动的步骤两者都不需要。
+- **验证是它自己的字段，要具名，绝不空口声称。** 把 `verification` 作为一个或多个检查传入，用
+  归一化的形态 `check → result` —— 你实际运行的那个检查及其结果（“`bun test src/todos` →
+  34 pass”、“typecheck → green”）—— 或者诚实的**“未验证”**。它在计划页面上渲染为 **Markdown**，
+  所以当你跑了多个检查时，把它们写成**项目符号列表**（每行一个 `- check → result`），不要挤成
+  一行用 `;` 分隔；单个检查保持一行。UI 把它显示为评审卡片上的状态徽章，所以含糊或缺失的一行一眼
+  就能看到。绝不要为你没跑过的测试写“测试通过”。也绝不要靠削弱某个检查来让它通过 —— 如果你作为
+  该步骤的一部分改动、跳过或删除了某个测试，摘要必须明确说出来：一个自己发现这件事的评审者，
+  会不再相信其他任何一份摘要。
+- **改了代码的步骤还要一个 `commitSubject`。** 宿主会在用户的分支上提交该步骤的增量，并把这一行
+  原样用作提交主题，所以把它写成一条**提交信息，而不是计划步骤**：一行关于*改动*的祈使句，并且用
+  **本仓库已有的风格** —— 运行 `git log --oneline -20`，照着看到的来（Conventional Commits ⇒
+  `type(scope): subject`；散文式主题的仓库 ⇒ 散文）。它必须能原样推送：没有 `todo:` 前缀，没有
+  条目 id，没有工具署名。省略它，宿主就退回到步骤标题，而它在 `git log` 里读起来像一个计划步骤
+  —— 所以不要指望那个。
+- **披露范围漂移。** 你在该步骤自身请求之外碰过的任何东西 —— 一次顺带的相邻重构、一次顺手改名、
+  一个新依赖 —— 都写进摘要（“还改了 X，因为 Y”）。agent 改动的标志性失败就是解决被问的问题*再加
+  上*邻近的东西；未披露的额外改动是评审者最不信任的。
+- **指向风险。** 当改动中某一部分最值得评审者细看 —— 一次契约/API 变更、棘手的并发、你最没把握
+  的地方 —— 用一个短句点名它（“最需细看：回滚路径”）。
+- **当最后一个未完成条目翻成完成时，用 `todo_plan_summary` 写整体计划摘要**（`todo_update` 的
+  结果恰好在那一刻提示你）：一份跨所有任务的交接说明，而不是步骤清单。它是**累积的 —— 它覆盖
+  整个计划里做过的全部内容**，不只是最后一步。当计划又增加了新工作并再次完成时，先前那次完成的
+  摘要仍然在那里（翻完成时的提示会把它呈现出来）：**扩展那段文字 —— 把先前每一个要点都带过来，
+  再加上新的工作 —— 绝不把它改写成只剩最近一步。**
 
-   **Write the plan summary in the same shape as a PR body**, always — the host feeds `plan.summary`
-   verbatim into `renderPrBody`, so a well-shaped summary is PR-ready without a second pass. Three H2
-   sections, in this order:
+   **永远把计划摘要写成与 PR 正文相同的形态** —— 宿主会把 `plan.summary` 原样喂给
+   `renderPrBody`，所以形态良好的摘要无需第二遍加工就是 PR 就绪的。三个 H2 小节，按这个顺序：
 
-   - `## Summary` — what and why, in prose. The intent, the user-visible outcome, decisions and
-     trade-offs the diff can't show (a rejected alternative, a constraint you worked around), and any
-     related-issue line (`Closes #NNN`). This is the one section the auto-rendered `## Plan` can't
-     speak for.
-   - `## Changes` — what shipped at the plan level: migrations, out-of-scope touches, new or dropped
-     dependencies, renames, anything a reviewer should notice beyond the per-step list. Do not restate
-     the step titles — the auto-rendered `## Plan` section already carries them with their own
-     `summary` lines; `## Changes` is for the cross-cutting notes that only make sense at the plan
-     scale.
-   - `## Testing` — end-to-end verification done beyond per-step checks (e.g. `bun run e2e` once at
-     the end, a smoke run against the integrated change), each line in the normalized shape
-     `check → result` as a bullet list, or the honest `not verified`. Per-step `verification` lines
-     stay on their step and are not duplicated here.
+   - `## Summary` —— 是什么和为什么，用散文。意图、用户可见的结果、差异无法展示的决策与取舍
+     （被否决的替代方案、你绕过的某个约束），以及任何关联 issue 行（`Closes #NNN`）。这是自动
+     渲染的 `## Plan` 无法代言的那一节。
+   - `## Changes` —— 在计划层面交付了什么：迁移、范围之外的触及、新增或去掉的依赖、重命名，以及
+     评审者在逐步骤清单之外应该注意的任何东西。不要复述步骤标题 —— 自动渲染的 `## Plan` 一节
+     已经带着它们以及各自的 `summary` 行；`## Changes` 是给那些只在计划尺度上才说得通的横切
+     说明用的。
+   - `## Testing` —— 在逐步骤检查之外做的端到端验证（例如最后跑一次 `bun run e2e`、针对集成后
+     的改动做一次冒烟运行），每行用归一化形态 `check → result` 写成项目符号列表，或者诚实的
+     `not verified`。逐步骤的 `verification` 行留在各自的步骤上，不在这里重复。
 
-   Include anything left undone or deferred inside the matching section (usually `## Changes`) — an
-   omission reads as "nothing left", so say it if something is. Use `**bold**`, lists, and `code`
-   where they aid scanning. The per-item `summary` renders as Markdown too — a tight sentence or two,
-   bulleted only when it genuinely has parts. Keep every surface scannable, never a wall of text.
-- **Fix requests re-open the SAME item.** When the user asks for a fix on a reviewed step (you'll
-   receive the original step, its summary, its change set, and their feedback), flip **that exact item**
-   (by id) back to `in_progress`, make the fix, and mark it `done` with a **fresh summary** and a
-   **fresh `commitSubject`** describing the fix — the fix, not the original work (the user re-reviews
-   only the new delta, and the revision lands as its own commit). Re-opening clears the previous
-   values, so supply both again. Never open a new item for a fix — the revision must attach to the step
-   it revises.
+   把任何未完成或延后的东西写进对应的小节（通常是 `## Changes`）—— 省略会被读成“没有剩下什么”，
+   所以如果有就说明。在有助于扫读的地方使用 `**bold**`、列表和 `code`。每个条目的 `summary` 也
+   渲染为 Markdown —— 紧凑的一两句话，只有确实分几个部分时才用项目符号。让每个界面都能扫读，
+   绝不要一堵文字墙。
+- **修复请求会重新打开同一个条目。** 当用户要求对某个已评审的步骤做修复时（你会收到原始步骤、
+  它的摘要、它的改动集，以及他们的反馈），把**那个确切的条目**（按 id）翻回 `in_progress`，做完
+  修复，然后用**新的摘要**和**新的 `commitSubject`** 把它标记为 `done`，描述这次修复 —— 是修复，
+  不是原始工作（用户只重新评审新的增量，而修订作为它自己的提交落地）。重新打开会清掉先前的值，
+  所以要再提供两者。绝不要为一次修复打开新条目 —— 修订必须附着在它所修订的那个步骤上。
 
-## Invariants
+## 不变量
 
-- **Done stays.** Completing a step = `todo_update` → `done`. **Never delete a done item** — it's the
-  user's history. `todo_remove` is only for when the user explicitly asks to drop something — a user
-  loose item you take into work is consumed by `todo_promote`, not removed by hand.
-- **Edit surgically.** After the first plan, prefer `todo_update` / `todo_add` (they touch one item) for
-  a single change — cheaper than restating the whole plan. `todo_write` **reconciles** (it's not a
-  destructive replace): it matches your written steps to the existing ones by group + step title and
-  keeps their status/summary/id, so a re-plan is safe and lossless — reach for it when you're genuinely
-  restructuring, not to nudge one item. Status advances only via `todo_update`; a `status` you put in
-  `todo_write` on a step that already exists is ignored.
-- **Respect the user's edits.** The list is shared; treat their additions as new requests and their
-  removals as cancellations. Loose items are the shared queue — promote them when you work them, but
-  don't rewrite or drop them when you re-plan. (`todo_write` never touches loose items and keeps done
-  items; but keep your steps' titles
-  stable across a re-plan — a reworded title reads as a new step, so the old one's progress won't carry.)
+- **完成就是完成。** 完成一个步骤 = `todo_update` → `done`。**绝不删除已完成的条目** —— 它是
+  用户的历史。`todo_remove` 只在用户明确要求丢弃某项时使用 —— 你纳入工作的用户散项由
+  `todo_promote` 消费掉，而不是手工删除。
+- **外科式地编辑。** 第一版计划之后，对单处改动优先用 `todo_update` / `todo_add`（它们只碰一个
+  条目）—— 比复述整个计划便宜。`todo_write` 是**对账**（它不是破坏性替换）：它按分组 + 步骤标题
+  把你写的步骤与既有条目匹配起来，并保留它们的状态/摘要/id，所以重做计划是安全且无损的 —— 在你
+  确实要重构时用它，不要用它来推动单个条目。状态只通过 `todo_update` 前进；你在 `todo_write` 里
+  给一个已经存在的步骤写的 `status` 会被忽略。
+- **尊重用户的编辑。** 列表是共享的；把他们的添加当作新请求，把他们的删除当作撤销。散项是共享
+  队列 —— 你在做它们时晋升它们，但在重做计划时不要改写或丢掉它们。（`todo_write` 从不碰散项，
+  并保留已完成的条目；但要在重做计划时保持你各步骤的标题稳定 —— 改写过的标题会被读成一个新步骤，
+  于是旧步骤的进度不会被带过来。）
 
-## Tools
+## 工具
 
-- `todo_list` — read the current plan (the source of truth; re-read to catch the user's edits).
-- `todo_add` — add one step (into a `group`, `after` an existing step, or loose when both are omitted;
-  leaves the rest untouched).
-- `todo_update` — progress one step (`in_progress` on start, `done` when finished — with a `summary`
-  when the step changed code; done stays).
-- `todo_promote` — turn one loose item into a group of its own (same id, same title) in one atomic
-  call; this is how a user-origin loose ask enters execution.
-- `todo_remove` — delete one item (only when the user asks — a promoted loose item is already gone,
-  `todo_promote` consumed it).
-- `todo_write` — lay out or reconcile the plan (groups only — one per task; matches steps by title and
-  keeps their progress; prefer `todo_add`/`todo_update` for a single change).
-- `todo_plan_summary` — after the last item is done: a short overall summary of what the plan
-  accomplished.
+- `todo_list` —— 读当前的计划（事实来源；重新读以捕捉用户的编辑）。
+- `todo_add` —— 加一个步骤（加进某个 `group`、`after` 某个既有步骤，或者两者都省略时作为散项；
+  其余的不动）。
+- `todo_update` —— 推进一个步骤（开始时 `in_progress`，完成时 `done` —— 当该步骤改了代码时附带
+  一个 `summary`；完成就是完成）。
+- `todo_promote` —— 一次原子调用把一个散项变成它自己的分组（同样的 id、同样的标题）；用户来源的
+  散项请求就是这样进入执行的。
+- `todo_remove` —— 删除一个条目（只在用户要求时 —— 被晋升的散项已经不在了，`todo_promote`
+  消费掉了它）。
+- `todo_write` —— 铺开或对账计划（只处理分组 —— 每个任务一个；按标题匹配步骤并保留它们的进度；
+  单处改动优先用 `todo_add`/`todo_update`）。
+- `todo_plan_summary` —— 在最后一个条目完成之后：对计划所完成之事的一份简短整体摘要。

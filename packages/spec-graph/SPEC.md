@@ -2,109 +2,108 @@
 id: module-spec-graph
 type: module-design
 status: active
-title: Spec-Graph pi extension
+title: Spec-Graph pi 扩展
 parent: architecture
 depends-on: []
 tags: [spec-graph, pi-extension]
 ---
 
-## Responsibility
+## 职责
 
-`pi-spec-graph` is a portable pi-package that teaches the `pi` agent the project's **spec-graph** and lets
-it search, navigate, and manage specs. It ships a **skill**, seven **`spec_*` custom tools**, and a
-project-wide **`before_agent_start` rule**. It depends on nothing in this monorepo, so it runs under
-vanilla `pi`; thinkrail bundles it into every session.
+`pi-spec-graph` 是一个可移植的 pi 包，它教会 `pi` agent 认识本项目的**规范图**，并让它
+搜索、导航与管理规范。它随附一个**技能**、七个 **`spec_*` 自定义工具**，以及一条
+项目范围的 **`before_agent_start` 规则**。它不依赖本 monorepo 中的任何东西，因此可在原生 `pi`
+下运行；thinkrail 把它打包进每个会话。
 
-It manages the frontmatter schema the repo's specs use — a file is a spec once its frontmatter carries
-`id` and `type`; the schema itself is documented in the skill. Frontmatter is handled with the `yaml`
-library, link/metadata lists inline. `spec_create` writes new frontmatter in a canonical field order;
-`spec_update` edits an existing file **in place** — it preserves the file's own field order and any
-comments / nested fields, rewrites the frontmatter block alone (in the line ending that block already
-used), and leaves every byte of the body untouched.
+它管理仓库规范所用的 frontmatter schema——一个文件只要其 frontmatter 携带
+`id` 和 `type` 即为规范；该 schema 本身记录在技能中。Frontmatter 用 `yaml`
+库处理，链接/元数据列表内联。`spec_create` 按规范的字段顺序写出新的 frontmatter；
+`spec_update` **就地**编辑既有文件——它保留文件自身的字段顺序与任何
+注释/嵌套字段，只重写 frontmatter 块（沿用该块原本使用的行尾符），
+并保持正文的每一个字节不动。
 
-## Boundary
+## 边界
 
-- **Owns:** the spec model (the is-a-spec rule, the derived graph, the read index, validation), the seven
-  tools, and the skill + `before_agent_start` rule.
-- **Public surface:** the extension entry `index.ts` (default `ExtensionFactory`) and the `pi` manifest in
-  `package.json` (`{ extensions: ["./index.ts"], skills: ["./skills"] }`) — how vanilla `pi` (`pi install`)
-  and thinkrail (`additionalExtensionPaths` / `additionalSkillPaths`) load it — plus the **`pi-spec-graph/core`
-  export** (the pi-free read model), consumable by hosts (thinkrail's server) without going through the
-  agent. `tools/` stays internal.
-- **Allowed deps:** `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `typebox` (peer); `yaml`
-  (frontmatter parse/serialize); Node built-ins.
-- **Forbidden:** any `@thinkrail/*` package — the dependency edge is one-way (thinkrail → this
-  package), which is what keeps it portable.
+- **拥有：** 规范模型（is-a-spec 规则、派生图、读取索引、校验）、那七个
+  工具，以及技能 + `before_agent_start` 规则。
+- **Public surface（公开接口）：** 扩展入口 `index.ts`（默认 `ExtensionFactory`）与
+  `package.json` 中的 `pi` 清单（`{ extensions: ["./index.ts"], skills: ["./skills"] }`）——即原生 `pi`
+  （`pi install`）与 thinkrail（`additionalExtensionPaths` / `additionalSkillPaths`）加载它的方式
+  ——外加 **`pi-spec-graph/core` 导出**（不含 pi 的读取模型），可被宿主（thinkrail 的服务端）
+  直接消费而不经过 agent。`tools/` 保持为内部。
+- **允许的依赖：** `@earendil-works/pi-coding-agent`、`@earendil-works/pi-ai`、`typebox`（peer）；
+  `yaml`（frontmatter 解析/序列化）；Node 内建模块。
+- **绝不触碰：** 任何 `@thinkrail/*` 包——依赖边是单向的（thinkrail → 本
+  包），这正是它保持可移植的原因。
 
-## Sub-modules
+## 子模块
 
-`core/` (`submodule-spec-graph-core`) is the pi-free spec model; `tools/` (`submodule-spec-graph-tools`)
-are thin pi wrappers over it. The edge is one-way — `tools/` → `core/`, through core's barrel — and
-`index.ts` wires the tools plus the `before_agent_start` rule into the extension. Each sub-spec pins its
-own boundary and leaves.
+`core/`（`submodule-spec-graph-core`）是不含 pi 的规范模型；`tools/`（`submodule-spec-graph-tools`）
+是它之上的薄 pi 包装。这条边是单向的——`tools/` → `core/`，经由 core 的 barrel——而
+`index.ts` 把各工具加上 `before_agent_start` 规则接进扩展。每个子规范钉住自己的
+边界与出口。
 
-## Derived read index
+## 派生的读取索引
 
-The filesystem is the source of truth; the model the tools read is **derived, in-memory, read-only, and
-revalidated on demand**. Each read re-runs the **glob** — a name-sorted traversal that ignores
-`node_modules`/`.git`/`dist`/`build` and the scratch directories other assistants keep in a project
-(`.claude`, `.superpowers`, `.gsd`, `.mockups`, `.playwright-mcp`), whose plans and generated skills carry
-spec-shaped frontmatter but are not this project's specs — and revalidates every file by `(mtimeMs, size)`: unchanged files
-reuse their cached parse, changed/new files are re-parsed, vanished files are evicted, and the derived
-graph is rebuilt only when the spec set actually changed. So specs added, deleted, or edited from any
-source — including pi's normal `write`/`edit` — are always current, while redundant re-parse/rebuild is
-skipped when nothing moved. One `SpecIndex` is reused per root (keyed by cwd) so the cache pays off
-across an agent's calls. The one theoretical miss is an edit landing within the same mtime tick *and*
-keeping byte length identical (negligible; a content hash is the sanctioned escalation).
+文件系统是事实来源；工具所读取的模型是**派生的、内存中的、只读的，并且
+按需重新校验**。每次读取都会重新运行**glob**——一次按名称排序的遍历，忽略
+`node_modules`/`.git`/`dist`/`build`，以及其他助手在项目中保留的草稿目录
+（`.claude`、`.superpowers`、`.gsd`、`.mockups`、`.playwright-mcp`），它们的计划与生成的技能携带
+形似规范的 frontmatter，但并不属于本项目的规范——并按 `(mtimeMs, size)` 重新校验每个文件：未变化的文件
+复用其缓存的解析结果，已变化/新增的文件被重新解析，消失的文件被淘汰，而派生图
+只在规范集合确实变化时才重建。因此，从任何来源新增、删除或编辑的规范——包括 pi 常规的
+`write`/`edit`——始终是最新的，而在什么都没变时多余的重新解析/重建会被
+跳过。每个根（以 cwd 为键）复用同一个 `SpecIndex`，因此缓存能在
+一个 agent 的多次调用之间产生收益。唯一理论上的漏网情形是一次编辑落在同一个 mtime 刻度内*并且*
+保持字节长度不变（可忽略；内容哈希是获准的升级手段）。
 
-## Tools
+## 工具
 
-Read — `spec_grep` (content search, narrowable by metadata), `spec_get` (a node's frontmatter, resolved
-links, and path — no body), `spec_graph` (a bounded subtree/ancestors/neighbors slice). Manage —
-`spec_create` (which refuses any path the index could never see — see `resolveSpecPath` in
-`submodule-spec-graph-core` — and any parameters that would write a file born a non-spec),
-`spec_update` (frontmatter only), `spec_delete`, `spec_validate`. Per-tool
-usage lives in the skill and in each tool's `description`; **none edit prose** — prose is written/edited
-with pi's normal `read`/`write`/`edit`.
+读取——`spec_grep`（内容搜索，可按元数据收窄）、`spec_get`（一个节点的 frontmatter、已解析的
+链接与路径——不含正文）、`spec_graph`（一个有界的 subtree/ancestors/neighbors 切片）。管理——
+`spec_create`（它会拒绝索引永远看不到的任何路径——见 `submodule-spec-graph-core` 中的
+`resolveSpecPath`——以及任何会写出一个天生非规范文件的参数）、
+`spec_update`（仅 frontmatter）、`spec_delete`、`spec_validate`。逐工具的
+用法记录在技能中以及各工具的 `description` 中；**它们都不编辑散文**——散文用
+pi 常规的 `read`/`write`/`edit` 来写入/编辑。
 
-## Knowledge delivery
+## 知识传递
 
-Concept, schema, and workflow live in the **skill** (auto-discovered via the `pi.skills` manifest /
-`additionalSkillPaths`). The always-on rule keeps specs authoritative while making lookup contextual:
-consult the relevant spec when work is governed by or may alter a documented boundary, contract,
-invariant, behavior, or architecture decision; localized work need not read unrelated specs. The rule is
-contributed in `before_agent_start` as the `pi-spec-graph` entry of `systemPromptOptions.sections` — mutated
-in place, handler returns nothing — so it renders as its own XML-tagged block after `cwd`, the tail position
-the old free-text append had. Returning `systemPrompt` forces the whole prompt: a cache miss on any change,
-where a named section is one diffed patch. Not a `promptGuidelines` bullet, which would flatten this
-multi-line rule into pi's shared `rules` list. Tag = package name: globally unique, and a portable package
-must not carry a host brand. A third-party extension that returns `systemPrompt` forces the whole prompt and
-drops every structured section, ours included — pi's documented force semantics; accepted rather than
-re-appending the rule to a forced prompt.
-Each tool carries a `description` (its constraints) and a one-line `promptSnippet` (its entry in the system
-prompt's Available-tools list, matching the bundled `pi-web-access` / `visualize` tools). This is
-pi-native prompt influence through an extension, not host prompt assembly.
+概念、schema 与工作流住在**技能**中（通过 `pi.skills` 清单 /
+`additionalSkillPaths` 自动发现）。那条常开规则保持规范为权威，同时让查阅具有上下文：
+当工作受某个已记录的边界、契约、不变量、行为或架构决策管辖、或可能改变它时，查阅相关规范；
+本地化的工作无需阅读无关的规范。该规则在 `before_agent_start` 中作为
+`systemPromptOptions.sections` 的 `pi-spec-graph` 条目贡献——就地修改，处理器不返回任何内容——因此它
+作为自己的 XML 标签块渲染在 `cwd` 之后，即旧式自由文本追加所在的尾部位置。
+返回 `systemPrompt` 会强制整个提示词：任何变化都是一次缓存未命中，而一个具名 section 只是一个被 diff 的补丁。
+它不是一个 `promptGuidelines` 条目，因为那会把这条多行规则压平进 pi 共享的 `rules` 列表。
+标签 = 包名：全局唯一，而一个可移植的包不得携带宿主品牌。一个返回 `systemPrompt` 的第三方扩展会强制整个提示词，
+并丢弃每一个结构化 section，包括我们的——这是 pi 记录的强制语义；接受它，而不是把该规则重新追加到一个被强制的
+提示词上。
+每个工具携带一个 `description`（其约束）和一行 `promptSnippet`（它在系统
+提示词 Available-tools 列表中的条目，与打包的 `pi-web-access` / `visualize` 工具一致）。这是
+经扩展实现的、pi 原生的提示词影响，而不是宿主的提示词拼装。
 
-## thinkrail integration
+## thinkrail 集成
 
-`packages/server/src/agent/extensions.ts` layers this package into every session's
-`DefaultResourceLoader` the same way as `pi-web-access`: `require.resolve("pi-spec-graph/index.ts")` on
-`additionalExtensionPaths`, the package's `skills` dir on `additionalSkillPaths`. Server references it only
-by resolved path (no value import), so it stays out of server's typecheck graph. Separately,
-`packages/server/src/spec/` value-imports **`pi-spec-graph/core`** (the pi-free model — no pi packages in
-that subtree) to serve the read-only Specs viewer over the wire — the same is-a-spec rule, parser, and
-revalidate-on-read `SpecIndex` the agent tools use.
+`packages/server/src/agent/extensions.ts` 以与 `pi-web-access` 相同的方式把本包分层接入每个会话的
+`DefaultResourceLoader`：`require.resolve("pi-spec-graph/index.ts")` 放在
+`additionalExtensionPaths` 上，该包的 `skills` 目录放在 `additionalSkillPaths` 上。服务端只以解析后的路径引用它
+（没有值导入），因此它不进入服务端的 typecheck 图。另外，
+`packages/server/src/spec/` 值导入 **`pi-spec-graph/core`**（不含 pi 的模型——该子树内没有任何 pi 包）
+以通过线上协议提供只读的 Specs 查看器——与 agent 工具使用的是同一条 is-a-spec 规则、同一个解析器，以及同一个
+读取时重新校验的 `SpecIndex`。
 
-## Invariants
+## 不变量
 
-- The dependency edge is one-way: thinkrail depends on this package; this package depends on nothing in the
-  monorepo, and `core/` imports no `@earendil-works/*`.
-- The index is a derived read cache over the filesystem (the source of truth); it holds no authoritative
-  state — `pi` owns state — and never serves a stale graph.
-- Tools never edit prose; `spec_update` is frontmatter-only, lossless (preserves comments / nested
-  fields), and never un-specs a file.
+- 依赖边是单向的：thinkrail 依赖本包；本包不依赖 monorepo 中的任何东西，
+  且 `core/` 不导入任何 `@earendil-works/*`。
+- 该索引是文件系统（事实来源）之上的派生读取缓存；它不持有任何权威
+  状态——状态归 `pi` 所有——且绝不提供过期的图。
+- 工具绝不编辑散文；`spec_update` 仅改 frontmatter、无损（保留注释/嵌套
+  字段），并且绝不把一个文件变成非规范。
 
-## Non-goals
+## 非目标
 
-UI in this package (thinkrail's Specs viewer consumes `core/` from the outside), semantic/embedding
-search, a related-code frontmatter field, orphan-directory detection, and moving/renaming specs.
+本包中的 UI（thinkrail 的 Specs 查看器从外部消费 `core/`）、语义/嵌入
+搜索、相关代码的 frontmatter 字段、孤立目录检测，以及移动/重命名规范。

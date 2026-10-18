@@ -2,77 +2,66 @@
 id: submodule-workflow-skills
 type: submodule-design
 status: active
-title: skills/ — the workflow family and its meta-layer
+title: skills/ —— 工作流族及其元层
 parent: module-thinkrail-workflow
 references: [module-spec-graph]
 tags: [workflow-system, skill, brainstorming, setting-up-a-project]
 ---
 
-## Responsibility
+## 职责
 
-This directory is the **workflow skill family**: process skills that codify how the agent should *run
-a piece of work*. This spec is the family's **meta-layer** — the concept model, the three skill roles,
-and the meta-rules that govern every workflow skill here. It is the authoritative *why*; the
-`writing-workflow-skills` skill carries the actionable authoring checklist and points back here (its
-"(rule N)" citations are the meta-rules below). Packaging, delivery, and the package boundary live in
-the parent, [[module-thinkrail-workflow]].
+这个目录是**工作流技能族**：一批把 agent 应当*如何完成一件工作*编纂下来的流程类技能。这份规范是这一族
+的**元层** —— 概念模型、三种技能角色，以及治理此处每个工作流技能的元规则。它是权威的*为什么*；
+`writing-workflow-skills` 技能承载可执行的编写清单，并指回这里（它的“（规则 N）”引用就是下面的元规则）。
+打包、交付与包边界住在父级 [[module-thinkrail-workflow]]。
 
-Provenance: designed in the (since retired) workflow-system task-spec, researched against
-obra/superpowers, gsd-build/gsd-2, Anthropic's skill-authoring guidance, and JetBrains/thinkrail-v1 —
-whose workflows are an *example* of a possible future complex workflow, not a template.
+出处：设计于（此后已退役的）workflow-system 任务规范，调研参考了 obra/superpowers、gsd-build/gsd-2、
+Anthropic 的技能编写指引，以及 JetBrains/thinkrail-v1 —— 后者的工作流是未来可能出现的复杂工作流的一个
+*示例*，而不是模板。
 
-## Concept model
+## 概念模型
 
-- **Workflow** — a repeatable way of running a piece of work, codified as one or more skills.
-- **Workflow skill** — one skill = one *externally reachable* workflow *or one shared concept*;
-  short, imperative, workflow-focused.
-- **Sibling doc** — a file beside a skill's `SKILL.md` holding an internal workflow node (a branch,
-  stage, or shared tail) or reference detail; named at the exact step that hands to it, read on
-  demand, never discoverable on its own (rules 1 and 3).
-- **Concept** — one topic's reusable rules, conventions, or mental model — shared ground the
-  process skills stand on, codified as its own skill when more than one skill needs it.
-- **Handoff** — the explicit, by-name transition at the end of a workflow skill, or a declared
-  terminal state.
-- **Gate** — a hard discipline point (e.g. "no implementation before the design is approved"),
-  written with anti-rationalization notes, not soft advice.
-- **Artifacts** — the **spec tree** (the durable record: decisions, contracts, limitations,
-  principles — everything the code can't reveal) and **temp docs** (scaffolding for one piece of
-  work: a task-spec and/or workflow-declared working files), governed by rules 8–9. The split is
-  *lifecycle*, not file type — the task-spec lives in-graph while alive (spec tooling) yet is a temp
-  doc. Temp docs also have a designated *home*: the workspace's gitignored `.thinkrail/context/`
-  (host-seeded per worktree, zero git footprint, still scanned by the spec tools), so they are live for
-  the agent yet never reach the committed tree — durable content lands in the spec tree in place (rule 8).
+- **工作流** —— 一种可重复的完成一件工作的方式，被编纂为一个或多个技能。
+- **工作流技能** —— 一个技能 = 一个*可从外部触及*的工作流*或一个共享概念*；简短、祈使、聚焦于工作流。
+- **兄弟文档** —— 技能 `SKILL.md` 旁边的文件，承载一个内部工作流节点（一个分支、阶段或共享尾部）或
+  参考细节；在交接到它的那个确切步骤里被点名，按需读取，绝不单独被发现（规则 1 与 3）。
+- **概念** —— 一个主题的可复用规则、惯例或心智模型 —— 流程类技能所立足的共同地基，当不止一个技能需要
+  它时，被编纂成它自己的技能。
+- **交接** —— 工作流技能末尾那处显式的、按名字的转移，或者一个声明过的终止状态。
+- **门禁** —— 一个硬性的纪律点（例如“设计获批之前不做实现”），配有反合理化说明，而不是软性建议。
+- **制品** —— **规范树**（持久记录：决策、契约、局限、原则 —— 代码无法揭示的一切）与**临时文档**
+  （为一件工作搭的脚手架：一份任务规范，和/或工作流声明的工作文件），由规则 8–9 治理。这个划分是
+  *生命周期*的，不是文件类型的 —— 任务规范活着的时候在图内（规范工具），但它仍是一份临时文档。临时
+  文档还有一个指定的*家*：工作区里被 gitignore 的 `.thinkrail/context/`（按工作树由宿主播种、零 git
+  足迹，但仍会被规范工具扫描），因此它们对 agent 是活的，却绝不会到达已提交的树 —— 持久内容就地落进
+  规范树（规则 8）。
 
-## Skill roles & handoff contracts
+## 技能角色与交接契约
 
-Every workflow skill takes exactly one of **three roles**; everything richer is a *pattern* built from
-them.
+每个工作流技能恰好扮演**三种角色**中的一种；比这更丰富的东西都是由它们搭出来的*模式*。
 
-| Role | Body contains | Ends by |
+| 角色 | 正文包含 | 结尾方式 |
 |---|---|---|
-| **Router** | classification rules + handoffs only | naming what runs next |
-| **Worker** | one workflow's steps — in its body and its sibling docs | a handoff — fixed successor, back to its caller, or a terminal state (declared in the doc where the flow ends, rule 6) |
-| **Concept** | one topic's reusable rules, conventions, or mental model — no steps, no routing | nothing — no ending section at all; control simply returns to its reader |
+| **路由器** | 只有分类规则 + 交接 | 点名接下来运行什么 |
+| **工作者** | 一个工作流的步骤 —— 在它的正文与它的兄弟文档里 | 一次交接 —— 固定的后继、回到它的调用方，或一个终止状态（声明在流程结束的那份文档里，规则 6） |
+| **概念** | 一个主题的可复用规则、惯例或心智模型 —— 没有步骤、没有路由 | 什么都没有 —— 完全没有结尾一节；控制权直接回到它的读者手里 |
 
-The **root router** is the single entry for new workflow-eligible work; one always-on rule names those
-classes and points them at it. Work already routed resumes its active workflow instead of re-entering the
-router. Branch skills may route further (fractal routing).
-A **concept** is not a process building block — routers and workers name it at the exact step that
-needs it, and it is never a route: the router classifies *work*, and a concept is not work.
+**根路由器**是新出现的、符合工作流条件的工作的唯一入口；一条始终启用的规则点名那些类别并把它们指向
+它。已经被路由过的工作恢复它当前的工作流，而不是重新进入路由器。分支技能可以路由得更远（分形路由）。
+**概念**不是流程的构件 —— 路由器与工作者在需要它的那个确切步骤里点名它，而它绝不是一条路由：路由器
+分类的是*工作*，而概念不是工作。
 
-**Patterns** (vocabulary, not roles — no instances yet; for complex work):
+**模式**（词汇，不是角色 —— 尚无实例；用于复杂工作）：
 
-- **Composer** — a *stateful router*: agrees a per-task pipeline with the user, records it in the
-  task-spec's **Pipeline section** (checkboxes = plan + frontier + history), and walks it, adjusting as
-  findings land; the workers it launches hand back to it. Its between-stage checking discipline is its
-  own design, not a system rule. The family may hold several composers drawing on a shared pool of
-  stages.
-- **Stage** — any worker reached from a pipeline: upstream artifacts in, one artifact out, hands back
-  to its caller. The same worker can also run standalone (fixed-successor/terminal handoff) —
-  stage-ness is how a worker is *used*, not what it *is*.
+- **编排器（Composer）** —— 一个*有状态的路由器*：与用户议定一条逐任务流水线，把它记录在任务规范的
+  **Pipeline 小节**里（复选框 = 计划 + 前沿 + 历史），然后走这条流水线，随着发现的落地而调整；它启动
+  的工作者交回给它。它逐阶段之间的检查纪律是它自己的设计，不是系统规则。这一族可以容纳多个编排器，
+  它们共享同一个阶段池。
+- **阶段（Stage）** —— 从某条流水线到达的任何工作者：上游制品进、一个制品出，交回给它的调用方。同一个
+  工作者也可以独立运行（固定后继/终止交接）—— “阶段性”是工作者被*使用*的方式，而不是它*是什么*。
 
-No runtime machinery — the system is skills-only (no YAML pipelines, DAG tools, or stage sessions):
-pipeline state is task-spec content; stage transitions are ordinary handoffs.
+没有运行时机器 —— 这个系统只有技能（没有 YAML 流水线、DAG 工具或阶段会话）：流水线状态是任务规范的
+内容；阶段转移就是普通的交接。
 
 ```mermaid
 flowchart LR
@@ -90,271 +79,234 @@ flowchart LR
   st -. reads .-> con
 ```
 
-## Meta-rules
+## 元规则
 
-**Structure**
-1. One *externally reachable* unit per skill — a workflow is one skill if it is reached only as a
-   whole (routed to, called by another skill, or self-triggered); one topic per concept skill.
-   **Skill boundaries follow external reachability, not workflow shape**: a workflow's internal shape
-   — forks, branches, stages, joins, revise loops — lives in sibling docs, with the *choice rules
-   staying in the doc (or spine) before the fork*. An internal doc is promoted to its own skill when
-   it needs *independent addressability* — an external caller (another skill or a router), a genuine
-   self-trigger, or a direct entry point (a UI / `/skill:` command seed): a single consumer can
-   justify a skill when something outside the parent must reach it directly. Never promote for shape
-   or size alone.
-2. Routers route; workers work; concepts inform. A router contains classification rules + handoffs
-   only — never a branch's steps; asking a question or inspecting the workspace *to classify* is
-   routing, not work. A worker embeds no routing of *work* beyond its own ending — a fork among its
-   own sibling docs (rule 1) is internal flow, not routing. A concept skill contains no steps and no handoffs; it may state norms about its topic, but *when*
-   they are enforced belongs to the process skill that references it.
-3. Skills are concise and workflow-focused: target < ~150 lines per file — the `SKILL.md` spine and
-   each sibling doc alike. Sibling docs carry the workflow's internal nodes (rule 1) as well as
-   reference detail, named in the exact step that hands to them (progressive disclosure); the spine
-   carries the doc map, and each internal-node doc opens with a one-line contract: what is confirmed
-   on entry, what it saves, where control goes next. Rules needed by a *second skill* are extracted
-   into a concept skill — no premature extraction; within one skill's docs, shared content lives in
-   one doc pointed at by the others.
+**结构**
+1. 每个技能只承载一个*可从外部触及*的单元 —— 一个工作流只有在只能被整块到达时才算一个技能（被路由
+   到、被另一个技能调用，或自触发）；每个概念技能只有一个主题。
+   **技能边界跟随外部可触及性，而不是工作流形态**：一个工作流的内部形态 —— 分叉、分支、阶段、汇合、
+   修订循环 —— 住在兄弟文档里，而*选择规则留在分叉之前的文档（或主干）里*。当一份内部文档需要
+   *独立可寻址性*时，它才被提升为独立技能 —— 一个外部调用方（另一个技能或一个路由器）、一个真正的
+   自触发，或一个直接入口点（一个 UI / `/skill:` 命令种子）：当父级之外的某个东西必须直接到达它时，
+   哪怕只有一个使用方也能成为技能的理由。绝不只因为形态或体量而提升。
+2. 路由器负责路由；工作者负责做事；概念负责告知。路由器只包含分类规则 + 交接 —— 绝不含某个分支的
+   步骤；*为了分类*而提一个问题或探查工作区是路由，不是工作。工作者除了自己的结尾之外，不内嵌任何
+   对*工作*的路由 —— 它自己兄弟文档之间的分叉（规则 1）是内部流程，不是路由。概念技能不包含步骤，
+   也不包含交接；它可以陈述关于其主题的规范，但*何时*强制执行它们属于引用它的那个流程技能。
+3. 技能简洁、聚焦于工作流：目标 < 约 150 行每文件 —— `SKILL.md` 主干与每份兄弟文档一视同仁。兄弟
+   文档承载工作流的内部节点（规则 1）以及参考细节，在交接到它们的那个确切步骤里被点名（渐进式披露）；
+   主干承载文档地图，每份内部节点文档以一个一行契约开头：入口时已确认什么、它保存什么、控制权接下来
+   去哪里。*第二个技能*需要的规则会被抽取成一个概念技能 —— 不做过早抽取；在单个技能的文档内部，共享
+   内容只住在一份文档里，由其他文档指向它。
 
-**Discovery & entry**
-4. At the start of a new piece of work, one always-on entry rule names the workflow-eligible classes —
-   project onboarding and PR lifecycle work take precedence regardless of whether they edit code; every
-   other change to what the product does — a feature, a behavior change, or a bug fix, however small —
-   enters too. Only non-PR questions, explanations, and checks, and edits that change no behavior (typos,
-   documentation or configuration only, mechanical refactors) proceed directly. The rule points only
-   the eligible classes at the root router. Work already routed resumes its active workflow; all other
-   work proceeds directly without loading or announcing one.
-   Skills are otherwise reached by routing/handoff, or — when the trigger is unmistakable — by a narrow
-   self-trigger `description`: alongside a route (as `setting-up-a-project` does) or, for skills outside
-   the router's work classification (meta/authoring skills), self-trigger alone (as
-   `writing-workflow-skills` does). Concept skills are reached by name from the skill step that needs
-   them and may add a narrow self-trigger; they never take a routing line (see the roles table — a
-   concept is not work).
-5. `description` = triggering conditions only ("Use when …"), never a summary of the workflow's steps
-   — a step-summary tempts the agent to follow the description and skip the body.
+**发现与入口**
+4. 在一件新工作开始时，一条始终启用的入口规则点名那些符合工作流条件的类别 ——
+   项目上手与 PR 生命周期工作无论是否改代码都优先；对产品所作所为的其他一切改动 —— 一个功能、一次
+   行为变更，或一个 bug 修复，无论多小 —— 也进入。只有非 PR 的提问、解释与检查，以及不改变任何行为的
+   编辑（拼写错误、仅文档或配置、机械性重构）直接继续。这条规则只把符合条件的类别指向根路由器。已经
+   被路由过的工作恢复它当前的工作流；其他所有工作直接继续，既不加载也不声明任何工作流。
+   技能在其他情况下靠路由/交接到达，或者 —— 当触发不会认错时 —— 靠一个狭窄的自触发 `description`：
+   或者伴随一条路由（如 `setting-up-a-project` 所做），或者，对位于路由器工作分类之外的技能
+   （元/编写类技能）而言，只靠自触发（如 `writing-workflow-skills` 所做）。概念技能被需要它们的那个
+   技能步骤按名字到达，并且可以加一个狭窄的自触发；它们绝不带路由行（见角色表 —— 概念不是工作）。
+5. `description` = 只写触发条件（“Use when …”），绝不是工作流步骤的摘要
+   —— 一份步骤摘要会引诱 agent 照着描述走而跳过正文。
 
-**Chaining**
-6. Explicit endings: every process skill ends by naming its successor skill or its terminal state —
-   an internally forking worker (rule 1) ends by naming the sibling doc that continues the flow, and
-   each internal doc ends the same way (next doc, return point, or the terminal state, declared in
-   the doc where the flow actually ends); a concept skill has nothing to run next and writes no
-   ending section — control simply returns to its reader. Cross-reference skills by name; never inline another skill's steps, never
-   force-load another skill's files.
-7. Say each thing once: a rule or step lives in exactly one skill; others point at it. A rule needed
-   by more than one skill is extracted into a concept skill and pointed at, never copied.
+**串接**
+6. 显式的结尾：每个流程技能都以点名它的后继技能或它的终止状态结尾 ——
+   一个内部有分叉的工作者（规则 1）以点名继续流程的那份兄弟文档结尾，而每份内部文档以同样的方式
+   结尾（下一份文档、返回点，或终止状态 —— 声明在流程实际结束的那份文档里）；概念技能没有下一步
+   要跑，也不写结尾一节 —— 控制权直接回到它的读者手里。按名字交叉引用技能；绝不把另一个技能的
+   步骤内联进来，绝不强制加载另一个技能的文件。
+7. 每件事只说一次：一条规则或一个步骤只住在一个技能里；其他技能指向它。不止一个技能需要的规则，
+   被抽取成一个概念技能并被指向，绝不复制。
 
-**Artifacts**
-8. The spec tree is the only durable record; how and when durable content reaches it is the
-   workflow's call — written straight into the tree as decisions land (no temp doc at all), promoted
-   incrementally from a task-spec as decisions settle, or promoted when the work lands. What never
-   varies: durable content is in the tree before its temp doc is cleaned up, and there is no
-   parallel durable plan/state format.
-9. Temp docs are optional and belong to their workflow. When used, the task-spec is the default
-   spine — design, plan, pipeline state, and review notes live as its sections; extra working files
-   (resume state, scratch plans) are declared by naming their shape. **All temp docs live in the
-   workspace's gitignored `.thinkrail/context/`** (host-seeded per worktree — see the server's
-   workspaces module — so they never reach the committed tree). The owning workflow also owns cleanup
-   — delete when the work lands, by default; a temp doc never becomes the record.
+**制品**
+8. 规范树是唯一的持久记录；持久内容何时、以何种方式进入它是工作流自己的决定 —— 决策落地时直接写
+   进树里（完全不用临时文档）、随着决策安定从任务规范逐步提升，或者在工作落地时提升。从不改变的是：
+   持久内容在它的临时文档被清理之前就已经在树里，而且不存在平行的持久计划/状态格式。
+9. 临时文档是可选的，属于它们的工作流。使用时，任务规范是默认主干 —— 设计、计划、流水线状态与
+   评审备注作为它的各节存在；额外的工作文件（续跑状态、草稿计划）靠点名它们的形态来声明。**所有临时
+   文档都住在工作区里被 gitignore 的 `.thinkrail/context/`**（按工作树由宿主播种 —— 见服务端的
+   workspaces 模块 —— 因此它们绝不会到达已提交的树）。拥有它的工作流同时也拥有清理权 —— 默认在工作
+   落地时删除；临时文档绝不会变成记录。
 
-**Scaling**
-10. Scale by route and composition, not by prose: work that needs no workflow decision bypasses the
-    router; the router sends eligible simple work down short paths; optional phases carry explicit
-    "when to use / when to skip" criteria; complex work composes a per-task pipeline of stage workers.
-    Depth lives in the route taken.
-11. Gates where discipline matters, matching the form to the failure: prohibitions + red-flags for
-    discipline violations; positive recipes for output shape.
+**规模化**
+10. 按路由与组合来伸缩，而不是靠散文：不需要工作流决策的工作绕过路由器；路由器把符合条件的简单
+    工作送上短路径；可选阶段带有明确的“何时用 / 何时跳过”判据；复杂工作组合出一条逐任务的阶段工作者
+    流水线。深度住在所走的那条路由里。
+11. 在纪律要紧的地方设门禁，让形式与失败方式相配：对纪律违背用禁令 + 危险信号；对输出形态用正向
+    配方。
 
-**Maintenance**
-12. Adding a workflow = add `skills/<name>/` + one routing line in the router that owns it — the root
-    router by default, or the nearest sub-router when the skill is a branch under an already-routed
-    workflow (fractal routing) — (self-trigger-only skills and concept skills per rule 4 skip the
-    router line — a designed exception, never a size call) + one row in the family table below,
-    including its **Routed from** entry. Nothing else changes shape.
-13. The spec leads: system-shaping changes update this SPEC.md first; the authoring skill carries only
-    the actionable checklist and points here for rationale.
-14. Verify by use — **suspended: a known limitation, not currently a done-gate**. The intended rule:
-    a new or changed skill isn't done until a real request has been observed flowing through it —
-    for a concept, observed being loaded through a reference (or its self-trigger) and applied.
-    **Cheap observation tooling now exists**: the headless workflow-test harness
-    ([[module-workflow-tests]]) drives a real agent through a skill per `defineScenario` and records
-    each run. What still keeps the gate suspended: runs land only in a **gitignored local log**
-    (`e2e/.workflow-runs.jsonl` — a deliberate decision, not an accident), so there is no durable,
-    shared record to bind a done-gate to. Until then: unverified skills still ship as `active`,
-    their verification debt is recorded honestly in the family table (`unverified by use`), and
-    observed runs — manual or harness — are still noted when they happen.
+**维护**
+12. 添加一个工作流 = 添加 `skills/<name>/` + 在拥有它的路由器里加一行路由 —— 默认是根路由器，或当
+    该技能是某个已路由工作流下的分支时用最近的子路由器（分形路由）——（按规则 4，仅自触发的技能和
+    概念技能跳过路由行 —— 一个设计好的例外，绝不是体量上的随便决定）+ 在下面的族表里加一行，包括
+    它的 **Routed from** 条目。其他任何东西都不改变形态。
+13. 规范领路：重塑系统的改动先更新这份 SPEC.md；编写技能只承载可执行清单，并为理由指向这里。
+14. 以使用验证 —— **已暂停：一项已知限制，目前不是完成门禁**。原本的规则是：
+    一个新的或改动过的技能，在观察到真实请求流过它之前不算完成 ——
+    对概念技能而言，是被观察到经由某个引用（或它的自触发）加载并应用。
+    **廉价的观察工具现在已存在**：无头工作流测试装置
+    （[[module-workflow-tests]]）按 `defineScenario` 驱动一个真实 agent 走完一个技能，并记录
+    每一次运行。仍然让门禁保持暂停的是：运行只落在**被 gitignore 的本地日志**里
+    （`e2e/.workflow-runs.jsonl` —— 一个刻意的决定，不是意外），因此没有可以把完成门禁绑上去的、
+    持久的共享记录。在那之前：未验证的技能仍然以 `active` 发布，它们的验证债务诚实地记录在族表里
+    （`unverified by use`），而观察到的运行 —— 无论手工还是测试装置 —— 依然在发生时被记下。
 
-**Naming**
-15. Names are verb-first, active voice, kebab-case (adopted from obra/superpowers' writing-skills
-    guidance): gerunds for process skills (`choosing-a-workflow`, `setting-up-a-project`); a concept
-    skill is named for its topic (`asking-user-questions`). Name the work the skill runs or the
-    insight it carries — never the artifact it produces or the role that runs it. Directory name =
-    frontmatter `name`.
+**命名**
+15. 名字以动词开头、主动语态、kebab-case（采纳自 obra/superpowers 的 writing-skills 指引）：
+    流程类技能用动名词（`choosing-a-workflow`、`setting-up-a-project`）；概念技能按它的主题命名
+    （`asking-user-questions`）。命名技能所跑的那项工作或它所携带的洞见 —— 绝不命名它产生的制品或
+    运行它的角色。目录名 = frontmatter 的 `name`。
 
 ## Workflow family
 
-| Skill | Role — purpose | Routed from | Status |
+| 技能 | 角色 —— 目的 | Routed from | 状态 |
 |---|---|---|---|
-| `brainstorming` | worker — feature, behavior change, or bug fix → interviewed design (product, then technical) → amended specs → implementation; sibling docs `fixing-a-bug.md` (bug branch) and `amending-specs.md` (shared tail) | `choosing-a-workflow` (root) | active; the default-entry route-in — a small specified change, and a bug report reaching the bug branch with no source edit — observed green by the routing suite (2026-10), as was the mid-flow round-trip; the two-phase interview and self-driven amendment are unverified by use |
-| `setting-up-a-project` | router (sub) — dispatcher: detect the workspace's state (specs present / empty / code-only) and route | `choosing-a-workflow` (root) + self-trigger + the app's `/skill:setting-up-a-project` seed | active; empty → starting and code → importing were observed green; the revised specced → review/extend offer is unverified by use |
-| `starting-a-new-project` | worker — inception interview (empty repo → goal-and-requirements) | `setting-up-a-project` + narrow self-trigger | active; route-in observed by the routing suite; the interview itself and its living-doc template (2026-09) unverified by use (rule 14 suspended — a slice-3 candidate via the user simulator) |
-| `importing-a-codebase` | worker — existing codebase → first spec graph (derive + adopt existing docs + minimal interview) | `setting-up-a-project` + narrow self-trigger | active; covered by a tagged `@agent` e2e; route-in also observed by the routing suite; the doc-adoption offer observed green by the harness's importing suite (2026-07: adoption + no-candidates regression scenarios; the pre-change skill run red against the same scenario as the before/after control); the rationale ("why") and known-limitation questions are unverified by use (the importing suite stayed green after they landed, 2026-10, but does not assert them) |
-| `asking-user-questions` | concept — multi-round interviews (design tree / frontier), question quality, options, inference confirmation, degradation | — (reached by name, rule 4) | active; the multi-round interview model unverified by use; the earlier single-round norm was observed (2026-07 manual: loaded through brainstorming's reference, a round composed + resolved) |
-| `writing-specs` | concept — the spec quality bar (short / honest / on-rails) for every spec-producing flow | — (reached by name, rule 4) | active; observed by use (2026-07 manual: self-triggered for a spec revision and applied) |
-| `choosing-a-workflow` | router (root) — classification + routing for workflow-eligible work | — (conditional pointer from the always-on rule, rule 4) | active; every classification, including the default entry for small behavior changes and bug reports, observed green by the routing suite (2026-10) |
-| `writing-workflow-skills` | worker — authoring checklist for adding workflows | — (self-trigger only, rule 4) | active |
-| `shipping-a-pr` | worker — PR lifecycle (create with gates / body or screenshot maintenance / up-to-date sync / checks / review comments — phases as sibling docs) | `choosing-a-workflow` (root) + narrow self-trigger | active; snapshot-by-default completion and verification reuse unverified by use (rule 14 suspended) |
+| `brainstorming` | 工作者 —— 功能、行为变更或 bug 修复 → 面谈式设计（先产品、再技术）→ 修订规范 → 实现；兄弟文档 `fixing-a-bug.md`（bug 分支）与 `amending-specs.md`（共享尾部） | `choosing-a-workflow`（根） | active；默认入口的进入路径 —— 一次小的、已规范过的改动，以及一个不进任何源码编辑就到达 bug 分支的 bug 报告 —— 被路由套件观察到为绿（2026-10），流程中途的往返也一样；两阶段面谈与自我驱动的修订尚未以使用验证 |
+| `setting-up-a-project` | 路由器（子）—— 分发器：检测工作区的状态（有规范 / 空 / 只有代码）并路由 | `choosing-a-workflow`（根）+ 自触发 + 应用的 `/skill:setting-up-a-project` 种子 | active；空 → 开始与只有代码 → 导入被观察到为绿；修订后的“有规范 → 评审/扩展提议”尚未以使用验证 |
+| `starting-a-new-project` | 工作者 —— 起点面谈（空仓库 → goal-and-requirements） | `setting-up-a-project` + 狭窄自触发 | active；进入路径被路由套件观察到；面谈本身及其活文档模板（2026-09）尚未以使用验证（规则 14 已暂停 —— 一个经用户模拟器的切片 3 候选） |
+| `importing-a-codebase` | 工作者 —— 既有代码库 → 第一份规范图（派生 + 采纳既有文档 + 最小面谈） | `setting-up-a-project` + 狭窄自触发 | active；被一个打了标记的 `@agent` e2e 覆盖；进入路径也被路由套件观察到；文档采纳提议被测试装置 importing 套件观察到为绿（2026-07：采纳 + 无候选回归场景；改动前的技能在同一场景下跑红，作为前后对照）；理由（“为什么”）与已知局限问题尚未以使用验证（它们落地后 importing 套件保持为绿，2026-10，但没有断言它们） |
+| `asking-user-questions` | 概念 —— 多轮面谈（设计树 / 前沿）、问题质量、选项、推断确认、降级 | —— （按名字到达，规则 4） | active；多轮面谈模型尚未以使用验证；更早的单轮规范被观察到过（2026-07 手工：经 brainstorming 的引用加载，组成并解答了一轮） |
+| `writing-specs` | 概念 —— 每个产出规范的流程都要守的规范质量标尺（短 / 诚实 / on-rails） | —— （按名字到达，规则 4） | active；已被以使用验证（2026-07 手工：为一个规范修订而自触发并被应用） |
+| `choosing-a-workflow` | 路由器（根）—— 对符合工作流条件的工作的分类 + 路由 | —— （来自始终启用规则的按条件指针，规则 4） | active；每一次分类，包括小行为变更与 bug 报告的默认入口，都被路由套件观察到为绿（2026-10） |
+| `writing-workflow-skills` | 工作者 —— 添加工作流的编写清单 | —— （仅自触发，规则 4） | active |
+| `shipping-a-pr` | 工作者 —— PR 生命周期（带门禁的创建 / 正文或截图维护 / 与最新状态同步 / 检查 / 评审评论 —— 各阶段作为兄弟文档） | `choosing-a-workflow`（根）+ 狭窄自触发 | active；默认以快照完成与验证复用尚未以使用验证（规则 14 已暂停） |
 
-The family is open and grows from real use; candidates (research/spike, refactor, a composing
-skill in the composer pattern with its stage workers, and **extending an existing spec graph** — the
-dispatcher's accepted review/extend offer, today a declared no-workflow path) each get their own
-task-spec when they earn their place. The concept role has two instances: `asking-user-questions`,
-extracted per rules 3/7 when brainstorming and the setup trio carried drifting copies of the tool
-norms, and `writing-specs`, extracted the same way when the setup trio carried three drifting copies
-of the spec quality bar.
-`asking-user-questions` interviews in **multi-round frontiers**, adapted from mattpocock/skills'
-`grilling`: the old norm ("a new round only when answers raise a genuinely new question") plus the
-tool prompt's "every question in one call" read as one-and-done, so agents under-asked. Adopted:
-the design tree / frontier, an uncapped round, facts looked up rather than asked, a question-quality
-bar. Rejected by user decision: a separate opt-in "grill me" skill (depth lives in the shared norm,
-so every workflow gets it) and grilling's "confirm shared understanding" gate (an empty frontier
-proceeds; each workflow's own gates still apply).
-Meta-rule 4's entry model is in effect: at the start of new work the parent module's
-`before_agent_start` rule points workflow-eligible work at `choosing-a-workflow`, which routes to today's
-family; already-routed work resumes, and direct work bypasses the router. `writing-workflow-skills` (self-trigger only) and the concept skills (reached by name) sit outside
-the routing table.
+这一族是开放的，靠真实使用生长；候选（研究/探针、重构、一个按编排器模式组合的技能及其阶段工作者，以及
+**扩展现有的规范图** —— 分发器已接受的评审/延展提议，今天是一条声明过的无工作流路径）各自在赢得
+自己的位置时获得自己的任务规范。概念角色有两个实例：`asking-user-questions`，在 brainstorming 与
+setup 三件套带着漂移的工具规范副本时按规则 3/7 抽取出来；以及 `writing-specs`，在 setup 三件套带着
+三份漂移的规范质量标尺副本时以同样的方式抽取出来。
+`asking-user-questions` 以**多轮前沿**进行面谈，改编自 mattpocock/skills 的
+`grilling`：旧规范（“只有当答案提出了真正的新问题才开新一轮”）加上工具提示词的“所有问题放在一次调用
+里”被读成了一杆子完事，于是 agent 问得太少。采纳的是：
+设计树 / 前沿、不限轮次的一轮、事实靠查而不是靠问、一条问题质量标尺。经用户决定否决的是：一个独立的、
+需主动选择的 “grill me” 技能（深度住在共享规范里，因此每个工作流都能得到它），以及 grilling 的
+“确认共识”门禁（空的前沿就继续；每个工作流自己的门禁依然适用）。
+元规则 4 的入口模型已生效：在新的工作开始时，父模块的
+`before_agent_start` 规则把符合工作流条件的工作指向 `choosing-a-workflow`，由它路由到今天这一族；
+已路由过的工作恢复，直接的工作绕过路由器。`writing-workflow-skills`（仅自触发）与概念技能（按名字
+到达）位于路由表之外。
 
-## Current limitations & gaps
+## 当前局限与缺口
 
-The family's known debt, stated per its own honesty bar and tracked here until each item earns its
-fix:
+这一族已知的债务，按它自己的诚实标尺陈述，并在每一项赢得修复之前在下面跟踪：
 
-- **Rule 14 (verify-by-use) is suspended** — not currently a done-gate. The rule above carries the
-  full rationale (observation is now cheap; the missing half is a durable run record); the family
-  table carries the current per-skill `unverified by use` debt. Slice 3 — worker flows via the user
-  simulator ([[module-thinkrail-workflow]] § Testing) — would burn down the worker-flow debt; changed
-  routing behavior remains unverified until a matching scenario is observed.
-- **Extending an existing spec graph has no worker.** Partial graph → complete graph (a missing
-  `architecture.md`, un-specced modules, stale nodes) falls between the two setup workers:
-  `importing-a-codebase` refuses specced repos, `brainstorming` designs new work rather than
-  documenting existing reality, and the dispatcher — a router — must not do the work itself. The
-  dispatcher carries only the operational instruction (its "Graph extension" section): align to the
-  user's request on judgment without a routing announcement, holding the `writing-specs` bar — the
-  rationale lives here, not in the skill — until the `extending-a-spec-graph` candidate earns its
-  place.
-- **`writing-specs` overlaps the spec-graph skill** ([[module-spec-graph]]): both carry lean/honest
-  spec guidance today. The declared split — this family owns the quality bar, spec-graph owns graph
-  mechanics (frontmatter, links, tools) — is convention only, enforced by nothing. As `writing-specs`
-  grows into the home for the family's spec and spec-graph rules, the spec-graph skill's guidance
-  should slim to mechanics — or the drift the extraction fixed returns one package up.
-- **Most of the family's candidates are unbuilt** (the candidates list above) — deliberate, since
-  each earns its place through real use. Until then, every behavior change enters `brainstorming`
-  and work with no behavior change proceeds directly; a future composer may own multi-stage
-  pipelines.
-- **The design is approved as a whole, not section by section.** Confirming each section as it is
-  drafted would make the user a co-author of the design, but it needs an in-app review surface for
-  proposed spec sections that the UI does not have yet. Until it does, the product-phase checkpoint
-  and the single design review stand in for it.
+- **规则 14（以使用验证）已暂停** —— 目前不是完成门禁。上面的规则携带
+  完整理由（观察现在很便宜；缺的那一半是一份持久的运行记录）；族表
+  携带当前逐技能的 `unverified by use` 债务。切片 3 —— 经用户模拟器的工作者
+  流程（[[module-thinkrail-workflow]] § 测试）—— 会烧掉工作者流程的债务；变更过的
+  路由行为在匹配场景被观察到之前仍然未验证。
+- **扩展现有的规范图没有工作者。** 部分图 → 完整图（一份缺失的
+  `architecture.md`、还没写规范的模块、陈旧的节点）落在两个 setup 工作者之间：
+  `importing-a-codebase` 拒绝已有规范的仓库，`brainstorming` 设计新工作而不是
+  记录既有现实，而分发器 —— 一个路由器 —— 必须不自己动手做事。分发器
+  只携带操作指示（它的“扩展规范图”一节）：凭判断与用户的请求对齐，而不做路由宣告，
+  守着 `writing-specs` 的标准 —— 理由住在这里，不在技能里 —— 直到
+  `extending-a-spec-graph` 候选赢得它的位置。
+- **`writing-specs` 与 spec-graph 技能重叠**（[[module-spec-graph]]）：今天两者都
+  携带精简/诚实的规范指引。声明过的划分 —— 这一族拥有质量标尺，spec-graph 拥有图
+  机制（frontmatter、链接、工具）—— 只是惯例，没有任何东西强制执行。随着 `writing-specs`
+  成长为这一族规范与规范图规则的家，spec-graph 技能的指引
+  应当瘦身到只剩机制 —— 否则抽取所修复的漂移会从上一个包回流。
+- **这一族的大部分候选尚未建造**（上面的候选清单）—— 有意为之，因为
+  每一个都要通过真实使用赢得自己的位置。在那之前，每一次行为变更都进入 `brainstorming`，
+  而没有行为变更的工作直接继续；未来的编排器可能拥有多阶段的
+  流水线。
+- **设计是整体批准的，而不是逐节批准。** 每起草完一节就确认，会让用户
+  成为设计的共同作者，但那需要一个针对提议的规范小节的应用内评审面，而 UI 现在还没有。
+  在它拥有之前，产品阶段的检查点与那一次单独的设计评审暂时代替它。
 
-## Per-skill design notes
+## 逐技能设计说明
 
-Each workflow's steps live once, in its own `SKILL.md` — the authoritative wording. Each skill body
-also carries its own degradation behavior (headless host with no `ask_user_question` UI, skipped or
-declined answers, a workspace with no pre-existing spec graph); nothing is configured here. What
-follows is only the rationale the skill bodies don't state:
+每个工作流的步骤只存在一次，就在它自己的 `SKILL.md` 里 —— 那是权威的措辞。每份技能正文还携带它自己的
+降级行为（没有 `ask_user_question` UI 的无头宿主、被跳过或被拒绝的回答、一个没有既有规范图的工作区）；
+这里不配置任何东西。下面只是技能正文没有陈述的理由：
 
-- **`brainstorming`** applies the discipline this repo holds itself to ("the spec leads the code")
-  to every change in what the product does: request → interviewed design in a spec-graph `task-spec`
-  → amended durable specs → implementation. It is the default for a feature, a behavior change, or a
-  bug fix, however small; only work that changes no behavior bypasses it. The default exists because
-  users valued being questioned before anything was built — the interview was demanding, but it is
-  what made the resulting specs understood and trusted. A gate the agent judged for itself ("is this
-  already specified?") let most work skip both the interview and the spec update, and the graph
-  drifted away from the code over time. Depth scales with the change and never drops to zero: a
-  small change gets one short round and a few lines of task-spec.
-  The interview runs in two phases — **product first** (why, for whom, what the user will see, how
-  we know it is done), then **technical** (approaches, constraints, verification) — with one
-  checkpoint between them that confirms the product understanding before any technical choice is
-  made. Explicit answers in the request are not re-asked, and an explicit design or acceptance
-  criteria still count as approval. An alternative the agent considered and rejected — especially where
-  the code lives (server or browser, contract or display) — is shown with its trade-off, never decided
-  silently: a viability gate the agent judged for itself let it pick an approach the user never saw.
-  There is deliberately no separate plan artifact; the spec is the plan.
-  Open user decisions are interviewed in rounds through `asking-user-questions` until none is left
-  assumed.
-  **Bugs** take the `fixing-a-bug.md` branch: a bug is a gap between recorded intent and behavior, so
-  the branch first classifies what the specs say — silent, wrong, right with only the code wrong, or
-  the "bug" is really a new feature (back to the main flow) — and settles the intended behavior in
-  the task-spec before the code. Like every change, the durable spec is amended after the build, so it
-  records what was built; the task-spec is what leads the fix.
-  **Spec amendment** (`amending-specs.md`, the shared tail of both paths) is the agent's own job, not
-  a user approval round — by user decision: it works top-down (goal → architecture → modules), then
-  checks the result against what was actually built, and reports it in a line or two; the Changes
-  review is where the user sees the diff. It loads `writing-specs` first.
-- **the setting-up-a-project trio** arrived with the Welcome-screen work (as `project-setup` /
-  `project-new` / `project-import`; renamed under rule 15) and was adapted to this system in place.
-  `setting-up-a-project` is a **sub-router** (dispatcher): it inspects the workspace to classify
-  (specs present / empty / code-only) — routing, not work, per rule 2 — and is reached from the root
-  router, by self-trigger, and by the app's "Set up project" card's `/skill:setting-up-a-project`
-  seed: the direct entry point that justifies its skill-hood under rule 1's addressability test
-  (`starting-a-new-project` / `importing-a-codebase` are likewise single-consumer skills justified by
-  direct reachability when the situation is unmistakable). `starting-a-new-project` distills old
-  thinkrail's `new-project` port —
-  working-model inference, personal-vs-PRD routing, MVP-first elicitation, alternatives research,
-  incremental save; board/progress-tracker mechanics dropped (no equivalent here). `importing-a-codebase`
-  (net-new) reverse-engineers a first spec graph from code + agent files, interviewing only for the
-  intent the code can't reveal. That intent always includes the *why* behind each non-obvious
-  decision and the known limitations: without them a spec records what the code does but not what a
-  later change must preserve, so the interview asks them (inferred answers offered for correction)
-  instead of leaving rationale to chance. Its doc-adoption offer (2026-07) exists because well-documented
-  un-specced repos were losing their own docs at import: durable declarative docs (never plans or
-  process files) are offered in the interview round and adopted **in place** — frontmatter only, so
-  say-it-once holds, the user's words stay theirs, and the diff is reviewable in Changes — rather
-  than distilled into parallel nodes that would drift; adopted prose is corrected only where it is
-  unclear or has drifted from the code, and every correction is flagged to the user. Adaptation touches were deliberately minimal: descriptions trimmed to
-  triggers (rule 5), inlined question norms replaced by pointers to `asking-user-questions` (rule 7),
-  endings made explicit (rule 6), the drifting copies of the spec bar later extracted into
-  `writing-specs` (rules 3/7) — the flows themselves are untouched.
-  `starting-a-new-project`'s saved shape was later revised (2026-09): the V1-features and MVP-scope
-  (`In v1` / `Out of v1`) sections gave way to Capabilities + Non-goals, and finalizing flips
-  `draft → active` instead of `done`. A version-split goal doc goes stale the moment work ships:
-  ThinkRail's own V1/V2 goal doc accumulated "ships in V1 as …" carve-outs, and agents read its "not in
-  V1" list as a prohibition against work being built. MVP discipline survives as elicitation (smallest
-  useful first build); what is cut goes back to the user rather than into a later-list.
-- **`asking-user-questions`** carries the family's `ask_user_question` norms once: rounds, option
-  design, the inference-confirmation pattern, and skip/headless degradation. Callers keep the *when* —
-  and say where assumptions get recorded.
-- **`shipping-a-pr`** was mined from the operator's real PR sessions (2026-06→08: 125 scanned, 36
-  with PR work): the recurring asks — verify-then-PR, self-review first, rebase on fresh main,
-  screenshots for UI changes, "make PR up-to-date", "look at the checks", "do not fix review
-  comments blindly" — became its gates and phase docs. One skill rather than five (rule 1): every
-  lifecycle ask enters through the same trigger; the phases are internal forks as sibling docs. At
-  creation time the repository's PR template owns body sections, order, and checklist; the generic
-  Summary/Changes/Testing shape is only the no-template fallback. Completion mode follows the user's
-  requested outcome rather than whether the phase pushes the PR head. Ordinary creation, syncing,
-  head updates, metadata maintenance, and one-time status requests take one fresh checks + merge-state
-  snapshot and stop; only an explicit remote-completion ask enters wait mode. Local verification is
-  evidence-aware: exact checks already run against the final change are reused, while missing or
-  invalidated gates run after later edits, relevant dependency or base changes, and conflict
-  resolution. Evidence must cover the final tree before every code-affecting push, so verification or
-  self-review fixes loop through reassessment. CI is the final full verification layer when configured. Wait-mode merge readiness
-  remains explicit: `CLEAN` succeeds; `HAS_HOOKS` succeeds with a pre-receive hooks caveat; `UNKNOWN`
-  is polled; `BEHIND`/`DIRTY` sync; and `BLOCKED`/`UNSTABLE` remain non-affirmative with
-  `reviewDecision` reported. Draft state is read separately and never called merge-ready. An empty
-  check rollup is indeterminate; a no-CI repo is reported only after that absence is independently
-  confirmed. This avoids repeating valid development-time
-  checks or turning routine PR delivery into an unrequested CI watch while preserving the merge-ready
-  bar where the ask promises it. The review-only assets-ref screenshot default was an explicit user
-  decision (task-spec `task-shipping-a-pr-skill`). Its review hardening
-  (PR #284) converged on one shared discipline instead of per-finding patches — **observed, never
-  assumed**: every finding across three review rounds was the same defect (acting on, or declaring,
-  state not observed at the moment of the action), so the rule lives once in the spine — verify at
-  the point of action, fetch remote state fresh and completely, poll indeterminate answers — and
-  each phase doc instantiates it at its own action points (pre-push re-assertions after
-  tree-mutating steps, title/body re-fetched and the requested mutation reapplied to the fresh value,
-  `UNKNOWN` merge state polled, throwaway cleanup owned by the phase that made the throwaway).
-- **`writing-specs`** carries the family's spec quality bar once — short / honest / on-rails — and is
-  the accruing home for the family's rules about specs and the spec graph as they grow. Graph
-  *mechanics* (frontmatter, link kinds, the `spec_*` tools) stay with the spec-graph skill
-  ([[module-spec-graph]]); this concept is the bar the workflows hold on top of them. Extracted per
-  rules 3/7 when the setup trio carried three drifting copies of the bar (and the dispatcher — a
-  router — carried norms it shouldn't, per rule 2). The goal-doc shape (a living product record with no
-  versions or roadmap) lives here, not in either setup worker, because both draft the graph root.
+- **`brainstorming`** 把这个仓库对自己所持的纪律（“规范领路于代码”）应用于产品所作所为的每一次改动：
+  请求 → 在规范图的 `task-spec` 里做面谈式设计 → 修订持久规范 → 实现。对一个功能、一次行为变更或一个
+  bug 修复，无论多小，它都是默认；只有不改变任何行为的工作绕过它。这个默认之所以存在，是因为用户看重
+  在任何东西被建造之前先被提问 —— 面谈很严苛，但正是它让最终产出的规范被理解、被信任。一个由 agent
+  自己判断的门禁（“这个已经规范过了吗？”）让大多数工作既跳过了面谈也跳过了规范更新，图便随时间与代码
+  漂移开去。深度随改动伸缩，并且绝不降到零：一次小改动得到一轮简短面谈和几行任务规范。
+  面谈分两个阶段 —— **先产品**（为什么、给谁、用户会看到什么、我们怎么知道它完成了），然后**技术**
+  （方案、约束、验证）—— 中间一个检查点，在任何技术选择做出之前确认产品理解。请求里明确的答案不会被
+  重问，而一个明确的设计或验收标准仍然算作批准。agent 考虑过并否决的替代方案 —— 尤其是代码住在哪里
+  （服务端还是浏览器，契约还是展示）—— 连同它的取舍一起展示，绝不静默决定：一个由 agent 自己判断的
+  可行性门禁曾让它选了一个用户从未见过的方案。这里刻意没有单独的计划制品；规范就是计划。
+  未决的用户决策通过 `asking-user-questions` 分轮面谈，直到没有一项被留在假定状态。
+  **Bug** 走 `fixing-a-bug.md` 分支：bug 是记录下来的意图与行为之间的差距，所以该分支先对规范所说的内容
+  分类 —— 沉默、错误、对的但只有代码错，或者这个“bug”其实是一个新功能（回到主流程）—— 并在代码之前
+  在任务规范里定下预期的行为。像每一次改动一样，持久规范在建造之后被修订，因此它记录下了实际建造的
+  东西；任务规范才是领路修复的那一份。
+  **规范修订**（`amending-specs.md`，两条路径的共享尾部）是 agent 自己的工作，不是一轮用户批准 ——
+  按用户决定：它自上而下工作（目标 → 架构 → 模块），然后把结果与实际建造的东西对照检查，并在一两行里
+  报告；Changes 评审是用户看到差异（diff）的地方。它先加载 `writing-specs`。
+- **setting-up-a-project 三件套**随 Welcome 屏幕的工作到来（当时叫 `project-setup` / `project-new` /
+  `project-import`；按规则 15 改名），并就地适配到这个系统。
+  `setting-up-a-project` 是一个**子路由器**（分发器）：它探查工作区以分类
+  （有规范 / 空 / 只有代码）—— 按规则 2，那是路由，不是工作 —— 并且从根
+  路由器、靠自触发、以及靠应用里 "Set up project" 卡片的 `/skill:setting-up-a-project`
+  种子到达：正是那个直接入口点在规则 1 的可寻址性检验下证明了它配得上成为一个技能
+  （`starting-a-new-project` / `importing-a-codebase` 同样是单一使用方的技能，靠情况不会认错时的
+  直接可达性证明正当）。`starting-a-new-project` 提炼了旧
+  thinkrail 的 `new-project` 移植 ——
+  工作模型推断、个人 vs PRD 路由、MVP 优先的引导、替代方案调研、
+  增量保存；看板/进度追踪器的机制被丢掉（这里没有对应物）。`importing-a-codebase`
+  （净新）从代码 + agent 文件反向工程出第一份规范图，只为代码无法揭示的
+  意图做面谈。那份意图总是包含每个并非显而易见的决策背后的*为什么*以及已知局限：
+  没有它们，一份规范记录的是代码做了什么，而不是后续改动必须保留什么，因此面谈会问它们（推断出的答案
+  提供出来供纠正），而不是把理由留给运气。它的文档采纳提议（2026-07）之所以存在，是因为文档良好的、
+  尚未写规范的仓库在导入时正在丢掉自己的文档：持久声明式文档（绝不是计划或
+  流程文件）在面谈轮里被提出并**就地**采纳 —— 只加 frontmatter，这样
+  “每件事只说一次”成立、用户的话仍然是他们的话、差异在 Changes 里可评审 ——
+  而不是被提炼成会漂移的平行节点；被采纳的散文只在它不清晰或与代码漂移之处被修正，
+  而每一处修正都会向用户标出。适配的触点刻意做到最少：描述被修剪到
+  触发条件（规则 5），内联的提问规范换成指向 `asking-user-questions` 的指针（规则
+  7），结尾变得显式（规则 6），之后漂移的规范标尺副本
+  被抽取成 `writing-specs`（规则 3/7）—— 流程本身未被动过。
+  `starting-a-new-project` 的保存形态后来又修订过（2026-09）：V1 功能与 MVP 范围
+  （`In v1` / `Out of v1`）两节让位给“能力 + 非目标”，而收尾现在以
+  `draft → active` 而非 `done` 翻转。一份按版本切分的目标文档在工作交付的那一刻就陈旧了：
+  ThinkRail 自己的 V1/V2 目标文档积累了 "ships in V1 as …" 这样的豁免，而 agent 把它“不在
+  V1 里”的清单读成对正在建造的工作的禁令。MVP 纪律以引导的形式存活下来（最小
+  可用的首次建造）；被砍掉的东西回到用户那里，而不是进入一份以后再说清单。
+- **`asking-user-questions`** 一次性地承载这一族的 `ask_user_question` 规范：轮次、选项
+  设计、推断确认模式，以及跳过/无头降级。调用方保留*何时* ——
+  并说明假定记录在哪里。
+- **`shipping-a-pr`** 是从运营者真实的 PR 会话里挖出来的（2026-06→08：扫描 125 次，其中 36
+  次含 PR 工作）：反复出现的请求 —— 先验证再发 PR、先自审、在最新的 main 上 rebase、
+  UI 改动配截图、“把 PR 更新到最新”、“看一下检查”、“不要盲目修
+  评审评论” —— 变成了它的门禁与阶段文档。一个技能而不是五个（规则 1）：每一个
+  生命周期请求都经由同一个触发进入；各阶段是作为兄弟文档的内部分叉。在
+  创建时，仓库的 PR 模板拥有正文小节、顺序与清单；通用的
+  Summary/Changes/Testing 形态只是无模板时的回退。完成模式跟随用户
+  要求的结果，而不是该阶段是否推高了 PR 头。普通创建、同步、
+  头更新、元数据维护与一次性状态请求都做一次新的检查 + 合并状态
+  快照然后停下；只有明确的远程完成请求才进入等待模式。本地验证是
+  证据感知的：已经针对最终改动跑过的确切检查会被复用，而缺失或
+  已失效的门禁会在之后的编辑、相关依赖或基线变更，以及冲突
+  解决之后运行。证据必须在每一次影响代码的推送之前覆盖最终树，因此验证或
+  自审的修正会循环经过重新评估。配置了 CI 时，CI 是最后的完整验证层。
+  等待模式的合并就绪状态保持显式：`CLEAN` 成功；`HAS_HOOKS` 成功，但带一条 pre-receive hooks 的
+  保留说明；`UNKNOWN` 被轮询；`BEHIND`/`DIRTY` 同步；而 `BLOCKED`/`UNSTABLE` 保持非肯定，并
+  报告 `reviewDecision`。草稿状态单独读取，且绝不被称为合并就绪。空的
+  检查汇总是不确定的；一个没有 CI 的仓库只在那种缺失被独立确认之后才被报告。
+  这避免了重复有效的开发期检查，也避免把例行的 PR 交付变成一次未被请求的 CI 监视，同时在请求
+  作出承诺的地方保住合并就绪的标尺。仅评审用的 assets-ref 截图默认值是一个明确的用户
+  决定（任务规范 `task-shipping-a-pr-skill`）。它的评审加固
+  （PR #284）收敛为一条共享纪律，而不是逐个发现的补丁 —— **观察，绝不
+  假定**：三轮评审中的每一个发现都是同一个缺陷（对动作发生的那一刻未被观察到的状态采取行动或
+  加以宣告），所以这条规则只在主干里存一次 —— 在动作点验证、新鲜且完整地
+  拉取远程状态、轮询不确定的回答 —— 而每份阶段文档在它自己的动作点上实例化它（树变更步骤之后
+  的推送前重新断言、标题/正文重新拉取并把所请求的修改重新应用到新鲜的值上、
+  `UNKNOWN` 合并状态被轮询、一次性用品的清理归属于制造那个一次性用品的阶段）。
+- **`writing-specs`** 一次性地承载这一族的规范质量标尺 —— 短 / 诚实 / on-rails —— 并且是
+  这一族关于规范与规范图的规则随着它们生长而不断累积的家。图
+  *机制*（frontmatter、链接种类、`spec_*` 工具）留在 spec-graph 技能那里
+  （[[module-spec-graph]]）；这个概念是各工作流在它们之上所持的标尺。按
+  规则 3/7 抽取，当时 setup 三件套带着三份漂移的标尺副本（而分发器 —— 一个
+  路由器 —— 带着它不该带的规范，按规则 2）。目标文档的形态（一份活的、没有
+  版本或路线图的产品记录）住在这里，不在任何一个 setup 工作者里，因为两者都会起草图的根。

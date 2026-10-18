@@ -1,59 +1,54 @@
 ---
 name: choosing-a-workflow
-description: "Use at the start of new project onboarding, PR lifecycle work including PR checks, or any change to what the product does — a feature, a behavior change, or a bug fix. Not for continuing work already routed to a workflow, non-PR questions, checks, explanations, or edits that change no behavior."
+description: "在新项目接入开始时使用，或在 PR 生命周期工作（含 PR 检查）开始时使用，或在对产品所做的事有任何改动时使用 —— 一个 feature、一处行为变更，或一个 bug fix。不适用于继续已路由到某个工作流的工作、与 PR 无关的提问、检查、解释，或不改变行为的编辑。"
 ---
 
-# Choosing a Workflow
+# 选择工作流
 
-The root router of the workflow family in `packages/pi-thinkrail-workflow`. It classifies new
-workflow-eligible work and names the workflow skill that governs it — nothing more. Work already routed
-resumes its active workflow instead. A routed skill's steps live in that skill alone; read it, don't run
-it from memory.
+`packages/pi-thinkrail-workflow` 里工作流一族的根路由器。它对新出现的、符合工作流条件的工作做
+分类，并点名管辖它的那个工作流技能 —— 仅此而已。已经路由过的工作则回到它当前活跃的工作流。被路由
+到的技能的步骤只存在于该技能中；去读它，不要凭记忆执行它。
 
-## Classify
+## 分类
 
-For a new piece of work, read the request and use what is already known to answer three questions:
+对于一件新工作，读请求，并用已知的信息回答三个问题：
 
-1. **Is this project onboarding?** No spec graph yet — an empty or effectively empty workspace where
-   the user brings a raw idea, or an existing codebase being set up or specced for the first time.
-2. **Is this the PR lifecycle?** Finished work shipping as a pull request, or an existing PR being
-   tended — created, brought up to date, given screenshots, its checks watched, or its review comments
-   addressed. Fixes that flow from a PR's own review comments belong here.
-3. **Does the work change what the product does?** A new feature, a change in behavior, or a bug
-   fix — however small, and even when the request already spells out the design. A detailed request
-   shortens the interview; it never skips it.
+1. **这是项目接入吗？** 还没有规范图 —— 一个空的或实际上为空的工作区、由用户带来一个未成形的
+   想法，或一个正在被搭建、或第一次被写规范的既有代码库。
+2. **这是 PR 生命周期吗？** 已完成的工作要作为 pull request 发布，或一个既有 PR 正被照看 ——
+   创建、更新到最新、补充截图、盯着它的检查、处理它的评审评论。由某个 PR 自身评审评论衍生出的
+   修复属于这里。
+3. **这项改动改变产品所做的事吗？** 一个新 feature、一处行为变更，或一个 bug fix —— 无论多小，
+   即使请求已经把设计写清楚了也一样。详细的请求会缩短访谈，但绝不跳过访谈。
 
-If none applies, no workflow is needed: proceed directly without a workflow announcement. Only work
-that changes no behavior belongs here: a non-PR question, explanation, or check; a typo, documentation, or
-configuration-only edit; a mechanical refactor such as a rename.
+如果都不适用，就不需要工作流：直接继续，不要宣告工作流。只有不改变行为的工作属于这种情况：
+与 PR 无关的提问、解释或检查；拼写错误、仅文档或仅配置的编辑；诸如重命名这样的机械式重构。
 
-If the route is genuinely ambiguous from the request alone, ask one short clarifying question
-(`ask_user_question`, composed per the **asking-user-questions** concept skill) rather than guessing.
+如果仅凭请求真的无法确定路由，就问一个简短的澄清问题（`ask_user_question`，按
+**asking-user-questions** 概念技能的要求组织），而不是靠猜。
 
-## Route
+## 路由
 
-| Classification | Route |
+| 分类 | 路径 |
 |---|---|
-| Project onboarding — no spec graph yet | Read and follow **setting-up-a-project** |
-| PR lifecycle work | Read and follow **shipping-a-pr** |
-| A feature, behavior change, or bug fix | Read and follow **brainstorming** |
-| None of the above | No matching workflow; proceed directly without announcing the routing result |
+| 项目接入 —— 还没有规范图 | 读并遵循 **setting-up-a-project** |
+| PR 生命周期工作 | 读并遵循 **shipping-a-pr** |
+| 一个 feature、一处行为变更，或一个 bug fix | 读并遵循 **brainstorming** |
+| 以上都不是 | 无匹配工作流；直接继续，不要宣告路由结果 |
 
-One route per piece of work. If a request bundles unfinished implementation with PR work, route the
-implementation first and return to **shipping-a-pr** only after it lands.
+每件工作只有一条路由。如果请求把未完成的实现和 PR 工作捆在一起，先路由实现部分，等它落地之后
+才回到 **shipping-a-pr**。
 
-## Red flags — stop and re-route
+## 危险信号 —— 停下并重新路由
 
-- You started implementing a feature, behavior change, or bug fix without going through
-  **brainstorming**.
-- "It's small" or "the request is already specific" — neither is a reason to skip; the workflow
-  scales down, it does not switch off.
-- You loaded **brainstorming** for work that changes no behavior (a rename, a typo, a question).
-- You re-entered this router while continuing work already assigned to a workflow.
-- You are following a routed skill's steps from memory instead of reading that skill.
+- 你开始实现一个 feature、一处行为变更或一个 bug fix，却没有走 **brainstorming**。
+- “这很小”或“请求已经很具体了” —— 两者都不是跳过的理由；工作流会缩小，但不会关闭。
+- 你为一个不改变行为的工作（一次重命名、一个拼写错误、一个问题）加载了 **brainstorming**。
+- 你在继续已分配给某个工作流的工作时，重新进入了这个路由器。
+- 你在凭记忆执行被路由到的技能的步骤，而不是去读那个技能。
 
-## Handoff
+## 交接
 
-This skill ends by naming exactly one of: **setting-up-a-project**, **shipping-a-pr**,
-**brainstorming**, or **no matching workflow** (proceed directly). Adding a workflow to the family
-adds a row to the table above — see the **writing-workflow-skills** skill.
+本技能结束时，恰好点名以下之一：**setting-up-a-project**、**shipping-a-pr**、
+**brainstorming**，或**无匹配工作流**（直接继续）。往这一族里新增一个工作流，就是给上面的表格
+加一行 —— 参见 **writing-workflow-skills** 技能。

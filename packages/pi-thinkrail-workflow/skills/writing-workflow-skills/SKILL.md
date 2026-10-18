@@ -1,107 +1,95 @@
 ---
 name: writing-workflow-skills
-description: "Use when adding a new workflow skill to pi-thinkrail-workflow, changing an existing workflow skill's role, trigger, handoff, or structure, or checking a workflow skill against the workflow system's rules. Not for authoring general-purpose skills outside this package."
+description: "当给 pi-thinkrail-workflow 添加一个新的工作流技能、改动既有工作流技能的角色、触发、交接或结构，或对照工作流系统的规则检查某个工作流技能时使用。不适用于在本包之外编写通用技能。"
 ---
 
-# Writing Workflow Skills
+# 编写工作流技能
 
-The authoring checklist for workflow skills in `packages/pi-thinkrail-workflow`. It carries the *what
-to do*; every *why* — the concept model, the three roles, the meta-rules cited as "(rule N)" below —
-lives once in the workflow-system spec beside this directory, **`skills/SPEC.md`**. Read that spec
-first; where this checklist and that spec disagree, the spec wins.
+`packages/pi-thinkrail-workflow` 里工作流技能的编写清单。它承载的是*要做什么*；每一个*为什么*
+—— 概念模型、三种角色、以及下文以“（规则 N）”引用的元规则 —— 只在一处存在：本目录旁边的工作流
+系统规范 **`skills/SPEC.md`**。先读那份规范；当这份清单与那份规范不一致时，以规范为准。
 
-**Workspace guard.** This checklist edits `packages/pi-thinkrail-workflow` in the thinkrail repo. If
-that package is not in the current workspace (a ThinkRail-managed project, where these skills are a
-read-only staged cache), the family cannot be extended from here: say so in one line and stop — the
-terminal state for foreign workspaces.
+**工作区守卫。** 这份清单编辑的是 thinkrail 仓库里的 `packages/pi-thinkrail-workflow`。如果那个
+包不在当前工作区里（一个由 ThinkRail 管理的项目 —— 那里这些技能是一份只读的暂存缓存），就无法从
+这里扩展这一族：用一行说明这一点并停下 —— 这是外部工作区的终止状态。
 
-## Design (before writing)
+## 设计（编写之前）
 
-- [ ] Read `skills/SPEC.md`: concept model, the three roles, meta-rules 1–15.
-- [ ] Scope the skill to one externally reachable workflow — or, for a concept, one topic (rule 1).
-      Internal forks, branches, stages, and shared tails are sibling docs, planned with the choice
-      rules in the doc (or spine) before the fork; a doc is promoted to its own skill when it needs
-      independent addressability (an external caller, a genuine self-trigger, or a direct entry point
-      such as a `/skill:` command seed) — never for shape or size alone.
-- [ ] Pick the role (rule 2): **router** (classification rules + handoffs, nothing else), **worker**
-      (one phase's steps), or **concept** (one topic's reusable rules/mental model — no steps, no
-      handoffs).
-- [ ] For a concept: confirm a second skill needs it (rule 3) — reference detail with a single
-      consumer stays a sibling file, not a concept skill.
-- [ ] Pick the ending (rule 6): a router ends by naming what runs next; a worker ends with a fixed
-      successor, back to its caller, or a declared terminal state — an internally forking worker ends
-      by naming the sibling doc that continues the flow, with the terminal state declared in the doc
-      where the flow ends; a concept has no ending at all — it writes no ending section, control
-      simply returns to its reader. Know the exact wording before writing the body.
-- [ ] If the change reshapes the system itself — a new role, a new meta-rule, a changed entry model or
-      topology — stop: update `skills/SPEC.md` first, then come back here (rule 13).
+- [ ] 读 `skills/SPEC.md`：概念模型、三种角色、元规则 1–15。
+- [ ] 把技能的范围限定在一个可从外部触及的工作流上 —— 对于概念技能，则限定在一个主题上（规则 1）。
+      内部分叉、分支、阶段和共享尾部都是兄弟文档，在分叉之前就用文档（或主干）里的选择规则规划好；
+      一份文档在需要独立可寻址性时才被提升为独立技能（一个外部调用方、一个真正的自触发，或一个
+      直接入口，例如 `/skill:` 命令种子）—— 绝不只因为形态或体量。
+- [ ] 选定角色（规则 2）：**路由器**（分类规则 + 交接，别无其他）、**工作者**（一个阶段的步骤），
+      或**概念**（一个主题的可复用规则/心智模型 —— 没有步骤，没有交接）。
+- [ ] 对于概念技能：确认还有第二个技能需要它（规则 3）—— 只有一个使用方的参考细节留在兄弟文件里，
+      不升格为概念技能。
+- [ ] 选定结尾方式（规则 6）：路由器以点名接下来运行什么来结尾；工作者以固定的后继、回到它的调用
+      方、或一个声明过的终止状态来结尾 —— 内部有分叉的工作者以点名继续流程的那份兄弟文档来结尾，
+      终止状态声明在流程结束的那份文档里；概念技能完全没有结尾 —— 它不写结尾一节，控制权直接回到
+      它的读者手里。在写正文之前就要知道确切的措辞。
+- [ ] 如果这次改动重塑了系统本身 —— 一个新角色、一条新元规则、改变的入口模型或拓扑 —— 停下：先
+      更新 `skills/SPEC.md`，然后再回到这里（规则 13）。
 
-## Write
+## 编写
 
-- [ ] Name the skill verb-first, active voice, kebab-case (rule 15): a gerund for process skills, the
-      topic for a concept — name the work or the insight, never the artifact or a role. Directory
-      name = frontmatter `name`.
-- [ ] Create `skills/<name>/SKILL.md` with frontmatter `name` + `description`. Nothing else changes —
-      `package.json`'s `pi.skills` already points at `./skills`.
-- [ ] `description` = triggering conditions only, "Use when …" (plus a "Not for …" negative trigger if
-      the boundary is confusable) — never a summary of the steps (rule 5). Skills are reached by
-      routing; a self-trigger description is for unmistakable triggers only (rule 4).
-- [ ] Keep every file under ~150 lines (rule 3) — the `SKILL.md` spine and each sibling doc. Internal
-      workflow nodes (branches, stages, shared tails) and heavy reference material live in sibling
-      docs inside `skills/<name>/`, named in the exact step that hands to them; the spine carries the
-      doc map, and each internal-node doc opens with a one-line contract (entry state, what it saves,
-      where control goes next).
-- [ ] Say each thing once (rule 7): cross-reference other skills by name; never inline another skill's
-      steps, never force-load its files.
-- [ ] Put gates where discipline matters, matching the form to the failure (rule 11): prohibitions +
-      red flags for discipline violations, positive recipes for output shape.
-- [ ] Durable output goes to the spec graph (rule 8). If the workflow needs ephemeral working files —
-      resume state, scratch plans — declare them (rule 9): name their shape in the skill and put them
-      in the workspace's gitignored `.thinkrail/context/` (the home for every temp doc), consume/delete
-      them when the work lands, and promote anything durable to specs before cleanup.
-- [ ] End the body by naming the ending chosen in Design (rule 6) — a concept skips this: no ending
-      section.
+- [ ] 用动词开头、主动语态、kebab-case 来命名技能（规则 15）：流程类技能用动名词，概念技能用主题
+      词 —— 命名那项工作或那个洞见，绝不命名产物或角色。目录名 = frontmatter 的 `name`。
+- [ ] 创建 `skills/<name>/SKILL.md`，frontmatter 只含 `name` + `description`。其他都不变 ——
+      `package.json` 的 `pi.skills` 已经指向 `./skills`。
+- [ ] `description` = 只写触发条件，“Use when …”（如果边界容易混淆，再加一个“Not for …”的否定
+      触发语）—— 绝不是步骤的摘要（规则 5）。技能是靠路由到达的；自触发式描述只用于不会认错的
+      触发（规则 4）。
+- [ ] 每个文件保持在约 150 行以内（规则 3）—— `SKILL.md` 主干和每一份兄弟文档。内部工作流节点
+      （分支、阶段、共享尾部）和厚重的参考资料住在 `skills/<name>/` 里的兄弟文档中，在交接到它们的
+      那个确切步骤里被点名；主干承载文档地图，每份内部节点文档以一个一行契约开头（入口状态、它保存
+      什么、控制权接下来去哪里）。
+- [ ] 每件事只说一次（规则 7）：按名字交叉引用其他技能；绝不把另一个技能的步骤内联进来，绝不强制
+      加载它的文件。
+- [ ] 把门禁放在纪律要紧的地方，让形式与失败方式相配（规则 11）：对纪律违背用禁令 + 危险信号，
+      对输出形态用正向配方。
+- [ ] 持久的输出进入规范图（规则 8）。如果工作流需要临时工作文件 —— 续跑状态、草稿计划 —— 就把
+      它们声明出来（规则 9）：在技能里写明它们的形态，把它们放进工作区里被 gitignore 的
+      `.thinkrail/context/`（每份临时文档的家），在工作落地时消费/删除它们，并在清理之前把任何
+      持久内容提升为规范。
+- [ ] 在正文结尾点名在“设计”里选定的结尾方式（规则 6）—— 概念技能跳过这一步：不写结尾一节。
 
-## Register (rule 12)
+## 登记（规则 12）
 
-- [ ] Add one routing line in the router that owns the new skill: the root router
-      (`skills/choosing-a-workflow/SKILL.md`) by default, or the nearest sub-router when the skill is
-      a branch under an already-routed workflow (fractal routing). Exception (rule 4): a skill outside
-      any router's work classification — self-trigger-only skills and concept skills — skips the
-      router line; that's a designed property of the skill, never a size call, and it is instead named
-      in `skills/SPEC.md`'s family table as outside the routing table.
-- [ ] Add or update the skill's row in `skills/SPEC.md`'s **Workflow family** table, including its
-      **Routed from** entry (which router routes to it — or that it sits outside the routing table).
-- [ ] Nothing else should have changed shape — if it did, revisit rule 13 in Design.
+- [ ] 在拥有这个新技能的路由器里加一行路由：默认是根路由器
+      （`skills/choosing-a-workflow/SKILL.md`），或者当该技能是某个已路由工作流下的分支时，用最近的
+      子路由器（分形路由）。例外（规则 4）：位于任何路由器工作分类之外的技能 —— 仅自触发的技能和
+      概念技能 —— 跳过路由行；那是技能一项有意的设计属性，绝不是按体量决定的做法，取而代之，它会
+      在 `skills/SPEC.md` 的族表里被标注为在路由表之外。
+- [ ] 在 `skills/SPEC.md` 的 **Workflow family** 表里添加或更新该技能那一行，包括它的
+      **Routed from** 条目（哪个路由器路由到它 —— 或者它位于路由表之外）。
+- [ ] 其他任何东西都不应该改变形态 —— 如果变了，回到“设计”里的规则 13。
 
-## Verify by use (rule 14 — currently suspended)
+## 以使用验证（规则 14 —— 目前暂停）
 
-- [ ] Rule 14 is a known limitation today, not a done-gate (see `skills/SPEC.md`). When practical,
-      still run a real request through the new or changed skill and watch it flow: the router (or
-      the description) triggers it, the body is followed, the ending fires as designed. For a
-      concept: a referencing skill (or its self-trigger) loads it and its rules are applied.
-- [ ] Either way, keep the family-table row honest: `unverified by use` until a run has been
-      observed; update the row when one has.
+- [ ] 规则 14 目前是一项已知限制，不是完成门禁（见 `skills/SPEC.md`）。在可行时，仍然让一个真实
+      请求跑过新增或改动的技能，并观察它如何流动：路由器（或描述）触发了它，正文被遵循，结尾按设计
+      触发。对于概念技能：某个引用它的技能（或它的自触发）加载它，它的规则被应用。
+- [ ] 不论哪种情况，都让族表那一行保持诚实：在观察到一次运行之前是 `unverified by use`；观察到
+      之后就更新那一行。
 
-## Red flags — stop and fix
+## 危险信号 —— 停下并修正
 
-- The `description` mentions any step of the workflow.
-- The name is noun-first or names an artifact/role instead of the work (rule 15).
-- The body of a router or worker ends without naming a successor or terminal state.
-- A concept skill contains steps, routing, a handoff, or an ending section.
-- The same rules are copied into two skills instead of extracted into a concept (rule 7).
-- A step restates another skill's (or `skills/SPEC.md`'s) content instead of pointing at it.
-- An internal node that nothing outside the skill reaches was made its own skill (or given
-  frontmatter) — internal nodes are sibling docs, not skills (rule 1).
-- "Too small to need a router line / family-table row." Every skill registers (rule 12); skipping the
-  router line is only for self-trigger-only skills and concept skills per rule 4 — size is never the
-  reason.
-- Calling a skill *verified* without a real request observed flowing through it — rule 14 is
-  suspended as a done-gate, but an unobserved skill is still `unverified by use`, never "verified".
+- `description` 提到了工作流的任何步骤。
+- 名字是名词开头，或命名的是产物/角色而不是那项工作（规则 15）。
+- 路由器或工作者的正文结尾没有点名后继或终止状态。
+- 概念技能里含有步骤、路由、交接或结尾一节。
+- 同一批规则被复制进两个技能，而不是抽取成一个概念（规则 7）。
+- 某个步骤复述了另一个技能（或 `skills/SPEC.md`）的内容，而不是指向它。
+- 一个技能外部任何东西都触及不到的内部节点被做成了独立技能（或给了它 frontmatter）—— 内部节点
+  是兄弟文档，不是技能（规则 1）。
+- “太小了，不需要路由行 / 族表行。”每个技能都要登记（规则 12）；跳过路由行只适用于按规则 4 的
+  仅自触发技能和概念技能 —— 体量永远不是理由。
+- 在没有观察到真实请求流过的情况下就把某个技能称为*已验证* —— 规则 14 作为完成门禁被暂停了，但
+  一个没被观察过的技能仍然是 `unverified by use`，绝不是“已验证”。
 
-## Done (terminal state)
+## 完成（终止状态）
 
-This checklist ends here — no successor skill. Done means: `skills/<name>/SKILL.md` exists and passes
-the checks above, and the router line and family-table row are in place — the row honestly marked
-`unverified by use` until a real request has been observed flowing through the skill (rule 14,
-currently suspended as a done-gate).
+这份清单在此结束 —— 没有后继技能。“完成”意味着：`skills/<name>/SKILL.md` 存在并通过上面的各项
+检查，并且路由行和族表行都已就位 —— 该行诚实地标为 `unverified by use`，直到观察到真实请求流过
+该技能（规则 14，目前作为完成门禁被暂停）。

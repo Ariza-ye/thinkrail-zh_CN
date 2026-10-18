@@ -1,38 +1,37 @@
 ---
 name: setting-up-a-project
-description: "Use when asked to set up, onboard, initialize, or spec a project with no spec graph, or when invoked by the app's Set-up-project card. Not for ordinary work in an already-specced project."
+description: "当被要求为一个没有规范图的项目做搭建、接入（onboarding）、初始化或写规范时使用，或被应用的 Set-up-project 卡片调用时使用。不适用于已经有规范的项目的日常工作。"
 ---
 
-# Setting up a project — dispatcher
+# 设置项目 —— 分派器
 
-The single entry point for turning a project into a spec graph. Figure out which situation you're in, then
-follow the matching skill — don't improvise the flow yourself.
+把项目变成规范图的唯一入口。先弄清你处在哪种情形，然后遵循与之匹配的技能 —— 不要自己临场
+发挥流程。
 
-## 1. Detect
+## 1. 探测
 
-Look at the workspace and use the spec tools (`spec_grep` / `spec_graph`):
+看一下工作区，并使用规范工具（`spec_grep` / `spec_graph`）：
 
-- Is there already a spec graph (a `goal-and-requirements.md` or any `SPEC.md`)?
-- Is there real source code, or is the repo empty / near-empty (just a README or scaffolding)?
+- 是否已经有规范图（一份 `goal-and-requirements.md` 或任意 `SPEC.md`）？
+- 是否有真实的源码，还是仓库为空 / 接近为空（只有 README 或脚手架）？
 
-## 2. Route
+## 2. 路由
 
-| Situation | Follow |
+| 情形 | 遵循 |
 |---|---|
-| **Already has specs** | Don't redo it. Briefly offer to review/extend the graph (fill obvious gaps — a missing `architecture.md`, un-specced modules). Other work routes as usual: features, behavior changes, and bug fixes through `brainstorming`; work that changes no behavior proceeds directly. Declined → stop. Accepted → **Graph extension** below. |
-| **No specs · empty / near-empty repo** | The **`starting-a-new-project`** skill — interview the user to turn the idea into `goal-and-requirements.md`. |
-| **No specs · real source code** | The **`importing-a-codebase`** skill — analyze the code + agent files and draft the first spec graph, asking only for intent the code can't reveal. |
+| **已经有规范** | 不要重做。简短地提出可以评审/扩展规范图（补上明显的空白 —— 缺失的 `architecture.md`、还没写规范的模块）。其他工作照常路由：feature、行为变更和 bug 修复走 `brainstorming`；不改变行为的工作直接继续。被拒绝 → 停下。被接受 → 见下面的**扩展规范图**。 |
+| **没有规范 · 空 / 接近为空的仓库** | **`starting-a-new-project`** 技能 —— 访谈用户，把想法变成 `goal-and-requirements.md`。 |
+| **没有规范 · 有真实源码** | **`importing-a-codebase`** 技能 —— 分析代码与 agent 文件，起草第一版规范图，只询问代码无法揭示的意图。 |
 
-Read and follow that skill's steps.
+读并遵循那个技能的步骤。
 
-## Graph extension (no dedicated skill)
+## 扩展规范图（没有专门技能）
 
-No dedicated skill covers extending an existing graph. If the offer is accepted, align and adapt to
-the user's request with your own judgment, holding the **writing-specs** bar without a routing
-announcement.
+没有专门技能负责扩展现有规范图。如果提议被接受，用你自己的判断去对齐并适配用户的请求，守住
+**writing-specs** 的标准，但不要宣告路由。
 
-## Handoff
+## 交接
 
-Ends by naming exactly one of: **starting-a-new-project**, **importing-a-codebase**, or — when specs
-already exist — the review/extend offer above (declined → stop; accepted → graph extension on
-judgment against the **writing-specs** bar).
+结束时恰好点名以下之一：**starting-a-new-project**、**importing-a-codebase**，或者 —— 当规范
+已经存在时 —— 上面的评审/扩展提议（被拒绝 → 停下；被接受 → 凭判断、对照 **writing-specs** 的
+标准做规范图扩展）。

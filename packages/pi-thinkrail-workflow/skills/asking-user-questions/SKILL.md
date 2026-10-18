@@ -1,112 +1,98 @@
 ---
 name: asking-user-questions
-description: "Use when composing an ask_user_question round inside a workflow, or when a workflow skill names it at a question step. Shared norms for the tool — not a workflow, nothing to execute."
+description: "当你在工作流内部组织一轮 ask_user_question 提问时使用，或当某个工作流技能在提问步骤点名它时使用。该工具的共享规范 —— 不是工作流，没有要执行的内容。"
 ---
 
-# Asking User Questions
+# 向用户提问
 
-The workflow family's shared norms for `ask_user_question`: how to interview in rounds, what makes a
-question worth asking, how to shape options, and how to degrade when answers don't come. Process
-skills name this concept at the steps that ask; *when* to ask — and where the answers get recorded —
-stays with the referencing skill.
+工作流一族对 `ask_user_question` 的共享规范：如何按轮次访谈、什么样的问题值得问、如何构造选项，
+以及答案不来时如何降级。流程类技能在发起提问的步骤上点名这一概念；*何时*提问 —— 以及答案记录在
+哪里 —— 由引用它的技能决定。
 
-## Interview in rounds until nothing is assumed
+## 按轮次访谈，直到没有任何假设
 
-- Map the subject as a **design tree**: every decision branches into the decisions that hang off it.
-  The **frontier** is every open decision whose prerequisites are already settled — the questions you
-  can ask *now* without guessing at answers you haven't heard.
-- One call = one **round** = the whole frontier, with no cap on its size. A question whose answer
-  depends on another question still open belongs to a *later* round, never the same one. Never split
-  independent questions across back-to-back calls.
-- **The call blocks the current run.** Answers arrive as this tool's result. Don't keep working on the
-  blocked step or assume an answer until it arrives — seconds or days later. A composer message sent
-  while the card is open supersedes the round: the card closes unanswered and the message arrives as
-  the next user message, so treat it as the user's reply and re-ask only what still matters.
-- After each round, recompute the frontier: answers settle branches, unblock their dependents, and
-  prune branches that no longer apply. Ask the next round; never pre-write later rounds.
-- The interview is done when the frontier is empty — every branch visited, nothing material silently
-  assumed. Then continue the referencing skill's next step; there is no extra "are we aligned?" round
-  (the referencing skill's own gates still apply).
-- Depth follows the work, not a quota: work with no open user decision gets zero rounds; a
-  decision-heavy change may take several.
+- 把主题映射成一棵**设计树**：每个决策都分叉出挂在它之下的决策。**前沿**是其前置条件已经确定的
+  全部未决决策 —— 也就是你*现在*就能问、不必去猜还没听到的答案的那些问题。
+- 一次调用 = 一个**轮次** = 整个前沿，对其规模不设上限。答案依赖另一个仍未决问题的问题，属于
+  *后续*的轮次，绝不属于同一轮。绝不把彼此独立的问题拆到紧挨着的多次调用里。
+- **该调用会阻塞当前运行。** 答案以该工具结果的形式到达。在它到达之前 —— 可能是几秒，也可能是
+  几天之后 —— 不要继续推进被阻塞的步骤，也不要假设答案。卡片打开期间从输入框发出的消息会取代
+  本轮：卡片以未回答的状态关闭，该消息作为下一条用户消息到达，因此把它当作用户的回复，并且只
+  重新询问仍然重要的部分。
+- 每轮之后重新计算前沿：答案会确定分支、解锁它们的依赖项，并剪掉不再适用的分支。接着问下一轮；
+  绝不预先写好后续轮次。
+- 当前沿为空时访谈结束 —— 每个分支都已走到，没有任何实质内容被默默假设。然后继续引用该概念的
+  技能的下一步；不存在额外的“我们达成一致了吗？”轮次（引用技能自身的门禁仍然适用）。
+- 深度随工作而定，不按配额：没有待用户决策的工作得到零轮访谈；决策密集的改动可能需要好几轮。
 
-## Facts are yours, decisions are theirs
+## 事实归你，决策归他们
 
-- Never ask the user for a fact the workspace, the specs, or the web can answer. Look it up. When a
-  lookup is slow, start it in the background (a sub-agent, when the host offers one) and ask the rest
-  of the frontier meanwhile — only the questions downstream of that lookup wait.
-- Every decision — scope, observable behavior, trade-offs the user will live with — goes to the user.
-  Picking an option yourself and moving on is answering your own question, not inferring.
-- If candidate options differ only internally — identical observable behavior — it is not a user
-  decision: decide yourself and record the reasoning in the workflow's artifact.
+- 绝不要向用户询问工作区、规范或网络就能回答的事实。去查。当查询很慢时，把它放到后台启动
+  （宿主提供子代理时，就用子代理），同时询问前沿的其余部分 —— 只有该查询下游的问题需要等待。
+- 每个决策 —— 范围、可观察行为、用户将要长期承受的取舍 —— 都交给用户。自己挑一个选项然后继续，
+  那是在自问自答，不是推断。
+- 如果候选项只在内部实现上不同 —— 可观察行为完全一致 —— 那它就不是用户决策：自己决定，并把理由
+  记录在该工作流的产物（artifact）里。
 
-## What makes a question worth asking
+## 什么样的问题值得问
 
-- **It changes the outcome.** Each answer leads somewhere different that the user will see or live
-  with. If every option ends in the same place, drop the question.
-- **It is specific to this work.** Name the actual feature, screen, file, or user ("when a project is
-  renamed while collapsed…"), never a generic template question.
-- **It probes what people silently assume.** Sweep the tree's usual blind spots: scope edges and
-  non-goals, empty / error / failure states, edge cases and limits, concurrency or multiple
-  instances, existing data and behavior that must migrate or stay, defaults, and who the work is for.
-- **It surfaces tension.** A conflict with a recorded spec decision, an earlier answer, or the
-  request itself is asked about outright, quoting both sides.
-- **It never re-asks.** Anything the request, a prior answer, or the specs already settled is
-  settled; build on it.
-- **A concrete scenario beats an abstract principle.** Ask "a user drags a file onto a busy session —
-  queue it or reject it?", not "how should concurrency be handled?".
-- If the question can't be settled by talking (how something should look or feel), show a concrete
-  artifact in `options[].preview` — a mockup, snippet, or config — instead of describing it.
+- **它改变结果。** 每个答案都通向用户会看到或承受的不同去处。如果每个选项都落在同一个地方，
+  就删掉这个问题。
+- **它针对这项具体工作。** 点名真实的功能、界面、文件或用户（“当项目在折叠状态下被重命名
+  时……”），绝不要套用通用的模板问题。
+- **它探查人们默默假设的东西。** 扫一遍这棵树常见的盲区：范围边界与非目标、空 / 错误 / 失败
+  状态、边界情形与限制、并发或多实例、必须迁移或必须保留的既有数据与行为、默认值，以及这项工作
+  是给谁用的。
+- **它让张力浮出水面。** 凡是与已记录的规范决策、先前的答案或请求本身冲突的，都直接问出来，
+  并引用双方。
+- **它绝不重复提问。** 请求、先前的答案或规范已经确定的内容就是确定的；在它之上继续。
+- **具体场景胜过抽象原则。** 问“用户把一个文件拖到忙碌的会话上 —— 排队还是拒绝？”，而不是
+  “并发应该怎么处理？”。
+- 如果问题无法靠说话来确定（某个东西看起来或感觉起来该是什么样），就在 `options[].preview` 里
+  展示一个具体的产物 —— 原型图、片段或配置 —— 而不是用文字描述它。
 
-## Options
+## 选项
 
-- Recommended option first, label suffixed "(Recommended)", plus a one-line `recommendedReason` saying
-  why you recommend it over the alternatives (shown inline under the option as a `Why:` line).
-- Every option: a concise label (1–5 words, ≤ 60 chars) + a description carrying the trade-off or
-  consequence of choosing it. Tailor options to the work at hand — never generic placeholders.
-- Options must be **decidable by the asked user**: frame them as observable behavior or outcomes
-  ("collapsing a project stays collapsed after a rename"), never as implementation mechanics
-  ("semantic guard", "activation ref").
-- Never author your own "Other", free-text, or escape options — the tool adds a free-text row to
-  every question and an always-available Skip, and reserved labels are rejected. This holds under
-  `multiSelect` too: the free-text row stays and is *additive* — a typed answer arrives alongside the
-  checked options, it does not replace them.
-- `multiSelect: true` when several answers are valid at once (feature checklists); single-select when
-  confirming something or choosing one path.
-- `options[].preview` (markdown) when a concrete artifact — code, a config, a mockup — is clearer
-  shown than described. Single-select only.
-- `header` is a short chip, ≤ 16 characters.
+- 推荐选项放在最前，标签后缀 "(Recommended)"，再加一行 `recommendedReason` 说明你为什么在候选中
+  推荐它（以 `Why:` 行的形式内联展示在该选项下方）。
+- 每个选项：一个简明的标签（1–5 个词，≤ 60 个字符）+ 一段描述，说明选择它的取舍或后果。选项要
+  贴合手头的工作 —— 绝不用通用的占位符。
+- 选项必须**由被问的用户可判定**：把它们表述成可观察的行为或结果（“折叠项目后，重命名之后它仍
+  保持折叠”），绝不要表述成实现机制（“语义守卫”、“激活引用”）。
+- 绝不要自己写 "Other"、自由文本或逃生选项 —— 该工具会为每个问题加一行自由文本和一个始终可用的
+  Skip，而保留标签会被拒绝。这在 `multiSelect` 下同样成立：自由文本行仍然在，并且是*追加式*的
+  —— 键入的答案与勾选的选项并排到达，它不会替代它们。
+- 当多个答案可以同时成立时（功能清单），用 `multiSelect: true`；确认某件事或选定一条路径时，
+  用单选。
+- 当具体的产物 —— 代码、配置、原型图 —— 展示出来比描述更清楚时，用 `options[].preview`（markdown）。
+  仅限单选。
+- `header` 是一个短标签（chip），≤ 16 个字符。
 
-## Confirming an inference
+## 确认一个推断
 
-When you have inferred something and need a yes/adjust rather than an open answer: the inferred
-statement *is* the question text, with "Looks right" as the first option (description: "accurate as
-written") and a genuine rejection option second (e.g. "Off base — ask me directly"). Edits arrive
-through the tool's automatic free-text row — do not author an edit option. Read the response as:
+当你已经推断出某件事，需要的是“是/微调”而不是开放式答案时：把推断出的陈述*作为*问题正文，
+第一个选项是“看起来对”（描述：“与所写一致”），第二个是真正的否决项（例如“方向不对 —— 直接
+问我”）。修改通过该工具自动添加的自由文本行到达 —— 不要自己写编辑选项。把回复解读为：
 
-- **"Looks right"** → the inference holds; continue unchanged.
-- **Free-text tweak** (one fact changes) → update that field only; don't re-derive anything else.
-- **Substantial rewrite** → re-derive every inference that came from that statement before continuing.
-- **Rejection** → discard the inference entirely and ask an open-ended question instead.
+- **“看起来对”** → 推断成立；原样继续。
+- **自由文本微调**（有一个事实变了）→ 只更新那个字段；其他任何东西都不要重新推导。
+- **大幅改写** → 在继续之前，重新推导源自该陈述的每一个推断。
+- **否决** → 完全丢弃该推断，改问一个开放式问题。
 
-## Degradation
+## 降级
 
-- A skipped or declined question is not a blocker: settle it on your recommended answer, recorded as
-  unconfirmed in the workflow's artifact (the referencing skill says where), and keep working its
-  dependents from that assumption — don't re-ask it.
-- A whole round skipped means the user wants to stop being interviewed: ask no further rounds and
-  proceed on recorded assumptions for everything still open.
-- If the host reports no interactive UI (`ask_user_question` returns "not available"), state your
-  assumptions the same way instead of blocking.
-- "I don't know / help me understand" is a mis-framing signal, not a missing-knowledge one: re-explain
-  from user-visible behavior in plain language, then re-ask with behavior-framed options — don't
-  repeat the same technical options with more detail.
+- 跳过或拒绝回答的问题不是阻塞项：按你的推荐答案确定它，在工作流的产物里记为未确认（引用它的
+  技能会说明记在哪里），并从这个假设出发继续推进它的依赖项 —— 不要重新问它。
+- 整轮被跳过意味着用户不想再被访谈：不再问任何轮次，对所有仍未确定的内容按已记录的假设继续。
+- 如果宿主报告没有交互式 UI（`ask_user_question` 返回 "not available"），用同样的方式陈述你的
+  假设，而不是阻塞。
+- “我不知道 / 帮我理解一下”是表述框架有问题的信号，不是知识缺失的信号：用平实语言从用户可见的
+  行为重新解释，然后用行为框架的选项重新提问 —— 不要用更多细节重复同一批技术选项。
 
-## Red flags
+## 危险信号
 
-- You stopped after one round while decisions that depended on its answers are still open.
-- You chose an option for the user instead of asking — or asked the user something you could have
-  looked up.
-- One round holds two questions where one answer would change the other.
-- A question restates what the request or an earlier answer already settled.
-- Every question would fit any project — nothing names this work's specifics.
+- 你在一轮之后就停下了，而依赖该轮答案的决策仍未决。
+- 你替用户选了选项，而不是去问 —— 或者你问了用户本可以自己查到的事情。
+- 同一轮里放了两个问题，而其中一个答案会改变另一个。
+- 某个问题重复了请求或先前答案已经确定的内容。
+- 每个问题都适用于任何项目 —— 没有任何一处点明这项工作的具体之处。

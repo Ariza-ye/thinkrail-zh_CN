@@ -2,44 +2,44 @@
 id: module-extension-api
 type: module-design
 status: draft
-title: Host extension contracts and pure renderer helpers
+title: 宿主扩展契约与纯渲染器辅助函数
 parent: architecture
 depends-on: [module-contracts]
 references: [module-thinkrail-extensions]
 ---
 
-## Responsibility
+## 职责
 
-The source-only host extension contract, independent of presentation components and host state. The
-browser and server descriptors compose capabilities without importing either application's internals.
-The host retains registration, lifecycle and ordering; `define*` helpers preserve the supplied descriptor.
+仅源码的宿主扩展契约，独立于呈现组件与宿主状态。浏览器与服务端的
+描述符在组合能力时，不导入任何一方的应用内部。宿主保留注册、生命周期与顺序；`define*`
+辅助函数保留所提供的描述符。
 
-## Boundary
+## 边界
 
-- `./web` exposes `ToolStatus`, `ToolRenderProps`, `ToolRenderer`, `ToolSummary`, `ToolChrome`,
-  `ToolProminence`, `ToolRegistrationOptions`, `WebExtension`, `defineWebExtension`, and the pure
-  argument/result readers from `toolHelpers` and `toolResultContent`.
-- `WebExtension` is `{ name, toolRenderers }`, with each tool-name entry carrying a `renderer` and
-  optional `ToolRegistrationOptions` under `options`. `defineWebExtension` is a typed identity helper:
-  it preserves the descriptor and its inferred tool keys without registration or default injection.
-- `./server` exposes `ServerExtension` and `defineServerExtension`, with pi `ExtensionFactory` types
-  only. Descriptors carry `name` (the identity — the Settings on/off switch and `disabledExtensions` key
-  on it), optional display copy `title` / `description` for the Settings catalog, `extensions`, optional
-  `childExtensions` and optional `skillPackages` specifiers. Its identity helper preserves factories, order and optional-field absence; loading and
-  skill resolution remain host responsibilities.
-- The root is browser-safe and exposes only the web contract; it never re-exports the server half.
-- The only workspace dependency is `contracts`. React and pi are type-only contract dependencies;
-  there are no React components, registry, DOM access, host imports, or pi runtime values.
+- `./web` 暴露 `ToolStatus`、`ToolRenderProps`、`ToolRenderer`、`ToolSummary`、`ToolChrome`、
+  `ToolProminence`、`ToolRegistrationOptions`、`WebExtension`、`defineWebExtension`，以及来自
+  `toolHelpers` 与 `toolResultContent` 的纯参数/结果读取器。
+- `WebExtension` 是 `{ name, toolRenderers }`，其中每个工具名条目携带一个 `renderer` 和
+  位于 `options` 下的可选 `ToolRegistrationOptions`。`defineWebExtension` 是一个类型化的恒等辅助函数：
+  它保留该描述符及其推断出的工具键，而不做注册或默认值注入。
+- `./server` 暴露 `ServerExtension` 与 `defineServerExtension`，只含 pi 的 `ExtensionFactory` 类型。
+  描述符携带 `name`（即身份——Settings 的开关与 `disabledExtensions` 都以它为键）、
+  可选的、供 Settings 目录使用的展示文案 `title` / `description`、`extensions`、可选的
+  `childExtensions` 和可选的 `skillPackages` 说明符。它的恒等辅助函数保留工厂、顺序与可选字段的缺失；
+  加载与技能解析仍是宿主的职责。
+- 根入口是浏览器安全的，只暴露 web 契约；它绝不再次导出服务端那一半。
+- 唯一的工作区依赖是 `contracts`。React 与 pi 是仅类型的契约依赖；
+  这里没有 React 组件、注册表、DOM 访问、宿主导入或 pi 运行时值。
 
-Canonical tool-result parsing remains shared by renderer text extraction and the host's common image
-layer: accept only well-formed supported image blocks, preserve text-block order, and fall back to
-readable values for noncanonical results. Props-driven renderers receive optional file navigation from
-the host, never acquire it from a store or transport. Extension composition rules live in
-[[module-thinkrail-extensions]].
+规范的（canonical）工具结果解析仍由渲染器文本提取与宿主的通用图像
+层共用：只接受形态良好的受支持图像块，保留文本块的顺序，并对非规范结果回退到
+可读的值。由 props 驱动的渲染器从宿主接收可选的文件导航，
+绝不从某个 store 或传输层获取它。扩展的组合规则见
+[[module-thinkrail-extensions]]。
 
-## Verification
+## 验证
 
-Package tests exercise descriptors through their public entries, pure argument/result helpers and
-browser bundling of both the root and `./web`. Browser bundles permit only contracts at runtime and
-reject React, pi, host and server imports; `./server` separately verifies its pi dependency is erased.
-The app's registry and common-image-layer tests retain coverage of the host-owned rendering behavior.
+包测试通过各描述符的公开入口、纯参数/结果辅助函数，以及根入口与 `./web` 两者的
+浏览器打包来检验它们。浏览器 bundle 在运行时只允许 contracts，并
+拒绝 React、pi、宿主与服务端导入；`./server` 另行验证其 pi 依赖被擦除。
+应用的注册表与通用图像层测试保留对宿主拥有的渲染行为的覆盖。

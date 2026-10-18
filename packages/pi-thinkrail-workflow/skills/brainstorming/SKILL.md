@@ -1,78 +1,70 @@
 ---
 name: brainstorming
-description: "Use before implementing a feature, a change in behavior, or a bug fix — however small. Not for questions, checks, or edits that change no behavior (typos, documentation or configuration only, mechanical refactors)."
+description: "在实现一个 feature、一处行为变更或一个 bug fix 之前使用 —— 无论多小。不适用于提问、检查，或不改变行为的改动（仅限拼写错误、文档或配置，机械式重构）。"
 ---
 
-# Brainstorming
+# 头脑风暴
 
-## Interview before you build
+## 先访谈，再动手
 
-- Every feature, behavior change, or bug fix goes through this workflow. Depth scales with the
-  change and never drops to zero: a small change gets one short round and a few lines of task-spec.
-- The aim is a design the user understands and has accepted, recorded in a spec-graph `task-spec`,
-  built, and then reflected in the durable specs — not a speculative implementation.
-- Do not implement until the design is accepted. An explicit design or acceptance criteria in the
-  request count as approval of what they cover; build on them and never re-ask them.
+- 每个 feature、每处行为变更、每个 bug fix 都走这个工作流。深度随改动规模而变，但绝不降到零：
+  小改动得到一轮简短的访谈和几行 task-spec。
+- 目标是一个用户理解并已接受的设计：记录在规范图的 `task-spec` 里，实现它，再把它反映到持久规范
+  中 —— 而不是一个臆测式的实现。
+- 在设计被接受之前不要实现。请求中明确给出的设计或验收标准，视为对其覆盖范围的批准；在它们之上
+  继续，绝不重新询问。
 
-## Doc map
+## 文档地图
 
-- `fixing-a-bug.md` — the bug branch (step 4).
-- `amending-specs.md` — bringing the durable specs in line with what was built (step 9); the tail of
-  both paths and where this workflow ends.
+- `fixing-a-bug.md` —— bug 分支（第 4 步）。
+- `amending-specs.md` —— 让持久规范与被构建出来的东西对齐（第 9 步）；它是两条路径的共同尾部，
+  也是本工作流结束的地方。
 
-## The workflow
+## 工作流
 
-1. **Orient.** Use the spec-graph skill to find the specs that govern the area; read code second to
-   confirm implementation details. Do not read unrelated specs. Note any non-obvious decision the
-   change touches whose *why* is not recorded — it becomes a question in step 6.
-2. **Scope check.** If the request bundles independent product decisions or subsystems, separate
-   them rather than blending unrelated decisions into one task-spec.
-3. **Open a task-spec.** `spec_create` a `task-spec` at **`.thinkrail/context/TASK-<slug>.md`** (id,
-   title, status: draft, parent: the nearest relevant module). This gitignored file is the one
-   temporary design artifact; update it as answers land.
-4. **Bug?** When the request reports something that behaves wrongly, follow `fixing-a-bug.md` now;
-   it returns here at step 5 (the "bug" is really a feature) or step 8.
-5. **Product phase.** Interview what the change is for before how to build it: why it is needed,
-   for whom, what the user will see and do — including empty, error, and edge states — and how we
-   will know it is done. Ask in rounds per the **asking-user-questions** concept skill until no such
-   decision is left assumed; look facts up instead of asking them. Record the answers in the
-   task-spec's **Product** section, then confirm that understanding with one inference-confirmation
-   question before any technical choice — skip only when the request itself supplied all of it.
-6. **Technical phase.** Interview the technical decisions that the product answers leave open:
-   constraints, compatibility, how the change will be verified, and the *why* of any decision noted
-   in step 1. If you can name an alternative you rejected, especially where the code lives (server
-   or browser, contract or display), show it with the trade-off instead of deciding silently. Record
-   the **Design** section: the chosen approach and why, trade-offs that matter, explicit deferrals.
-7. **Self-review, then review once.** Remove placeholders, contradictions, accidental scope
-   expansion, and ambiguous requirements; then present one cohesive design scaled to the change.
-   Ask for approval only when the request has not already approved it; revise the task-spec if the
-   user adjusts it.
-8. **Build.** Implement against the accepted design. Before handoff, self-review the task diff: no
-   silent lint/type suppressions, duplicated nontrivial derivations, rationale left as code
-   comments, or remnants of a replaced pattern.
-9. **Amend specs.** Follow `amending-specs.md`.
+1. **定位。** 用 spec-graph 技能找出管辖该区域的规范；然后再读代码确认实现细节。不要读无关的
+   规范。记下这次改动触及的、其*原因*未被记录的任何非显然决策 —— 它会在第 6 步变成一个提问。
+2. **范围检查。** 如果请求捆扎了彼此独立的产品决策或子系统，把它们分开，而不是把无关决策混进
+   同一个 task-spec。
+3. **开启 task-spec。** 用 `spec_create` 在 **`.thinkrail/context/TASK-<slug>.md`** 创建一份
+   `task-spec`（id、title、status: draft、parent：最近的相关模块）。这个被 gitignore 的文件是唯一
+   的临时设计产物；答案一落地就更新它。
+4. **是 bug 吗？** 当请求报告某个东西的行为不正确时，现在就按 `fixing-a-bug.md` 走；它会在第 5 步
+   （这个“bug”其实是一个 feature）或第 8 步回到这里。
+5. **产品阶段。** 在问“怎么做”之前，先访谈这次改动是为了什么：为什么需要它、给谁用、用户会看到
+   什么和做什么 —— 包括空、错误与边界状态 —— 以及我们如何知道它做完了。按
+   **asking-user-questions** 概念技能的要求分轮提问，直到没有这类决策仍停留在假设上；事实要去查
+   而不是去问。把答案记录在 task-spec 的**产品**一节，然后在做任何技术选择之前，用一个
+   推断确认问题来确认这份理解 —— 只有请求本身已提供全部内容时才跳过。
+6. **技术阶段。** 访谈产品答案留下的那些技术决策：约束、兼容性、改动将如何验证，以及第 1 步记下
+   的任何决策的*原因*。如果你能说出被自己否决的替代方案 —— 尤其是代码该住在哪里（服务端还是
+   浏览器，契约还是展示层）—— 就带着取舍把它摆出来，而不是默默决定。记录**设计**一节：
+   选定的方案及原因、要紧的取舍、明确的延后项。
+7. **自审，然后只评审一次。** 清掉占位符、矛盾、意外的范围扩张和含糊的需求；然后呈现一份与改动
+   规模相称的、连贯的设计。只有当请求尚未批准它时才征求批准；如果用户做了调整，就修改
+   task-spec。
+8. **构建。** 按已接受的设计实现。交接之前，自审本次任务的差异（diff）：不要有静默的 lint/类型
+   抑制、重复的非平凡推导、被留作代码注释的理由说明，或已被替换模式的残迹。
+9. **修订规范。** 按 `amending-specs.md` 走。
 
-Skipped questions or a host with no question UI are not blockers: record the best assumption in the
-task-spec as unconfirmed and continue.
+被跳过的问题、或没有提问 UI 的宿主，都不是阻塞项：把最好的假设作为未确认项记录在 task-spec 里，
+然后继续。
 
-## What a good task-spec looks like
+## 好的 task-spec 长什么样
 
-- Scoped to one piece of work, sized to it — a few lines for a small change.
-- **Request**, **Product** (or **Bug** for the bug branch), **Design**, unconfirmed assumptions, and
-  explicit deferrals.
-- Temporary: its durable content moves into the owning specs at step 9 instead of being copied.
+- 只覆盖一件工作，规模与之相称 —— 小改动就是几行。
+- **请求**、**产品**（bug 分支则是 **Bug**）、**设计**、未确认的假设，以及明确的延后项。
+- 临时性：它的持久内容在第 9 步移入拥有它的规范，而不是被复制过去。
 
-## Red flags — stop
+## 危险信号 —— 停下
 
-- You are editing source code before the design is accepted.
-- "It's small" or "the request already says what to do" — the workflow scales down, it does not
-  switch off.
-- You offered technical options before the product phase was settled.
-- The task-spec has a Design section the user hasn't seen.
-- You are about to hand off without step 9 — the specs drift from the code one skipped change at a
-  time.
+- 你在设计被接受之前就改源码。
+- “这很小”或“请求已经说了要做什么” —— 工作流会缩小，但不会关闭。
+- 你在产品阶段确定之前就抛出了技术选项。
+- task-spec 里有一节设计，用户还没看过。
+- 你打算不做第 9 步就交接 —— 规范就是这样一次一个被跳过的改动，慢慢与代码脱节。
 
-## Ending
+## 结束
 
-`amending-specs.md` ends this workflow. PR lifecycle work, if requested, then enters
-**shipping-a-pr** separately.
+`amending-specs.md` 结束这个工作流。PR 生命周期的工作如果被要求，随后单独进入
+**shipping-a-pr**。

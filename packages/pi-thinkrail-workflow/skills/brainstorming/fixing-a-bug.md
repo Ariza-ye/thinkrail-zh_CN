@@ -1,31 +1,26 @@
-# Fixing a bug — brainstorming's bug branch
+# 修复 bug —— brainstorming 的 bug 分支
 
-Entry: a bug report, with the task-spec open (spine step 3). Saves: the task-spec's **Bug**
-section. Next: spine step 8 (Build) — or spine step 5 when the "bug" turns out to be a feature.
+入口：一份 bug 报告，task-spec 已经开启（主干第 3 步）。保存：task-spec 的 **Bug** 一节。
+下一步：主干第 8 步（构建）—— 或当这个“bug”其实是一个 feature 时，主干第 5 步。
 
-A bug is a gap between what the product is meant to do and what it does. Settle the intended
-behavior before touching the code: it is confirmed and recorded in the task-spec here, which leads
-the fix the way a design leads a feature. The durable specs are amended at spine step 9, as for
-every change, so they describe what was actually built.
+bug 就是产品本应做的事与它实际做的事之间的差距。在碰代码之前先确定预期行为：它在这里得到确认
+并记录进 task-spec，就像设计引领一个 feature 那样，由它来引领这次修复。持久规范会在主干第 9 步
+被修订，与每一处改动一样，以便它们描述实际构建出来的东西。
 
-1. **Pin the report.** Symptom (what happens), expected behavior (what should happen instead), and
-   how to trigger it. Infer them from the request; ask only what is missing, in one round per the
-   **asking-user-questions** concept skill.
-2. **Reproduce** when a safe command can show it — a failing test is best. Never run a destructive
-   command to reproduce. If it can't be reproduced, record that and carry on.
-3. **Locate** the code that produces the behavior and the specs that govern that area (spec-graph).
-4. **Classify** by what those specs say about the expected behavior:
-   - **Silent** — no spec covers it. The intended behavior is a product decision: confirm it with
-     the user as an inference; spine step 9 adds it to the spec that should have stated it.
-   - **Wrong** — a spec states the buggy or an outdated behavior. Confirm the correction with the
-     user; spine step 9 corrects that spec.
-   - **Right** — the spec already states the expected behavior; only the code is wrong. No question
-     needed.
-   - **Feature** — the code does what the specs intend, and the expected behavior was never
-     intended. Tell the user it is a new capability and continue at spine step 5.
-   Ask about the classification itself only when the evidence genuinely supports two of them.
-5. **Record** symptom, expected behavior, reproduction (or "unreproduced"), classification, and the
-   confirmed intended behavior in the task-spec's **Bug** section. The intended behavior is the
-   accepted design — there is no separate design review for a bug.
-6. **Fix it test-first** when practical: a regression test that fails before the fix and passes
-   after. Continue at spine step 8.
+1. **钉住报告。** 症状（发生了什么）、预期行为（本应发生什么），以及如何触发它。从请求中推断
+   这些；只询问缺失的部分，按 **asking-user-questions** 概念技能的要求在一轮里问完。
+2. **复现** —— 当有安全的命令能展示它时：一个失败的测试最好。绝不为了复现而运行破坏性命令。
+   如果无法复现，记录这一点并继续。
+3. **定位**产生该行为的代码，以及管辖该区域的规范（spec-graph）。
+4. **分类**，依据那些规范对预期行为的说法：
+   - **Silent** —— 没有规范覆盖它。预期行为属于产品决策：以推断的形式与用户确认；主干第 9 步
+     把它加进本应写明这一点的规范。
+   - **Wrong** —— 某个规范写的是有 bug 的或过时的行为。与用户确认纠正；主干第 9 步纠正该规范。
+   - **Right** —— 规范已经写明预期行为；只是代码错了。不需要提问。
+   - **Feature** —— 代码做的正是规范所意图的，而预期行为从来就不是被意图的。告诉用户这是一个
+     新能力，并在主干第 5 步继续。
+   只有当证据确实同时支持其中两种分类时，才去询问分类本身。
+5. **记录**症状、预期行为、复现方式（或“未能复现”）、分类，以及已确认的预期行为，写进
+   task-spec 的 **Bug** 一节。预期行为就是被接受的设计 —— bug 没有单独的设计评审。
+6. **测试先行地修复** —— 在可行时：一个在修复前失败、在修复后通过的回归测试。在主干第 8 步
+   继续。

@@ -1,101 +1,88 @@
 ---
 id: submodule-pi-dag-runtime
 type: submodule-design
-title: DAG command and execution owner
+title: DAG 命令与执行所有者
 status: active
 parent: module-pi-dag
 ---
 
-# Runtime
+# 运行时
 
-## Boundary
+## 边界
 
-Owns authorization, serialized per-DAG transitions, durable intent/effect/observation ordering,
-admission, worker protocol, gates, interventions, recovery and passive notices. The public surface
-is `createDagService`, `DagServiceOptions`. The service owns execution; bindings own authority and delivery only.
-Internal files are one module, not independent schedulers. External dependencies are public pi,
-pi-delegation and Node APIs. No host, UI, subagent policy or pi private implementation imports.
-The parent SPEC declares sibling edges.
+拥有授权、按 DAG 串行化的状态迁移、持久的意图/效果/观察顺序、准入、worker 协议、
+门禁、干预、恢复与被动通知。公开接口是 `createDagService`、`DagServiceOptions`。
+服务拥有执行；绑定只拥有权限与投递。内部文件构成一个模块，而不是彼此独立的调度器。
+外部依赖是公开的 pi、pi-delegation 与 Node API。不导入宿主、UI、子代理策略或 pi
+私有实现。父 SPEC 声明兄弟依赖边。
 
-## State and effects
+## 状态与效果
 
-One queue serializes state changes per DAG. Only successful storage commits replace its in-memory
-snapshot. A preparation intent freezes inputs/configuration before child assembly; the actual
-materialized payload and immutable child birth are committed before `runQueued`. A retained job
-connects controls to that invocation, never a future run. The scheduler bounds concurrent assembly
-and uses delegation's run admission/settlement. It never starts another provider loop.
+一个队列按 DAG 串行化状态变更。只有成功的存储提交才会替换其内存快照。
+准备意图在子节点组装之前冻结输入/配置；实际物化的负载与不可变的子节点诞生会在
+`runQueued` 之前提交。保留的 job 把控制连接到那一次调用，绝不是未来的运行。
+调度器为并发组装设定界限，并使用委派的运行准入/了结。它绝不启动另一个 provider
+循环。
 
-DAG-wide interrupt/cancel affects only nodes with admitted attempts; untouched pending nodes remain
-recoverable, while exact cancellation of attemptless work rejects in favor of explicit skip.
-Settlement observes the actual outcome, retains exact history boundaries, captures export evidence
-when needed and evaluates positive acceptance. Preparation failures have separate captured evidence,
-not fabricated pi outcomes. Terminal commentary/error text beyond the captured-body quota is omitted
-with explicit captured diagnostic evidence, never silently truncated; actual status, statistics and
-history boundary remain durable. This does not invalidate a separately captured declared result.
-The latest attempt retains its narrow child handle for continuation;
-this also preserves a fresh session interrupted before pi has written its first assistant entry.
-Retry, skip and graph edits enqueue retained-child retirement only after their invalidation snapshot
-commits, for every affected descendant; idempotent disposal may overlap target reassembly outside the
-state queue. Recovery faithfully reopens saved births; missing transcripts never cause replacement
-sessions. Outstanding jobs finish outside the
-state queue. If an interrupted activation has no finalized assistant evidence, its frozen payload
-is included in continuation: pi may not have appended the original user message during preflight.
-An already queued answer is preserved, with optional continuation instructions appended rather than
-silently replacing the answer. Continuation revalidates captured artifacts and appends their fresh
-path hints, without changing their identities/bytes or rewriting historical prompts. This keeps
-relocated captured storage usable while ordinary text/JSON inputs remain in the existing conversation.
+DAG 全局的 interrupt/cancel 只影响有已准入尝试的节点；未被触碰的待处理节点仍可恢复，
+而对无尝试工作的精确取消会拒绝，并指向显式 skip。了结观察实际结果，
+保留精确的历史边界，在需要时捕获导出证据，并评估正向接受。准备失败有单独捕获的证据，
+不是伪造的 pi 结果。超出已捕获正文配额的终态评述/错误文本会被省略，
+并附上显式的已捕获诊断证据，绝不静默截断；真实状态、统计与历史边界仍然持久。
+这不使一份单独捕获的声明结果失效。最新的尝试保留其狭窄的子节点句柄以便继续；
+这也保住了一个在 pi 写入其第一条 assistant 条目之前就被中断的新会话。retry、skip
+与图编辑只有在其失效快照提交之后，才为每个受影响的子孙节点入队保留子节点的退役；
+幂等的处置可以在状态队列之外与目标重组重叠。恢复会忠实重开已保存的诞生；
+缺失的对话记录绝不导致替换会话。未完成的 job 在状态队列之外完成。
+如果一次被中断的激活没有已定稿的 assistant 证据，其冻结负载会被纳入继续：pi
+在预检期间可能还没有追加原始用户消息。已入队的答案会被保留，可选的继续指令被追加，
+而不是静默替换该答案。继续会重新校验已捕获的产物并追加它们新鲜的路径提示，
+而不改变它们的身份/字节，也不重写历史提示词。这让迁移后的已捕获存储保持可用，
+而普通文本/JSON 输入仍然留在既有会话中。
 
-Worker protocol receipts bind the current assistant entry plus tool-call id; inherited or earlier
-provider ids are not invocation identity. Capture the active job before asynchronous queueing and
-recheck that exact job before commit. Worker tools reject mixed assistant batches before persistence. Their callbacks identify the actual
-session and activation, not model-supplied identities. Invocation receipts prevent repeat capture of
-changed workspace files under a retried tool call. Artifact paths are opened nonblocking and checked
-through the descriptor before reading, so special files cannot hold the serialized command queue.
-Post-open realpath/lstat checks before and after reading require the live contained path to identify
-the opened descriptor, rejecting intermediate-directory replacement. Two positioned reads plus
-before/after descriptor identity and nanosecond metadata reject same-size mutation instead of
-persisting torn evidence. A later sole-batch proposal within the same active
-pi invocation supersedes its predecessor; queued steering/recovery can continue pi after a protocol
-result requests termination. An input gate cannot be replaced this way: answering it requires the
-configured authority. Large submitted bodies and error details are files;
-current snapshots and history carry bounded summaries and metadata. History/notice entries record
-admission decisions, rejected execution, uncertainty, interventions and releases, without provider
-credentials or a second telemetry database. Notices carry bounded target/gate/proposal identities so
-delivery can recheck current relevance, not merely attachment membership. Binding/readiness scans may
-read saved notices without acquiring ownership or execution dependencies; live commits use the same
-delivery predicate. Controller and explicit human conversation bindings share one attachment identity
-without sharing authority. Revocation and close remove readiness observers.
+worker 协议回执绑定当前的 assistant 条目外加工具调用 id；继承的或更早的 provider id
+不是调用身份。在异步入队之前捕获活动的 job，并在提交之前重新检查那个确切的 job。
+worker 工具在持久化之前拒绝混合的 assistant 批次。它们的回调标识真实的会话与激活，
+而不是模型提供的身份。调用回执防止在重试的工具调用下重复捕获已变化的工作区文件。
+产物路径以非阻塞方式打开，并在读取之前通过描述符检查，因此特殊文件无法卡住被串行化的
+命令队列。打开后、读取前后的 realpath/lstat 检查要求存活的包含路径标识出被打开的描述
+符，从而拒绝中间目录被替换。两次定位读取加上前后描述符身份与纳秒元数据会拒绝同尺寸的
+改动，而不是持久化撕裂的证据。同一活动 pi 调用中更晚的独占批次提案会取代其前身；
+在协议结果请求终止之后，已入队的引导/恢复仍可继续 pi。输入门禁不能这样被替换：
+回答它需要配置的权限。大体量的提交正文与错误详情是文件；当前快照与历史携带带界限的摘
+要与元数据。历史/通知条目记录准入决策、被拒绝的执行、不确定、干预与释放，不含
+provider 凭证，也不存在第二个遥测数据库。通知携带带界限的目标/门禁/提案身份，
+使投递可以重新检查当下的相关性，而不只是挂接成员关系。绑定/就绪扫描可以在不获取所有
+权或执行依赖的情况下读取已保存的通知；活动提交使用同一个投递判据。controller
+与显式人类会话绑定共享一个挂接身份，但不共享权限。吊销与 close 会移除就绪观察者。
 
-## Reads and restoration
+## 读取与恢复
 
-Reads do not acquire execution ownership. They distinguish a local owner, another live owner and no
-owner; saved active work with no live owner is projected as paused/uncertain until a mutation claims
-and durably records recovery. No read starts providers. On reacquisition, uncertain effects are never
-resent. Reconciliation confirms quiescence and resolves uncertain interventions while preserving
-submitted proposals and input/approval gates. It may establish a missing release gate, but never
-invents a successful outcome; manual acceptance still needs an explicit reason and satisfied gates.
-A storage failure stops local admission and exposes an explicit error; it never publishes the
-uncommitted candidate state. Close rejects successful completion if live work or durable cleanup fails.
+读取不获取执行所有权。它们区分本地 owner、另一个存活 owner 与无 owner；没有存活
+owner 的已保存活动工作被投影为 paused/uncertain，直到某次修改获取了所有权并持久记录
+恢复。没有读取会启动 provider。重新获取时，不确定的效果绝不重发。对账确认静默，
+并在保留已提交提案与输入/批准门禁的同时解决不确定的干预。它可以建立一个缺失的
+release 门禁，但绝不虚构成功结果；手动接受仍然需要显式理由与已满足的门禁。
+存储失败会停止本地准入并暴露显式错误；它绝不发布未提交的候选状态。
+如果存活工作或持久清理失败，close 会拒绝成功完成。
 
-## Authority
+## 权限
 
-Owner bindings can manage lifecycle but cannot impersonate a human. A stored receipt's own authority
-is rechecked before its fingerprint; successful replay precedes semantic validation/authorization of
-the replacement payload and all version/runtime/history access. Acquisition rechecks the now-owned
-snapshot so a command committed between the passive read and prior-owner death still replays instead
-of degrading to a stale-version error; create does the same before graph validation, execution-context
-requirements or publication. Receipts retain their
-original required gate authority so replay never reapplies an old edit against a later graph or transfers human authority. Human-only gates bind exact proposals and
-history exports. Manual acceptance records an override without rewriting execution success or bypassing
-gates. Retry may use its own prior proposals as revision evidence without releasing them. Cross-node
-retry seeds require an existing immutable acceptance decision; this preserves historical authorization
-without treating a seed as a live dependency or bypassing a release gate. Graph edits preserve historical evidence and invalidate all affected consumers; active
-invalidation is rejected. Approval never repairs stale consumed inputs.
+owner 绑定可以管理生命周期，但不能冒充人类。存储回执自身的权限在其指纹之前被重新检查；
+成功的重放先于替换负载的语义校验/授权，以及一切版本/runtime/历史访问。
+获取会重新检查现在已拥有的快照，因此在前一次被动读取与先前 owner
+死亡之间提交的命令仍然会重放，而不是退化为过期版本错误；create 在图校验、
+执行上下文要求或发布之前也做同样的事。回执保留其原始的所需门禁权限，
+因此重放绝不会针对更晚的图重新施加一次旧编辑，也不会转移人类权限。
+仅限人类门禁绑定确切的提案与历史导出。手动接受记录一次覆写，而不重写执行成功、
+也不绕过门禁。retry 可以将自己先前的提案用作修订证据，而不释放它们。跨节点 retry
+种子要求存在既有的不可变接受决策；这在保留历史授权的同时，不把种子当作活动依赖，
+也不绕过 release 门禁。图编辑保留历史证据并使所有受影响的消费者失效；
+活动中的失效被拒绝。批准绝不修复过期的已消费输入。
 
-## Verification
+## 验证
 
-Public-client tests use temporary storage and deterministic local pi providers, including sessionless
-owners, lost ACK replay, frozen fork fan-out, gate authority, controls, branch isolation and recovery.
-The in-process and crash-recovery probes share a credential-free local-provider fixture; each sets
-its isolated environment before runtime creation. No paid provider or credential discovery is a
-default test requirement.
+公开客户端测试使用临时存储与确定性的本地 pi provider，包括无会话 owner、丢失 ACK
+的重放、冻结 fork 的扇出、门禁权限、控制、分支隔离与恢复。进程内探针与崩溃恢复探针共
+享一个无凭证的本地 provider 夹具；各自在创建 runtime 之前设定其隔离环境。付费
+provider 或凭证发现都不是默认测试要求。

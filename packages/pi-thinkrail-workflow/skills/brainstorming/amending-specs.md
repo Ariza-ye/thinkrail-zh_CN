@@ -1,31 +1,28 @@
-# Amending specs — brainstorming's shared tail
+# 修订规范 —— brainstorming 的共享尾部
 
-Entry: the accepted change is built and verified (spine step 8). Saves: the durable spec graph.
-Ends: the workflow.
+入口：已接受的改动已经构建并验证完毕（主干第 8 步）。保存：持久规范图。
+结束：本工作流。
 
-The specs stay the ground truth only if every change lands in them. This is your job, not a round
-of approvals: do it yourself, and let the user see the result in the Changes review. Read the
-**writing-specs** concept skill first — its bar holds for every edit here.
+只有当每处改动都落进规范里，规范才能保持作为基准事实。这是你的工作，不是一轮审批：自己动手做，
+并让用户在 Changes 评审里看到结果。先读 **writing-specs** 概念技能 —— 它的标准适用于这里的
+每一次编辑。
 
-1. **Find what changed in the specs' terms** — from the task-spec and the actual diff, not the plan:
-   - the goal doc, when a capability was added or removed or a principle overturned;
-   - `architecture.md`, when topology, a cross-module decision, or a repo-wide invariant moved;
-   - the owning module or submodule `SPEC.md`, for a responsibility, boundary, contract, decision,
-     or known limitation — and a new spec for a genuinely new module;
-   - for a bug classified silent or wrong, the spec that should have stated the intended behavior.
-2. **Amend top-down** — goal → architecture → modules — without asking the user to approve the list
-   or the edits. `spec_create` for a new spec, `spec_update` for frontmatter, `edit` for prose. Write
-   the decisions and the *why* the code cannot show, once, in the spec that owns them; link the rest
-   by `id`. Unconfirmed assumptions are marked unconfirmed where they stand.
-3. **Check against reality.** Each amended spec matches what was built, not what was planned; the
-   specs you touched don't contradict each other or use a term two ways. Run `spec_validate` and fix
-   what it reports.
-4. **Nothing durable changed?** (A bug classified right, a change the specs already describe.) Then
-   make no edits — never invent content to show activity.
-5. **Report in a line or two:** which specs changed, by name, and any unconfirmed assumption left in
-   them. No per-file narration.
-6. **Retire the task-spec** — delete it once its durable content is in the tree.
+1. **用规范的语汇找出改了什么** —— 依据 task-spec 和实际的差异（diff），而不是计划：
+   - 目标文档，当某项能力被增加或删除、或某条原则被推翻时；
+   - `architecture.md`，当拓扑、某个跨模块决策或某条仓库级不变量发生移动时；
+   - 拥有该内容的模块或子模块 `SPEC.md`，用于职责、边界、契约、决策或已知限制 —— 以及为一个
+     真正的新模块新建规范；
+   - 对被归类为 silent 或 wrong 的 bug，则是本应写明预期行为的那个规范。
+2. **自上而下修订** —— 目标 → 架构 → 模块 —— 不向用户请求批准清单或具体的编辑。新建规范用
+   `spec_create`，frontmatter 用 `spec_update`，散文用 `edit`。把决策以及代码无法展示的*原因*
+   一次性地写在拥有它们的那个规范里；其余用 `id` 链接。未确认的假设就地在原处标记为未确认。
+3. **对照现实检查。** 每份被修订的规范都与实际构建出的东西一致，而不是与计划一致；你动过的规范
+   之间不互相矛盾，也不会把同一个术语用在两种含义上。运行 `spec_validate`，并修掉它报告的问题。
+4. **没有持久内容变化？**（一个归类为 right 的 bug，一处规范已经描述过的改动。）那就不要做任何
+   编辑 —— 绝不要为了显示有活动而虚构内容。
+5. **用一两行汇报：** 哪些规范变了（按名字），以及其中留下的任何未确认假设。不要逐个文件叙述。
+6. **退役 task-spec** —— 一旦它的持久内容已进入代码树，就删除它。
 
-## Ending
+## 结束
 
-This workflow ends here. PR lifecycle work, if requested, then enters **shipping-a-pr** separately.
+本工作流在此结束。PR 生命周期的工作如果被要求，随后单独进入 **shipping-a-pr**。

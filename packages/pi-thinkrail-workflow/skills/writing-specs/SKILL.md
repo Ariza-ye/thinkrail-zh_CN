@@ -1,52 +1,46 @@
 ---
 name: writing-specs
-description: "Use when a workflow step drafts or revises a spec artifact — a goal-and-requirements, an architecture, or a module SPEC — or when a workflow skill names it at such a step. The shared quality bar for specs — not a workflow, nothing to execute."
+description: "当某个工作流步骤起草或修订一份规范产物 —— 一份 goal-and-requirements、一份架构文档，或某个模块的 SPEC —— 时使用，或当某个工作流技能在这样一步点名它时使用。规范的共享质量标准 —— 不是工作流，没有要执行的内容。"
 ---
 
-# Writing Specs
+# 撰写规范
 
-The workflow family's shared bar for every spec a workflow produces: **short, honest, on-rails**.
-Process skills name this concept at the steps that draft or revise specs; *what* to draft and *when*
-stays with the referencing skill. Graph mechanics — frontmatter, link kinds, the `spec_*` tools — are
-the spec-graph skill's ground; this concept carries the quality bar the family holds on top of them,
-and is where the family's rules for specs and the spec graph accrue.
+工作流一族对工作流产出的每一份规范所持的共享标准：**简短、诚实、不脱轨**。流程类技能在起草或
+修订规范的步骤上点名这一概念；*写什么*和*何时*写，由引用它的技能决定。规范图的机制 ——
+frontmatter、链接类型、`spec_*` 工具 —— 属于 spec-graph 技能的地盘；这一概念承载的是这一族在
+它们之上所持的质量标准，也是这一族关于规范与规范图的规则不断累积的地方。
 
-## Short
+## 简短
 
-- Small enough to read in one sitting. Target signal, not completeness.
-- Explain intent, not inventory: what the thing is for, what it owns, where its boundary runs — never
-  a file listing or a restatement of the code.
+- 小到能一口气读完。目标是信号，不是完整性。
+- 解释意图，而不是清点清单：这个东西是干什么用的、它拥有什么、它的边界延伸到哪里 —— 绝不要文件
+  清单，也不要复述代码。
 
-## Honest
+## 诚实
 
-- Only settled content appears. Never pad with `[TBD]` or placeholder sections — a section that
-  hasn't been settled simply doesn't exist yet.
-- Anything inferred rather than confirmed is marked unconfirmed, inline, where it stands.
-- New and inferred specs are `status: draft` until the user has reviewed them — the flip out of
-  `draft` follows the user's review, never the drafting agent's own judgment. A reviewed durable spec
-  goes `active`, never `done`: it stays in force and evolves with the project.
+- 只出现已经确定的内容。绝不用 `[TBD]` 或占位小节来凑数 —— 还没确定的那一节就是还不存在。
+- 任何推断而来而非确认过的内容，都在它所在的位置就地标记为未确认。
+- 新的、推断而出的规范都是 `status: draft`，直到用户评审过它们 —— 脱离 `draft` 的翻转跟着用户
+  的评审走，绝不跟着起草 agent 自己的判断走。一份被评审过的持久规范转为 `active`，绝不转
+  `done`：它继续有效，并随项目演进。
 
-## On-rails
+## 不脱轨
 
-- High-signal enough that a future agent (or human) lands on the decisions without re-deriving them.
-- The spec is the *only* home for rationale: decisions, invariants, trade-offs, and bug post-mortems
-  are recorded here, never as code comments — a rationale paragraph found in code is content to
-  promote into the owning spec, leaving at most a one-line pointer where misediting would silently
-  break something.
-- Say each thing once: link by `id` instead of restating; the dependency edges *between* sibling
-  modules live in the parent's spec, not in each leaf.
-- One spec per *genuine* boundary — not per directory, not per file.
+- 信号足够强，让未来的 agent（或人）直接落到决策上，而不必重新推导它们。
+- 规范是理由说明的*唯一*归宿：决策、不变量、取舍和 bug 事后复盘都记录在这里，绝不写成代码注释
+  —— 在代码里发现的理由段落，是要上提到拥有它的规范里的内容，最多只留一行指针，用在改错会悄悄
+  弄坏东西的地方。
+- 每件事只说一次：用 `id` 链接而不是复述；兄弟模块*之间*的依赖边住在父级的规范里，而不在每片
+  叶子里。
+- 每个*真正的*边界一份规范 —— 不是每个目录一份，也不是每个文件一份。
 
-## The goal doc describes the product, not a plan
+## 目标文档描述的是产品，不是计划
 
-`goal-and-requirements` is the living record of what the product is and why: its goal, problem,
-audience, capabilities, and non-goals, plus any durable principles.
+`goal-and-requirements` 是关于产品是什么、为什么的持续演进记录：它的目标、问题、面向谁、能力，
+以及非目标，再加上任何持久的原则。
 
-- No versions, releases, phases, MVP/v1/v2 splits, or "later" lists. Sequencing is not a spec's job:
-  an idea cut from scope goes back to the user to track wherever they plan work, and never into the doc.
-- **Capabilities** state what the product does, or for a new project what its smallest useful first
-  build will do.
-- **Non-goals** hold only what is excluded by decision. Something neither listed nor excluded is open,
-  not forbidden.
-- It evolves with the product: a change that adds a capability or overturns a principle updates the goal
-  doc in the same change.
+- 不要版本、发布、阶段、MVP/v1/v2 切分，也不要“以后再说”清单。排序不是规范的职责：被砍出范围
+  的想法交回给用户，由他们在自己安排工作的地方去追踪，绝不写进文档。
+- **能力**写明产品做什么；对于新项目，写明它最小可用的第一版构建会做什么。
+- **非目标**只装按决策被排除的东西。既没列出也没排除的东西是开放的，不是被禁止的。
+- 它随产品演进：增加一项能力或推翻一条原则的改动，在同一次改动里更新目标文档。
