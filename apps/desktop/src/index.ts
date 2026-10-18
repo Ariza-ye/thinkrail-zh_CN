@@ -33,6 +33,7 @@ import { RouteStore } from "./routeStore";
 import type { DesktopRpc } from "./rpc";
 import { ptyLibraryName, runtimeTarget } from "./runtimeTarget";
 import type { DesktopServerRuntime } from "./serverRuntime";
+import { listSystemFonts } from "./systemFonts";
 import {
 	createTitleBarDoubleClickHandler,
 	type TitleBarDoubleClickResult,
@@ -205,6 +206,7 @@ async function start(): Promise<void> {
 		handlers: {
 			requests: {
 				getUpdateState: () => updateController.getState(),
+				listSystemFonts: () => listSystemFonts(),
 				getWindowState: (): NativeWindowState => readNativeWindowState(mainWindow),
 				minimizeWindow: (): undefined => {
 					recordWindowControlsProbe({ request: "minimize" });

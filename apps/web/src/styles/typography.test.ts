@@ -5,6 +5,7 @@ import { normalizeEol } from "../../scripts/generatedFiles";
 import type { Style, StyleRef, Typography } from "../../scripts/typography";
 import {
 	allStyles,
+	familyValue,
 	GENERATED_PATH,
 	isCodeStyleId,
 	isRef,
@@ -439,5 +440,53 @@ describe("generated CSS", () => {
 			expect(file).toContain('cssVar("--tr-font-family-code")');
 		}
 		expect(monaco).toContain('cssVar("--tr-line-height-default")');
+	});
+
+	it("leads a user-selectable family with its runtime slot and keeps the CJK faces behind it", () => {
+		expect(resolveFamily(typography, "interface").userSelectable).toBe(true);
+		const value = familyValue(typography, "interface");
+		expect(value.startsWith('var(--tr-font-user-interface, "Geist Variable"), Geist,')).toBe(true);
+		for (const family of ["PingFang SC", "Microsoft YaHei", "Noto Sans SC"])
+			expect(resolveFamily(typography, "interface").stack, family).toContain(family);
+		for (const id of ["code", "brand"])
+			expect(resolveFamily(typography, id).userSelectable, id).toBeUndefined();
+		expect(GENERATED).toContain(
+			`--tr-font-family-interface: ${familyValue(typography, "interface")};`,
+		);
+	});
+
+	it("emits the CJK metric override and keeps every primitive in :root", () => {
+		expect(GENERATED).toContain(
+			[
+				":root:lang(zh) {",
+				"\t--tr-font-weight-light: 400;",
+				"\t--tr-font-size-s12: 13px;",
+				"\t--tr-line-height-metadata: 1.4;",
+				"}",
+			].join("\n"),
+		);
+		for (const { style } of allStyles(typography))
+			expect(Object.keys(typography.fontWeights), style.fontWeight).toContain(style.fontWeight);
+	});
+
+	it("rejects a metric override that names an unknown token or repeats the primitive", () => {
+		const base = structuredClone(typography);
+		const mutate = (tokens: Record<string, number | string>) => {
+			const clone = structuredClone(base);
+			clone.metricOverrides = [{ selector: ":root:lang(zh)", tokens }];
+			return validate(clone);
+		};
+		expect(mutate({ "fontSizes.nope": 13 })).toContain(
+			"metricOverrides[0].tokens.fontSizes.nope: unknown fontSizes token 'nope'",
+		);
+		expect(mutate({ "fontWeights.light": 370 })).toContain(
+			"metricOverrides[0].tokens.fontWeights.light: repeats the primitive unchanged",
+		);
+		expect(mutate({ "fontSizes.s12": "13px" })).toContain(
+			"metricOverrides[0].tokens.fontSizes.s12: wrong value type",
+		);
+		expect(mutate({ "letterSpacings.loose": 0.1 })).toContain(
+			"metricOverrides[0].tokens.letterSpacings.loose: wrong value type",
+		);
 	});
 });

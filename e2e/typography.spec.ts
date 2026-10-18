@@ -301,3 +301,46 @@ test("a Tailwind utility at a call site overrides the semantic default it names"
 	expect(measured.bare.fontSize).toBe("14px");
 	expect(measured.metadata.fontSize).toBe("12px");
 });
+
+test.describe("Chinese metrics", () => {
+	test.use({ locale: "en-US" });
+
+	test("a Chinese interface raises the light weight and the metadata size, English does not", async ({
+		page,
+	}) => {
+		await openAppFresh(page);
+		const metrics = () =>
+			page.evaluate(() => {
+				const probe = document.createElement("span");
+				probe.className = "tr-text-metadata";
+				document.body.appendChild(probe);
+				const metadata = getComputedStyle(probe);
+				const result = {
+					bodyWeight: getComputedStyle(document.body).fontWeight,
+					metadataSize: metadata.fontSize,
+					metadataLineHeight: metadata.lineHeight,
+				};
+				probe.remove();
+				return result;
+			});
+
+		await expect(page.locator("html")).toHaveAttribute("lang", "en");
+		expect(await metrics()).toEqual({
+			bodyWeight: "370",
+			metadataSize: "12px",
+			metadataLineHeight: "15px",
+		});
+
+		await page.getByTestId("open-settings").click();
+		await page.getByTestId("settings-nav-appearance").click();
+		await page.getByTestId("language-zh-CN").click();
+		await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+		await page.keyboard.press("Escape");
+
+		expect(await metrics()).toEqual({
+			bodyWeight: "400",
+			metadataSize: "13px",
+			metadataLineHeight: "18.2px",
+		});
+	});
+});

@@ -36,6 +36,7 @@ import {
 	type ThemeResolution,
 } from "@/themes";
 import { errorText, getTransport } from "@/transport";
+import { InterfaceFontControl } from "./InterfaceFontSettings";
 import { LineWidthControl } from "./LineWidthSettings";
 import { SegmentedControl, type SegmentedControlOption } from "./SegmentedControl";
 import { SettingsGroup, SettingsPageContainer } from "./SettingsGroup";
@@ -343,6 +344,9 @@ export function AppearanceSettings() {
 						/>
 					}
 				/>
+			</SettingsGroup>
+			<SettingsGroup title={t("Font")}>
+				<InterfaceFontControl />
 			</SettingsGroup>
 			<SettingsGroup title={t("Theme")}>
 				<SettingsRow

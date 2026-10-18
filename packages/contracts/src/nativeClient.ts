@@ -28,6 +28,11 @@ export interface NativeUpdateBridge {
 	subscribe(listener: (state: NativeUpdateState) => void): () => void;
 }
 
+/** The host's installed font families, for the per-device interface-font preference. */
+export interface NativeFontBridge {
+	list(): Promise<string[]>;
+}
+
 export interface NativeWindowState {
 	maximized: boolean;
 	fullScreen: boolean;

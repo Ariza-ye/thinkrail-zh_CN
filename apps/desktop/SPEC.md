@@ -22,7 +22,7 @@ engine architecture.
 - **Owns:** Electrobun configuration and lifecycle; native window policy, including the per-platform
   title-bar treatment and the window-chrome geometry it publishes to the web client; local `bootHost()` startup;
   packaged resource staging; the PI-compatible server-runtime bundle; desktop route preload/persistence;
-  a bounded generic client-preference adapter under stable backend-profile/window identity; and the
+  the installed-font list the web client's interface-font picker reads; a bounded generic client-preference adapter under stable backend-profile/window identity; and the
   opt-in live-window test seam. Standalone artifact harnesses belong to [[module-artifact-tests]].
 - **Public surface:** the packaged desktop application and its installers. No test-helper library is
   exported by the application package.
@@ -177,6 +177,25 @@ On macOS, WebKit's two-finger pinch lifecycle drives that same native page zoom 
 yields gestures claimed by page content and forwards validated scales; the main process captures native zoom
 at gesture start and applies each absolute scale against that baseline, bounded to 50%–200%, so updates never
 compound or introduce a second zoom owner. The web app owns no duplicate shortcut, gesture, or zoom state.
+
+## Installed fonts
+
+The web client's interface-font picker asks the host for this machine's font families
+(`listSystemFonts`, `systemFonts.ts`, exposed to the page as the frozen `__THINKRAIL_SYSTEM_FONTS__`
+bridge) because the system webview cannot answer it: WebKit has no `queryLocalFonts`, so only WebView2
+would. Families come from reading each font file's `name` table in the platform font directories
+(`~/Library/Fonts`, `/Library/Fonts`, `/System/Library/Fonts{,/Supplemental}` and Apple's
+`AssetsV2/com_apple_MobileAsset_Font*` bundles on macOS — PingFang lives there, not in `Fonts/`;
+`%WINDIR%\Fonts` plus the per-user directory on Windows; `~/.fonts`, `~/.local/share/fonts`,
+`/usr/local/share/fonts`, `/usr/share/fonts` on Linux). The enumeration deliberately reads file offsets
+rather than shelling out: `system_profiler SPFontsDataType` answers the same question in ~11s on a
+font-rich macOS install (past the bridge's 5000 ms request budget), and the Windows font registry yields
+display names such as `Microsoft YaHei & Microsoft YaHei UI (TrueType)` rather than families. Two
+container details are load-bearing: a `.ttc` collection's table offsets are absolute from the start of
+the file, not from the face, and Macintosh-platform `name` records are single-byte. Apple's `.`-prefixed
+private faces are dropped here, so no client has to know that convention. An unreadable directory or
+file yields fewer rows, never a failed request; the answer is cached for the process lifetime, and the
+choice of family is the web client's preference, never a host setting.
 
 ## Native window chrome
 

@@ -50,6 +50,7 @@ convention; their boundary is held by convention + spec. Sibling edges live here
 | `extensions` | ordered composition of web extension descriptors into the chat registry | yes | [extensions/SPEC.md](src/extensions/SPEC.md) |
 | `themes` | validated single-file manifests, bundled catalog + atomic token application | yes | [themes/SPEC.md](src/themes/SPEC.md) |
 | `i18n` | UI catalogs, system language resolution and client-local language preference | yes | [i18n/SPEC.md](src/i18n/SPEC.md) |
+| `fonts` | the device's installed font families and the client-local interface-font preference | yes | [fonts/SPEC.md](src/fonts/SPEC.md) |
 | `lib` | shared path/array primitives + highlighting | yes | [lib/SPEC.md](src/lib/SPEC.md) |
 
 Leaf utilities without their own spec: `constants/` (branding — the product name, storage/event prefixes, and the one
@@ -67,7 +68,7 @@ ThinkRail artwork as the shell logo (compact enough for browser-tab sizes and li
 `main.tsx` is the entry/composition root — it synchronously builds the bundled theme catalog, resolves and
 applies the versioned first-paint theme-preference hint (including the current system color scheme) pre-React,
 initializes transport, the client-local preference seams (chat presentation, hidden models, project
-expansion) and navigation, then wraps `<Shell />` in
+expansion, interface font) and navigation, then wraps `<Shell />` in
 `components/ErrorBoundary` as the last-resort boundary (a crash escaping every region shows a reload
 screen, not a blank root) plus the app's single `TooltipProvider`.
 
@@ -173,6 +174,7 @@ external errors and protocol identifiers are never translated. See [[submodule-w
 - `lib` → `themes` (the lazy highlighter uses the one generic CSS-variable Shiki registration), React (the phone-viewport hook only), and `contracts` (types only, e.g. the MCP state vocabulary's `McpServerState`)
 - `themes` → `constants` (the branding storage prefix scopes the first-paint hint), `clientPreferences` (native-stable hint storage)
 - `i18n` → `ui` (shared translation runtime), `constants` (preference key), `clientPreferences` (native-stable storage); no store or transport
+- `fonts` → `contracts` (**type-only** — `NativeFontBridge`), `constants` (preference key), `clientPreferences` (native-stable storage), React; no store, transport or host settings. `panels` consumes its barrel (`AppearanceSettings`' font row)
 - leaves (`clientPreferences`, `constants`, `utils`, `styles`) → none internal
 
 Rules: a panel never imports another panel sideways; nothing imports `shell` (it's the composition root).
@@ -315,6 +317,11 @@ themselves.
   site names exactly one class and adds its own **colour**; `italic` and `leading-*` are the only Tailwind
   utilities that may override a semantic style (the classes are emitted in `@layer components`, so a
   utility wins the single property it names, while the `<body>` base in `@layer base` loses to all of them).
+  The interface family also carries the app's **one runtime-set typography value**: the generated var leads
+  with `var(--tr-font-user-interface, "Geist Variable")`, which the client-local interface-font preference
+  writes ([[submodule-web-fonts]]), and the picker previews a candidate through the generated
+  `.tr-font-preview-interface` rule rather than a second stack. Chinese metrics are a `:root:lang(zh)`
+  override block, not a second scale.
 - **Handwritten typography utilities must not be introduced.** No new `@utility` rule may set
   `font-family`, `font-size`, `font-weight`, `line-height`, `letter-spacing` or `text-transform`, and no
   component may compose them — add a semantic style to `typography.json` instead. The former

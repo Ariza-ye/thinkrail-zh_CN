@@ -40,6 +40,7 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
   results rather than generic WS failures; no current-layout protocol exists.
 - **Public surface (`index.ts`):** `export type *` of `piProtocol` + `domain` + `nativeClient`
   (`NativeUpdateState` / `NativeUpdateBridge`, `NativeWindowState` / `NativeWindowControlsBridge`,
+  `NativeFontBridge` (the installed-font list),
   `NativeQuitHint` / `NativeCommand` / `NativeShortcutsBridge`, and
   `NativeNotificationInput` / `NativeNotificationBridge`, the optional shell-local desktop capabilities);
   `QUIT_CONFIRMATION` + **`createQuitConfirmation`** + `QuitConfirmationDependencies` from `quitConfirmation`; the value
@@ -492,7 +493,9 @@ default, narrow cross-ring guards, and the quit-confirmation rule both clients d
 - **nativeClient.ts** — type-only optional native-client capabilities outside the host wire. The desktop
   update bridge exposes a monotonic state snapshot, prompt check/download/install actions, failed-operation
   identity, and state subscription without exposing feed selection. Available, byte-transfer, preparation,
-  ready, and installing are distinct states. The window-controls bridge exposes the same
+  ready, and installing are distinct states. The font bridge is one `list()` returning this machine's
+  installed font families for the web client's per-device interface-font preference (`NativeFontBridge`);
+  it carries no selection and no persistence, because that choice belongs to the client. The window-controls bridge exposes the same
   snapshot/action/subscription shape for window state. The shortcuts bridge pushes quit-hint changes
   (`hidden` / `armed` / `release` / `quitting`) and `NativeCommand` ids (today `close-item`, close the
   focused in-app item, and `open-settings`, open Settings unless a modal is open), and its one action `quit()` asks the host for an ordinary coordinated quit. The

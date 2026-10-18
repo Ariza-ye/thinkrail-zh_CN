@@ -6,7 +6,8 @@
  * Drift gate: bun run typography:check (fails when this file is stale)
  *
  * Contains every typography value the UI is allowed to use: primitive custom properties, the `<body>`
- * base, one class per semantic text style, and one prose system per markdown surface.
+ * base, one class per semantic text style, one prose system per markdown surface, and the
+ * `metricOverrides` blocks that restate a primitive for one selector.
  *
  * Two cascade layers, both deliberate. The `<body>` base sits in `@layer base` (after Tailwind's
  * preflight, so it wins there) which means ANY semantic class outranks it. The classes sit in
@@ -18,9 +19,9 @@
 
 :root {
 	/* Font families */
-	--tr-font-family-interface: "Geist Variable", Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	--tr-font-family-interface: var(--tr-font-user-interface, "Geist Variable"), Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "WenQuanYi Micro Hei", sans-serif;
 	--tr-font-family-code: "JetBrains Mono Variable", "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", monospace;
-	--tr-font-family-brand: "Orbitron Variable", Orbitron, "Geist Variable", Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	--tr-font-family-brand: "Orbitron Variable", Orbitron, "Geist Variable", Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
 
 	/* Font weights */
 	--tr-font-weight-light: 370;
@@ -59,6 +60,13 @@
 	--tr-letter-spacing-wide: 0.05em;
 	--tr-letter-spacing-widest: 0.1em;
 	--tr-letter-spacing-brand: 0.5px;
+}
+
+/* Metric override — primitives above, restated for one selector (see `metricOverrides`). */
+:root:lang(zh) {
+	--tr-font-weight-light: 400;
+	--tr-font-size-s12: 13px;
+	--tr-line-height-metadata: 1.4;
 }
 
 /* Document base — `rootStyle` (ui.default). Any semantic class overrides it. */
@@ -273,6 +281,11 @@
 	letter-spacing: var(--tr-letter-spacing-normal);
 	text-transform: none;
 	font-style: normal;
+}
+
+/* interface preview — the same stack, with a candidate family in the slot. */
+.tr-font-preview-interface {
+	font-family: var(--tr-font-preview-interface, "Geist Variable"), Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "WenQuanYi Micro Hei", sans-serif;
 }
 
 /* Prose system 'chat' — the markdown typography for that surface. */

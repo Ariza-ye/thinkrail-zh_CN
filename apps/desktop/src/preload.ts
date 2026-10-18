@@ -1,4 +1,5 @@
 import type {
+	NativeFontBridge,
 	NativeNotificationBridge,
 	NativeNotificationInput,
 	NativeUpdateBridge,
@@ -106,6 +107,15 @@ const notificationBridge: NativeNotificationBridge = Object.freeze({
 });
 Object.defineProperty(globals, "__THINKRAIL_NATIVE_NOTIFICATIONS__", {
 	value: notificationBridge,
+	writable: false,
+	configurable: false,
+	enumerable: false,
+});
+const fontBridge: NativeFontBridge = Object.freeze({
+	list: () => rpc.request.listSystemFonts(),
+});
+Object.defineProperty(globals, "__THINKRAIL_SYSTEM_FONTS__", {
+	value: fontBridge,
 	writable: false,
 	configurable: false,
 	enumerable: false,

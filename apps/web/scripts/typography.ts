@@ -16,6 +16,14 @@ export interface FontFamily {
 	stack: string[];
 	kind: "proportional" | "monospace";
 	selfHosted?: string[];
+	userSelectable?: boolean;
+	note?: string;
+}
+
+export interface MetricOverride {
+	selector: string;
+	note?: string;
+	tokens: Record<string, number | string>;
 }
 
 export interface Style {
@@ -38,6 +46,7 @@ export interface Typography {
 	letterSpacings: Record<string, string>;
 	rootStyle: StyleRef;
 	codeRow: { fontSize: string; lineHeight: string };
+	metricOverrides?: MetricOverride[];
 	textStyles: Record<string, Record<string, Style | StyleRef>>;
 	proseSystems: Record<string, Record<string, Style | StyleRef>>;
 }
@@ -262,6 +271,40 @@ export function validate(t: Typography): string[] {
 	for (const [id, v] of Object.entries(t.lineHeights ?? {}))
 		if (!(v > 0)) fail(`lineHeights.${id}: must be > 0`);
 
+	for (const [index, override] of (t.metricOverrides ?? []).entries()) {
+		const label = `metricOverrides[${index}]`;
+		if (typeof override?.selector !== "string" || !override.selector.startsWith(":root")) {
+			fail(`${label}.selector: must start with :root`);
+			continue;
+		}
+		if (/[{};\n]/.test(override.selector)) fail(`${label}.selector: invalid characters`);
+		const tokens = override.tokens;
+		if (typeof tokens !== "object" || tokens === null || Array.isArray(tokens)) {
+			fail(`${label}.tokens: must be an object`);
+			continue;
+		}
+		if (Object.keys(tokens).length === 0) fail(`${label}.tokens: must not be empty`);
+		for (const [key, value] of Object.entries(tokens)) {
+			const [group, id] = key.split(".") as [MetricGroup, string | undefined];
+			if (!(group in METRIC_GROUPS) || !id) {
+				fail(`${label}.tokens: '${key}' must name <primitive group>.<token id>`);
+				continue;
+			}
+			const primitive = metricPrimitive(t, group, id);
+			if (primitive === undefined) {
+				fail(`${label}.tokens.${key}: unknown ${group} token '${id}'`);
+				continue;
+			}
+			if (
+				group === "letterSpacings"
+					? typeof value !== "string"
+					: !(typeof value === "number" && value > 0)
+			)
+				fail(`${label}.tokens.${key}: wrong value type`);
+			else if (value === primitive) fail(`${label}.tokens.${key}: repeats the primitive unchanged`);
+		}
+	}
+
 	for (const group of Object.keys(t.proseSystems ?? {}))
 		if (group in (t.textStyles ?? {}))
 			fail(
@@ -420,7 +463,8 @@ const HEADER = (version: string) => `/*
  * Drift gate: bun run typography:check (fails when this file is stale)
  *
  * Contains every typography value the UI is allowed to use: primitive custom properties, the \`<body>\`
- * base, one class per semantic text style, and one prose system per markdown surface.
+ * base, one class per semantic text style, one prose system per markdown surface, and the
+ * \`metricOverrides\` blocks that restate a primitive for one selector.
  *
  * Two cascade layers, both deliberate. The \`<body>\` base sits in \`@layer base\` (after Tailwind's
  * preflight, so it wins there) which means ANY semantic class outranks it. The classes sit in
@@ -447,15 +491,51 @@ export function codeRowHeight(t: Typography): number {
 	return Math.round(t.fontSizes[t.codeRow.fontSize] * t.lineHeights[t.codeRow.lineHeight]);
 }
 
+export const userFontVarName = (t: Typography, family: string): string =>
+	`--${t.metadata.cssVarPrefix}-font-user-${kebab(family)}`;
+
+const METRIC_GROUPS = {
+	fontWeights: { cssGroup: "font-weight", format: (v: unknown) => String(v) },
+	fontSizes: { cssGroup: "font-size", format: (v: unknown) => `${v}px` },
+	lineHeights: { cssGroup: "line-height", format: (v: unknown) => String(v) },
+	letterSpacings: { cssGroup: "letter-spacing", format: (v: unknown) => String(v) },
+} as const;
+
+type MetricGroup = keyof typeof METRIC_GROUPS;
+
+function metricPrimitive(
+	t: Typography,
+	group: MetricGroup,
+	id: string,
+): number | string | undefined {
+	return {
+		fontWeights: t.fontWeights,
+		fontSizes: t.fontSizes,
+		lineHeights: t.lineHeights,
+		letterSpacings: t.letterSpacings,
+	}[group][id];
+}
+
+export function familyValue(t: Typography, id: string): string {
+	const family = resolveFamily(t, id);
+	const entries = family.stack.map(quote);
+	if (!family.userSelectable) return entries.join(", ");
+	return [`var(${userFontVarName(t, id)}, ${entries[0]})`, ...entries.slice(1)].join(", ");
+}
+
+export const previewClassName = (t: Typography, family: string): string =>
+	`${t.metadata.classPrefix}-font-preview-${kebab(family)}`;
+
+export const previewVarName = (t: Typography, family: string): string =>
+	`--${t.metadata.cssVarPrefix}-font-preview-${kebab(family)}`;
+
 export function renderCss(t: Typography): string {
 	const out: string[] = [HEADER(t.metadata.version)];
 
 	out.push(":root {");
 	out.push("\t/* Font families */");
 	for (const id of Object.keys(t.fontFamilies))
-		out.push(
-			`\t${cssVarName(t, "font-family", id)}: ${resolveFamily(t, id).stack.map(quote).join(", ")};`,
-		);
+		out.push(`\t${cssVarName(t, "font-family", id)}: ${familyValue(t, id)};`);
 	out.push("\n\t/* Font weights */");
 	for (const [id, w] of Object.entries(t.fontWeights))
 		out.push(`\t${cssVarName(t, "font-weight", id)}: ${w};`);
@@ -471,6 +551,20 @@ export function renderCss(t: Typography): string {
 	for (const [id, v] of Object.entries(t.letterSpacings))
 		out.push(`\t${cssVarName(t, "letter-spacing", id)}: ${v};`);
 	out.push("}\n");
+
+	for (const override of t.metricOverrides ?? []) {
+		out.push(
+			"/* Metric override — primitives above, restated for one selector (see `metricOverrides`). */",
+		);
+		out.push(`${override.selector} {`);
+		for (const [key, value] of Object.entries(override.tokens)) {
+			const [group, id] = key.split(".") as [MetricGroup, string];
+			out.push(
+				`\t${cssVarName(t, METRIC_GROUPS[group].cssGroup, id)}: ${METRIC_GROUPS[group].format(value)};`,
+			);
+		}
+		out.push("}\n");
+	}
 
 	out.push(
 		`/* Document base — \`rootStyle\` (${t.rootStyle.$ref}). Any semantic class overrides it. */`,
@@ -489,6 +583,25 @@ export function renderCss(t: Typography): string {
 			out.push(declarations(t, resolveStyle(t, `${group}.${name}`)));
 			out.push("}");
 		}
+
+	for (const [id, family] of Object.entries(t.fontFamilies)) {
+		if (isRef(family) || !family.userSelectable) continue;
+		/*
+		 * A picker row previews a candidate by setting `--…-font-preview-<family>` ON THE ROW: a custom
+		 * property that nests `var()` inside another one is substituted where IT is declared, so setting
+		 * the runtime slot on a descendant would not take effect.
+		 */
+		out.push("");
+		out.push(`/* ${id} preview — the same stack, with a candidate family in the slot. */`);
+		out.push(`.${previewClassName(t, id)} {`);
+		out.push(
+			`\tfont-family: var(${previewVarName(t, id)}, ${quote(family.stack[0])}), ${family.stack
+				.slice(1)
+				.map(quote)
+				.join(", ")};`,
+		);
+		out.push("}");
+	}
 
 	for (const [system, styles] of Object.entries(t.proseSystems)) {
 		const root = proseRootClassName(t, system);

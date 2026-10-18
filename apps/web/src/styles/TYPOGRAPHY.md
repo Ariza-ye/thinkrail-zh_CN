@@ -233,6 +233,29 @@ tokens; every one of them is gone, because a second name for a value is the thin
 consumers that cannot use a class read the `--tr-*` tokens directly. Cabinet Grotesk is retired
 repo-wide and must not return.
 
+## CJK, and the user's own font
+
+Geist ships latin/latin-ext/cyrillic/vietnamese and **no CJK at all**, so the interface and brand stacks
+end in explicit CJK faces (`PingFang SC`, `Hiragino Sans GB`, `Microsoft YaHei`, `Noto Sans SC`,
+`WenQuanYi Micro Hei`). Without them *every* Chinese glyph is drawn by an unspecified OS fallback whose
+x-height and stroke weight do not match the Latin text beside it — the reason the Chinese UI read as
+blurry. Adding a CJK face is a `stack` edit here, nothing else.
+
+The interface family is additionally `userSelectable`: the generator emits its var as
+`var(--tr-font-user-interface, "Geist Variable"), Geist, …`, so the app may prepend a family the user
+picked on this machine while the rest of the stack — Latin *and* CJK fallbacks — stays exactly as
+written here. The runtime writes one family name to that slot and nothing else; the slot is the only
+typography value a store or component may set at runtime, and setting it on a single element scopes the
+choice to that element (the picker previews each candidate that way).
+
+`metricOverrides` restates primitives for one selector, generated verbatim after `:root`. Today there is
+one: `:root:lang(zh)` raises `light` to 400, `s12` to 13px and `metadata` leading to 1.4. The app already
+writes the interface language to `documentElement.lang`, so Chinese gets CJK-legible weight and size
+while the Latin design keeps the 370/x-height-tuned scale it was drawn for; `13px × 1.4` also keeps a
+Chinese metadata line box at the body's 18.2px instead of shrinking it. Code tokens are deliberately not
+overridden — the 11px code row is a whole-pixel virtualizer contract. Validation rejects an override that
+names an unknown token, carries a wrong value type, or merely repeats the primitive.
+
 ## Mono policy
 
 `code` is for **code and technical content only**: editor and terminal text, code blocks, inline code,

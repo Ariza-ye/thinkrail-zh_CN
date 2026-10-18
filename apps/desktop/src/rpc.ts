@@ -12,6 +12,7 @@ export type DesktopRpc = {
 	bun: {
 		requests: {
 			getUpdateState: { params: undefined; response: NativeUpdateState };
+			listSystemFonts: { params: undefined; response: string[] };
 			getWindowState: { params: undefined; response: NativeWindowState };
 			minimizeWindow: { params: undefined; response: undefined };
 			toggleMaximizeWindow: { params: undefined; response: undefined };

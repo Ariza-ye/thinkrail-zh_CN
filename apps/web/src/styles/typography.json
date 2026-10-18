@@ -7,15 +7,22 @@
 	},
 	"fontFamilies": {
 		"interface": {
+			"note": "Geist covers latin/latin-ext/cyrillic/vietnamese and no CJK at all, so the CJK faces after `Segoe UI` are mandatory, not decorative: without them every Chinese glyph is drawn by whatever the OS happens to fall back to. `userSelectable` makes the first entry a runtime slot — the generated var leads with `var(--tr-font-user-interface, <first entry>)`, so the app can prepend an installed family the user picked while the rest of the stack (Latin + CJK fallbacks) stays exactly as written here.",
 			"stack": [
 				"Geist Variable",
 				"Geist",
 				"-apple-system",
 				"BlinkMacSystemFont",
 				"Segoe UI",
+				"PingFang SC",
+				"Hiragino Sans GB",
+				"Microsoft YaHei",
+				"Noto Sans SC",
+				"WenQuanYi Micro Hei",
 				"sans-serif"
 			],
 			"kind": "proportional",
+			"userSelectable": true,
 			"selfHosted": ["@fontsource-variable/geist", "@fontsource-variable/geist/wght-italic.css"]
 		},
 		"code": {
@@ -43,6 +50,9 @@
 				"-apple-system",
 				"BlinkMacSystemFont",
 				"Segoe UI",
+				"PingFang SC",
+				"Microsoft YaHei",
+				"Noto Sans SC",
 				"sans-serif"
 			],
 			"kind": "proportional",
@@ -91,6 +101,17 @@
 		"fontSize": "s11",
 		"lineHeight": "default"
 	},
+	"metricOverrides": [
+		{
+			"selector": ":root:lang(zh)",
+			"note": "Chinese metrics, applied under the interface language the app already writes to `documentElement.lang`. Geist's 370 and the dense 1.25/12px metadata were tuned to a 7.4px x-height; CJK glyphs at that weight and size read as a grey smear. 400 restores stroke contrast, s12→13px is the smallest legible CJK metadata size, and metadata keeps the body's 18.2px line box (13 × 1.4) so Chinese rows do not grow taller than the Latin ones they replace. Code sizes are untouched on purpose: the 11px code row is a whole-pixel virtualizer contract.",
+			"tokens": {
+				"fontWeights.light": 400,
+				"fontSizes.s12": 13,
+				"lineHeights.metadata": 1.4
+			}
+		}
+	],
 	"textStyles": {
 		"brand": {
 			"hero": {

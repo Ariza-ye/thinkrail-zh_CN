@@ -647,7 +647,12 @@ a project picker, the prompt hero, and the reused
   notice naming `gh auth login`; Refresh (`github.refresh`) is offered in both states);
   **`AppearanceSettings`** (a client-local **Language** group offers **System / English / 简体中文** through
   the app `i18n` preference seam; System is the default, changes apply immediately, and no host setting
-  is written. Settings navigation and page copy use reactive translations while protocol ids and React
+  is written. A client-local **Font** group uses the same seam (`fonts` barrel, [[submodule-web-fonts]]):
+  one **Interface font** row naming the current family (**Default** until one is chosen), a disclosure with
+  a search field, **Default**, the installed families — each rendered in its own face — and a family-name
+  field for a host that cannot enumerate. Selection applies immediately to the document-root slot and
+  writes no host setting; a name that would break the CSS value is refused with an inline
+  `interface-font-error` notice instead of being persisted. Settings navigation and page copy use reactive translations while protocol ids and React
   keys remain stable. The catalog-driven theme settings follow: a **Theme mode** segmented control,
   **System / Light / Dark** with System offered only from `THEME_SYSTEM_PROTOCOL_VERSION` (older hosts keep
   fixed-only behavior), and a **Contrast level** control, **Default / High**. Light/Dark write a fixed

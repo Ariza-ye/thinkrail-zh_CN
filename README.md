@@ -54,6 +54,9 @@ create the tools it needs based on how you actually work.
 - **English and 简体中文.** The interface follows your system language by default. Switch instantly in
   **Settings → Appearance → Interface language**; the choice is remembered on this client. Your chats,
   code, file names, and model output are never translated.
+- **Your own interface font.** Pick any font installed on this machine in **Settings → Appearance →
+  Interface font** — every candidate is previewed in its own face, the choice stays on this device, and
+  Chinese keeps its own legible metrics rather than the Latin scale.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/readme-assets/specs-dark.png">
