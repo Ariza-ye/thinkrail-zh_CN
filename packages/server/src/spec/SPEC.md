@@ -2,45 +2,41 @@
 id: submodule-server-spec
 type: submodule-design
 status: active
-title: spec — worktree spec-graph reads
+title: spec —— 工作树规范图读取
 parent: module-server
 depends-on: [module-contracts]
 references: [module-spec-graph]
 tags: [spec-viewer, public-surface-checked]
 ---
 
-## Responsibility
+## 职责
 
-Serve the read-only Specs viewer: a whole-graph snapshot of the active worktree's spec-graph
-(`spec.graph`), mapped to the wire DTOs. Read-on-demand — every call re-reads through the derived index
-(revalidate-on-read), so specs edited by the agent, the editor, or git are current on the next fetch.
-(The sibling `watch` module separately nudges clients to re-fetch — an invalidation push, not a data
-push; this module's read path stays pull-only.) Also answers the project-level **`projectHasSpecs(root)`** — does a repo carry *any
-durable* spec (any node whose `type` is not the ephemeral `task-spec`) — which `host` exposes via the **lazy `project.hasSpecs`** method (a full-tree walk, so
-requested only for the one project the Welcome screen renders, never eagerly for every project).
+为只读的 Specs 查看器提供服务：把活跃工作树的规范图（`spec.graph`）整体快照映射为线上协议 DTO。
+按需读取 —— 每次调用都通过派生索引重新读取（读取时重新校验），因此由 agent、编辑器或 git 编辑过的
+规范在下一次获取时就是最新的。（兄弟模块 `watch` 另行提示客户端重新获取 —— 那是失效推送，不是数据
+推送；本模块的读取路径保持只拉取。）此外还回答项目级的 **`projectHasSpecs(root)`** —— 某个仓库是否
+带有*任何持久*规范（任何 `type` 不是临时性的 `task-spec` 的节点）—— `host` 通过**惰性的
+`project.hasSpecs`** 方法暴露它（这是一次全树遍历，因此只为 Welcome 屏幕渲染的那一个项目请求它，
+绝不为每个项目提前请求）。
 
-The read is **synchronous** (core's walk is sync-fs, O(worktree dirs) per call). That's acceptable —
-fetches are on-demand (workspace activation / a `workspace.fsChanged` nudge / an error-state Retry, no
-polling) and the per-file parse cache skips re-reads. If
-the walk ever dominates, the escalation is core's **watcher-as-dirty-flag** (see `pi-spec-graph`
-core/SPEC.md), not an async wrapper — that would still block the loop in one piece.
+该读取是**同步**的（core 的遍历是同步-文件系统操作，每次调用 O(工作树目录数)）。这是可接受的 ——
+获取是按需的（工作区激活 / 一次 `workspace.fsChanged` 提示 / 错误态下的重试，没有轮询），且逐文件
+解析缓存会跳过重复读取。如果遍历某天成为瓶颈，升级方向是 core 的**把监视器当作脏标记**（见
+`pi-spec-graph` 的 core/SPEC.md），而不是一个异步包装 —— 后者依然会把事件循环整块阻塞。
 
-## Boundary
+## 边界
 
-- **Owns:** `specGraph(workspaceId) → SpecGraphSnapshot` — reads the workspace's worktree through a
-  per-workspace `SpecIndex` (reused across calls so the parse cache pays off — same pattern as the
-  agent tools) and maps core's `SpecNode`s to the `contracts` DTOs (the field set lives there; `title`
-  falls back to `id` so the wire never carries an untitled node). **Mapping only** — no traversal
-  logic; the client builds the tree. `evictSpecIndex(workspaceId)` — drops the cached index; `host`
-  calls it on `workspace.remove` so an archived workspace's parse cache doesn't outlive it (a later
-  read would just rebuild). **`projectHasSpecs(root) → boolean`** — whether a repo **root** (not a
-  worktree) carries any **durable** spec (any node whose `type` isn't `task-spec` — an ephemeral scratch
-  task-spec, e.g. under `.thinkrail/context/`, must never signal "set up"), through a per-root reused `SpecIndex`; the
-  project-level signal behind the Welcome screen's "Set up project" suggestion. Degrades to `false` on a
-  glob/parse failure so it can never break `project.open` / `project.list`.
-- **Public surface (barrel):** `specGraph`, `evictSpecIndex`, `projectHasSpecs`.
-- **Allowed deps:** `persistence` (workspace lookup); `contracts` (DTOs); **`pi-spec-graph/core`** (the
-  pi-free read model — the one host-side value-import of the extension package, sanctioned in
-  `module-spec-graph`).
-- **Forbidden:** `host`; sibling features; `pi-spec-graph`'s extension entry or `tools/` (pi-coupled);
-  any pi package.
+- **拥有：** `specGraph(workspaceId) → SpecGraphSnapshot` —— 通过每个工作区一个的 `SpecIndex` 读取
+  该工作区的工作树（在多次调用之间复用，使解析缓存物有所值—— 与 agent 工具同一模式），并把 core 的
+  `SpecNode` 映射为 `contracts` 的 DTO（字段集住在那一边；`title` 回退到 `id`，因此线上协议绝不
+  携带无标题节点）。**仅做映射** —— 没有遍历逻辑；树由客户端构建。`evictSpecIndex(workspaceId)`
+  —— 丢弃缓存的索引；`host` 在 `workspace.remove` 时调用它，使被归档工作区的解析缓存不会比它活
+  得更久（之后再读只会重建）。**`projectHasSpecs(root) → boolean`** —— 某个仓库**根**（不是工作树）
+  是否带有任何**持久**规范（任何 `type` 不是 `task-spec` 的节点 —— 一个临时性的草稿 task-spec，
+  例如位于 `.thinkrail/context/` 下的，绝不可发出“已设置好”的信号），通过每个根一个复用的
+  `SpecIndex` 判断；这是 Welcome 屏幕“设置项目”建议背后的项目级信号。在 glob/解析失败时降级为
+  `false`，因此它绝不会破坏 `project.open` / `project.list`。
+- **Public surface（公开接口，barrel）：** `specGraph`, `evictSpecIndex`, `projectHasSpecs`
+- **允许的依赖：** `persistence`（工作区查找）；`contracts`（DTO）；**`pi-spec-graph/core`**（无 pi
+  的读取模型 —— 宿主侧对该扩展包唯一的值导入，已由 `module-spec-graph` 认可）。
+- **绝不触碰：** `host`；兄弟特性；`pi-spec-graph` 的扩展入口或 `tools/`（与 pi 耦合）；任何 pi 包。

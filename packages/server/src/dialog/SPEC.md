@@ -2,48 +2,43 @@
 id: submodule-server-dialog
 type: submodule-design
 status: active
-title: dialog — native folder picker
+title: dialog —— 原生文件夹选择器
 parent: module-server
 ---
 
-## Responsibility
+## 职责
 
-The host's native directory picker, so the browser "Open project" gets a real OS dialog.
+宿主的原生目录选择器，使浏览器的“打开项目”能弹出真正的操作系统对话框。
 
-## Boundary
+## 边界
 
-- **Owns:** `selectDirectory()` — the host's native folder picker, per OS via `pickersFor(platform)`:
-  macOS `osascript` (`choose folder`), Linux `zenity` then `kdialog`, Windows a PowerShell
-  `FolderBrowserDialog`. `THINKRAIL_PICK_DIR` overrides it for dev/e2e and is resolved before native
-  availability checks. It returns `null` **only** when the user cancels. Picker completion is classified
-  from exit code plus diagnostics: AppleScript's `-128` marker and Linux exit 1 without stderr are
-  cancellation; Linux exit 1 with diagnostics (including GTK's `Failed to open display`) and every
-  PowerShell non-zero exit are failures. Linux with neither `DISPLAY` nor `WAYLAND_DISPLAY` fails before
-  spawn with an actionable no-graphical-session reason. A missing or failed candidate falls through to the
-  next candidate; cancellation stops. If all candidates are missing or fail, the method throws the most
-  useful observed reason, because a silent `null` is a dead button.
-  **File-indirection:** when `THINKRAIL_PICK_DIR` names an existing *file*, its trimmed contents are
-  **re-read per call**. Plain content is the returned path; `error:<message>` throws that deterministic
-  failure before native availability checks. One shared source, binary, or desktop e2e host can therefore
-  hand different folders or failures to different tests by rewriting the pointer (a directory value is
-  returned as-is).
-- **Windows: the dialog must come up focused, in front of the browser.** The host is a background
-  process, and Windows only lets the process that *owns* the foreground call `SetForegroundWindow` — so a
-  plain `ShowDialog()` opens behind the browser, unfocused, reading as "the button does nothing". An
-  invisible top-most owner form is **not sufficient on its own**: measured on Windows 11 with an unrelated
-  app in front, the dialog came up unfocused in 3/3 runs — visible, but the keyboard still belonged to the
-  browser. What works is the documented way past the foreground lock: the script `AttachThreadInput`s to
-  the foreground window's thread (sharing its input queue makes our `SetForegroundWindow` legal),
-  foregrounds the owner form, detaches, then shows the dialog **owned** by that now-foreground form.
-  Measured on Windows 11: focused and on top in 3/3 runs, Enter selects the highlighted folder, Escape
-  returns `null` at exit 0. The whole grab is **best-effort** — wrapped so a host that can't compile the
-  P/Invoke, or an elevated foreground app that refuses the steal, degrades to the old behaviour (the
-  dialog still opens, just behind) instead of failing the pick.
-  The script is handed over as `-EncodedCommand` (base64/UTF-16LE), not `-Command`: it is multi-line and
-  contains the double quotes of P/Invoke signatures, which Windows argv quoting plus PowerShell's own
-  re-parse do not preserve.
-- **Public surface (barrel):** `selectDirectory` (+ `pickersFor` / `Picker` and the two message builders
-  `pickerFailure` / `noPickerMessage`, exposed for unit tests).
-- **Allowed deps:** Bun (`Bun.spawn`, with `windowsHide`; see `architecture.md` Invariants),
-  `process.env`.
-- **Forbidden:** `host`; sibling features; `contracts` (none needed).
+- **拥有：** `selectDirectory()` —— 宿主的原生文件夹选择器，按操作系统分派（`pickersFor(platform)`）：
+  macOS 用 `osascript`（`choose folder`），Linux 用 `zenity` 再退到 `kdialog`，Windows 用一个
+  PowerShell `FolderBrowserDialog`。`THINKRAIL_PICK_DIR` 为开发/e2e 覆盖它，并在原生可用性检查
+  之前被解析。它**仅**在用户取消时返回 `null`。选择器的完成状态由退出码加诊断信息分类：AppleScript
+  的 `-128` 标记，以及 Linux 退出码 1 且无 stderr，属于取消；Linux 退出码 1 且有诊断信息（包括
+  GTK 的 `Failed to open display`）以及每一个 PowerShell 非零退出，属于失败。Linux 在没有
+  `DISPLAY` 也没有 `WAYLAND_DISPLAY` 时会在派生进程之前以可操作的无图形会话原因失败。缺失或失败的
+  候选会落到下一个候选；取消则停止。如果所有候选都缺失或失败，该方法抛出所观察到的最有用的原因，
+  因为静默的 `null` 就是一个死按钮。
+  **文件间接：** 当 `THINKRAIL_PICK_DIR` 指向一个已存在的*文件*时，其去除首尾空白后的内容会
+  **在每次调用时重新读取**。纯内容即返回的路径；`error:<message>` 会在原生可用性检查之前抛出这一
+  确定性的失败。因此一个共享的源码、二进制或桌面 e2e 宿主，可以通过重写指针把不同的文件夹或失败
+  交给不同的测试（目录值原样返回）。
+- **Windows：对话框必须以获得焦点、位于浏览器前方的状态出现。** 宿主是后台进程，而 Windows 只允许
+  *拥有*前台窗口的进程调用 `SetForegroundWindow` —— 因此一个朴素的 `ShowDialog()` 会开在浏览器
+  后面、没有焦点，读起来就像“这个按钮什么也不做”。一个不可见的、总在最前的属主窗体**本身并不
+  足够**：在 Windows 11 上、前方是一个无关应用时实测，对话框 3/3 次都以未聚焦状态出现 —— 可见，
+  但键盘仍归浏览器。有效的是绕过前台锁的文档化做法：脚本对前台窗口的线程做 `AttachThreadInput`
+  （共享其输入队列可使我们的 `SetForegroundWindow` 合法），把属主窗体带到前台，解除附加，然后显示
+  **归属于**这个此刻处于前台的窗体的对话框。在 Windows 11 上实测：3/3 次均获得焦点且置顶，回车
+  选中高亮的文件夹，Escape 以退出码 0 返回 `null`。整个抓取是**尽力而为**的 —— 被包裹起来，使无法
+  编译 P/Invoke 的宿主，或拒绝被抢占的提权前台应用，降级为旧行为（对话框仍然打开，只是在后面），
+  而不是让选择失败。
+  脚本通过 `-EncodedCommand`（base64/UTF-16LE）交付，而不是 `-Command`：它是多行的，并且含有
+  P/Invoke 签名里的双引号，而 Windows 的 argv 引号处理加上 PowerShell 自身的重新解析无法保留它们。
+- **Public surface（公开接口，barrel）：** `selectDirectory`（外加 `pickersFor` / `Picker` 与两个
+  消息构建函数 `pickerFailure` / `noPickerMessage`，为了单元测试而暴露）。
+- **允许的依赖：** Bun（`Bun.spawn`，带 `windowsHide`；见 `architecture.md` 的不变量）、
+  `process.env`。
+- **绝不触碰：** `host`；兄弟特性；`contracts`（无需使用）。

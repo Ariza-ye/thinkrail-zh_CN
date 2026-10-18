@@ -2,248 +2,204 @@
 id: submodule-server-reviews
 type: submodule-design
 status: active
-title: reviews — draft comments on files/diffs + review sessions
+title: reviews —— 针对文件/差异的草稿评论 + 评审会话
 parent: module-server
 depends-on: [module-contracts]
 tags: [review]
 ---
 
-## Responsibility
+## 职责
 
-The review layer: GitHub-style **draft comments** anchored to a workspace's files and diffs, collected
-without starting the agent, then sent — grouped **per file**, each file's comments into that file's one
-review chat — as a **structured context package**. Owns the per-workspace review store, anchor
-re-anchoring, and package rendering.
+评审层：GitHub 风格的**草稿评论**，锚定到工作区的文件与差异上，在不启动 agent 的情况下收集，
+然后发送 —— 按**每个文件**分组，每个文件的评论进入该文件唯一的那一个评审聊天 —— 作为**结构化
+上下文包**。拥有每工作区的评审存储、锚点重新锚定，以及包渲染。
 
-## Model (mirrors the wire DTOs in `contracts`)
+## 模型（镜像 `contracts` 里的线上 DTO）
 
-- **One open `Review` per workspace** (auto-created lazily on the first read/comment). Lazy creation
-  awaits git (the pinned base resolves through the async scope resolver), so it is **single-flighted per
-  workspace**: the unlocked `review.get` read and a locked mutation racing through that window would
-  otherwise each save a distinct fresh review, the last silently replacing the other's (possibly
-  already-mutated) snapshot. Clear joins that creation flight before resolving its replacement, so a
-  first `review.get` can never save an unannounced snapshot over the one Clear published.
-  `freshSnapshot` re-reads the workspace **after** its git await: removal throws before anything
-  persists, while a changed diff identity (`worktreePath`, `baseBranch`, `diffBase`) retries base
-  resolution rather than pinning the new review to the old target. Creation is the **only** await a
-  snapshot pass may span: every load→mutate→persist over the open snapshot runs synchronously. Mutation
-  helpers use an already-open snapshot immediately and await only when they must join lazy creation; they
-  never wrap a loaded snapshot in `Promise.resolve` and yield with stale state. The unlocked read's
-  re-anchor pass (`getReviewSnapshot`) follows the same rule. `addComment` resolves its immutable base-side
-  ref *before* taking the snapshot, but captures a mutable worktree anchor only inside the final
-  synchronous mutate/persist pass; `clearReview` resolves the fresh base
-  *before* loading the active snapshot it archives — because the review lock covers only mutations, and
-  a pass holding a snapshot across an await would save over whatever a concurrent writer (a locked
-  mutation, `rollbackSend`, an agent resolve) persisted in the gap, silently deleting it. The one loss
-  that discipline still allows is a locked mutation (whose snapshot predates its awaits) overwriting a
-  re-anchor persist — benign: anchor state is derived from worktree content and recomputed on the next
-  read. Wire
-  **`review.close` is the Clear operation**: under the host's workspace review lock, `clearReview`
-  first persists the current review's non-draft records as a closed snapshot under
-  `reviews/archive/<workspaceId>/<reviewId>.json`, then replaces the active snapshot with a fresh open
-  review and publishes only that fresh snapshot — clients never converge on an intermediate closed copy.
-  Drafts are discarded; sent/resolved/dismissed records survive. There is no archive browser, but an
-  in-flight agent can still resolve a sent archived comment by id. `Review.fileSessions` pins each review KEY to
-  its chat (key → sessionId): one chat per file for the review's life — the file's first send creates
-  it, every later send (single or batch) follows up into it. The key is the comment's path, or the
-  **empty string** for anchorless whole-change-set remarks, pinned exactly like a file (`reviewSessionKey`)
-  so a second overall remark continues that discussion instead of opening a chat nothing can follow up.
-  `Review.doneFiles` (same keys) marks files whose review the user FINISHED: a fully-resolved file
-  stays in the review until `markFileDone` (wire: `review.fileDone`, rejected while anything is
-  unresolved) says "we're done here" — and a new comment on the file clears the mark (`addComment`),
-  re-opening it.
-  `Review.baseSha` pins **the original side of the reviewed diff** — the branch range's `originalRef`,
-  i.e. the **fork point** (`merge-base` of the diff target and `HEAD`) — **to a full commit oid, once, at
-  creation**. Not `diffBaseRef`'s tip: the branch diff shows fork-point-vs-worktree (merge-base
-  semantics), so a target that advanced past a diverged workspace has a tip carrying upstream commits
-  this review never displayed. Deliberately the BRANCH range whatever scope the Changes panel shows — a scope switch must
-  not redefine what the review *is* (a comment made in another scope still quotes its own
-  `anchor.baseRef`). Immutable for the same reason: the target is re-pointable mid-review and its branch
-  can move. It degrades to the raw ref when that wouldn't resolve, so the review surface
-  survives an unreadable base instead of vanishing with
-  it. `reviewBaseRef` is how `host` reads it.
-- **`ReviewComment`**: `kind` inline/diff/file/review; `status` draft → sent → resolved (or
-  dismissed); **`author`** — the human (default, absent) or `"agent"`: the plan's reviewer agent files
-  findings through the same `addComment` (worktree-side anchors), badged in the panel and picked up by
-  the same send machinery (the TODO fix package rides `buildSendPackage`, see [[submodule-server-todos]]
-  §agent reviewer). The wire (`review.commentUpdate`) may only land the terminal manual outcomes
-  (resolved/dismissed, from draft or sent); `draft`↔`sent` moves are owned exclusively by the send
-  path (`markCommentsSent`/`rollbackSend`) — a client that could un-send a comment could rewrite or
-  delete a remark whose id an agent chat already quotes;
-  `sessionId` links the chat the comment was sent into — its file's review chat. **A comment is a
-  record once SENT**: a draft — the user's own unsent scratch — can still be deleted
-  (`review.commentDelete`, draft-only, rejected otherwise), but a sent comment is never deleted — Clear
-  moves that record into the closed archive before replacing the active review — and the review offers no
-  rollback of worktree changes (the old `git.revertFile` Reject is gone); the way
-  to push back on a change is to say so in the comment.
-- **`ReviewAnchor` = `path` + `side` + `contentHash` + an ordered `selectors` fallback chain**
-  (`lineRange`, `textQuote` with exact/prefix/suffix, `structural` scheme+ref for a document node, `region`
-  for normalized `0..1` geometry; Ask-agent populates `diffHunk` with the exact displayed hunk header,
-  while `textQuote` carries re-anchoring). The
-  `anchorState` axis (`anchored`/`moved`/`outdated`) is **orthogonal to `status`**: "was it discussed"
-  and "is the anchor alive" never overwrite each other.
-  **`contentHash` is sha-256 over the resource's bytes** (`fs.hashBytes`) and capture follows the
-  resource, not the comment: a **text** side (`fs.classifyBytes` — no recognized binary magic number, no
-  NUL byte in the first 8 KiB, and a strict UTF-8 decode; a BOM is text, an SVG is text)
-  derives `textQuote` from `lineRange` as before, while a **byte-only** side hashes the bytes and keeps
-  the renderer's selectors **as given**, never a derived quote — there is no text to quote. `addComment`
-  **narrows the wire's selectors** before either capture — every element an object of a known `kind`
-  with every declared field type-checked (`region` components finite and in `[0, 1]`, `page` a positive
-  integer; `structural.ref` a non-empty string and `scheme` matching `/^[a-z][a-z0-9-]*$/`; `lineRange`
-  integral, 1-based, non-inverted) — and stores *that* narrowed value, so an undeclared field cannot ride
-  the wire into the store. It checks nothing beyond shape: an unknown structural scheme belongs to a
-  renderer this host has never heard of and is preserved, not refused.
-- **The two diff sides are two anchor spaces.** A `side: "worktree"` anchor is captured from the
-  worktree file; a `side: "base"` anchor is captured from the blob the diff's ORIGINAL editor is
-  showing — the host resolves it from the tab's `scope` (`resolveDiffRange(...).originalRef`), **pins that ref to a
-  full commit oid** (`git.resolveCommitOid`) and stamps it on the anchor as **`baseRef`**, so the fragment
-  and its context stay readable — and stay the SAME — for the review's life. The pin is the load-bearing
-  part: a scope's `originalRef` is symbolic for `uncommitted` (the literal `HEAD`) and degrades to the raw
-  base ref when `merge-base` fails, so storing it verbatim means the user's next commit re-points it and
-  the package reads today's content at yesterday's line numbers. A ref that names no commit is refused
-  outright rather than anchored to something that moves.
-  Both sides are read as **bytes** at capture (`git.readBlobBytesAt` for the base, as the worktree side
-  already does), since a decoded read would hash replacement characters for an image and drop a BOM the
-  worktree side keeps.
-  A base selection is **never translated into worktree line numbers**: the two sides say different
-  things at the same numbers, so a remark on a deleted or rewritten line would end up attached to
-  whatever now occupies that spot — and *that* is what the send package would show the agent. A base
-  anchor whose path isn't in the base at all is rejected up front, never silently re-pointed.
+- **每工作区一个打开的 `Review`**（首次读取/评论时惰性创建）。惰性创建会 await git（钉定的基线
+  经由异步范围解析器解析），所以它**按工作区做 single-flight**：否则未加锁的 `review.get` 读取
+  与一个穿过该窗口的加锁变更会各自保存一份不同的新评审，最后一份静默替换掉对方的（可能已被变更
+  过的）快照。Clear 会加入那次创建飞行，然后才解析它的替代品，所以一次首次 `review.get` 绝不可能
+  用一份未宣告的快照盖过 Clear 已发布的那一份。`freshSnapshot` 在它的 git await **之后**重新读取
+  工作区：移除会在任何东西持久化之前抛出，而改变的差异身份（`worktreePath`、`baseBranch`、
+  `diffBase`）会重试基线解析，而不是把新评审钉到旧目标上。创建是一次快照过程唯一可以跨越的
+  await：对打开快照的每一次 加载→变更→持久化 都同步运行。变更辅助函数立即使用已打开的
+  快照，只在必须加入惰性创建时才 await；它们绝不把已加载的快照包进 `Promise.resolve` 然后带着
+  陈旧状态让出。未加锁读取的重锚定过程（`getReviewSnapshot`）遵循同一规则。`addComment` 在取
+  快照**之前**解析它不可变的基线侧 ref，但只在最后的同步变更/持久化过程中捕获一个可变的工作树
+  锚点；`clearReview` 在加载它要归档的活跃快照**之前**解析新基线 —— 因为评审锁只覆盖变更，
+  而一个跨 await 持有快照的过程会盖掉并发写入者（一次加锁变更、`rollbackSend`、一次 agent
+  解决）在那道间隙里持久化的东西，静默删掉它。这套纪律仍允许的唯一损失，是一次加锁变更（其快照
+  早于它的 await）覆盖一次重锚定持久化 —— 良性：锚点状态派生自工作树内容，并在下一次读取时
+  重新计算。线上协议的 **`review.close` 就是 Clear 操作**：在宿主的工作区评审锁下，`clearReview`
+  先把当前评审的非草稿记录作为一份已关闭快照持久化到
+  `reviews/archive/<workspaceId>/<reviewId>.json`，然后用一份新的打开评审替换活跃快照，并且只
+  发布那份新快照 —— 客户端绝不会收敛到中间那份已关闭副本。草稿被丢弃；已发送/已解决/已忽略的
+  记录存活下来。没有归档浏览器，但在途的 agent 仍能按 id 解决一条已发送的归档评论。
+  `Review.fileSessions` 把每个评审 KEY 钉到它的聊天（key → sessionId）：评审生命期内每文件一个
+  聊天 —— 该文件的首次发送创建它，之后每次发送（单个或批量）都向它追加。key 是评论的路径，或
+  对无锚点的整个改动集备注来说是**空字符串**，钉法与文件完全相同（`reviewSessionKey`），这样第二条
+  整体备注会延续那段讨论，而不是开一个无人能追加的聊天。`Review.doneFiles`（同样的 key）标记
+  用户**已完成**评审的文件：一个完全解决的文件会留在评审里，直到 `markFileDone`（线上：
+  `review.fileDone`，任何未解决时被拒绝）说"这里完成了"—— 而对该文件的新评论会清除该标记
+  （`addComment`），把它重新打开。
+  `Review.baseSha` 把**被评审差异的原始侧**钉住 —— 分支范围的 `originalRef`，即**分叉点**
+  （差异目标与 `HEAD` 的 `merge-base`）—— **到一个完整提交 oid，一次，在创建时**。不是
+  `diffBaseRef` 的尖端：分支差异展示的是 分叉点-对-工作树（merge-base 语义），所以一个已经
+  越过产生分叉的工作区的目标，其尖端带着这次评审从未展示过的上游提交。有意取分支范围，无论
+  Changes 面板显示什么范围 —— 范围切换绝不能重新定义这次评审*是什么*（在另一个范围里写下的
+  评论仍引用它自己的 `anchor.baseRef`）。出于同样的原因不可变：目标在评审中途可被重新指向，
+  它的分支也会移动。当原始 ref 无法解析时它退化到该原始 ref，所以评审界面在一个不可读的基线
+  之下仍能存活，而不是随之消失。`reviewBaseRef` 是 `host` 读取它的方式。
+- **`ReviewComment`**：`kind` inline/diff/file/review；`status` draft → sent → resolved（或
+  dismissed）；**`author`** —— 人类（默认，缺失）或 `"agent"`：计划的评审 agent 通过同一个
+  `addComment` 提交发现项（工作树侧锚点），在面板中被标记，并被同一套发送机构接走（TODO 的
+  修复包搭乘 `buildSendPackage`，见 [[submodule-server-todos]] §agent reviewer）。线上协议
+  （`review.commentUpdate`）只能落地终态的人工结果（resolved/dismissed，来自 draft 或 sent）；
+  `draft`↔`sent` 的迁移完全由发送路径拥有（`markCommentsSent`/`rollbackSend`）—— 一个能把评论
+  取消发送的客户端，就能重写或删除一条 id 已被某次 agent 聊天引用的备注；
+  `sessionId` 链接该评论被发送进去的聊天 —— 也就是它所属文件的评审聊天。**一条评论一旦被发送
+  就是一条记录**：草稿 —— 用户自己未发送的草稿 —— 仍可被删除（`review.commentDelete`，仅草稿，
+  否则被拒绝），但已发送的评论绝不被删除 —— Clear 在替换活跃评审之前把那条记录移进已关闭归档
+  —— 而评审不提供对工作树改动的回滚（旧的 `git.revertFile` Reject 已消失）；对一处改动
+  表示反对的方式，就是在评论里说出来。
+- **`ReviewAnchor` = `path` + `side` + `contentHash` + 一条有序的 `selectors` 回退链**
+  （`lineRange`、带 exact/prefix/suffix 的 `textQuote`、针对文档节点的 `structural` scheme+ref、
+  针对归一化 `0..1` 几何的 `region`；Ask-agent 用实际显示的 hunk 头填充 `diffHunk`，而
+  `textQuote` 承载重新锚定）。`anchorState` 轴（`anchored`/`moved`/`outdated`）与 `status`
+  **正交**："是否讨论过"与"锚点是否还活着"绝不互相覆盖。
+  **`contentHash` 是资源字节之上的 sha-256**（`fs.hashBytes`），捕获跟随资源而不是评论：**文本**
+  侧（`fs.classifyBytes` —— 没有可识别的二进制魔数、前 8 KiB 无 NUL 字节，且严格 UTF-8 解码；
+  BOM 算文本，SVG 算文本）像以前一样从 `lineRange` 派生 `textQuote`，而**字节专用**侧对字节取
+  哈希，并**按给定**保留渲染器的选择器，绝不派生引文 —— 因为没有可引用的文本。`addComment`
+  在任一种捕获**之前先收窄线上协议的选择器** —— 每个元素都是已知 `kind` 的对象，每个声明的
+  字段都做类型检查（`region` 分量有限且落在 `[0, 1]`，`page` 是正整数；`structural.ref` 是非空
+  字符串且 `scheme` 匹配 `/^[a-z][a-z0-9-]*$/`；`lineRange` 为整数、1 起、不倒置）—— 并存储
+  *那个*收窄后的值，所以一个未声明的字段无法搭着线上协议进入存储。它除形状之外什么都不校验：
+  一个未知的 structural scheme 属于某台宿主从未听说过的渲染器，会被保留，而不是拒绝。
+- **两个差异侧是两个锚点空间。** 一个 `side: "worktree"` 锚点捕获自工作树文件；一个
+  `side: "base"` 锚点捕获自差异的 ORIGINAL 编辑器正在展示的那个 blob —— 宿主从标签页的 `scope`
+  解析它（`resolveDiffRange(...).originalRef`），**把该 ref 钉到一个完整提交 oid**
+  （`git.resolveCommitOid`）并作为 **`baseRef`** 盖在锚点上，这样片段及其上下文在评审生命期内
+  保持可读 —— 且保持**同一份**。钉住是承重的部分：一个范围的 `originalRef` 对 `uncommitted`
+  是符号性的（字面的 `HEAD`），并在 `merge-base` 失败时退化到原始基线 ref，所以逐字存储它意味着
+  用户的下一次提交会重新指向它，包会在昨天的行号处读到今天的内容。不指向任何提交的 ref 会被
+  当场拒绝，而不是锚定到某个会移动的东西上。两侧在捕获时都按**字节**读取（基线侧用
+  `git.readBlobBytesAt`，工作树侧本就如此），因为解码读取会为一张图哈希出替换字符，并丢掉
+  工作树侧保留的 BOM。基线选择**绝不翻译成工作树行号**：两侧在同样的行号上说的是不同的
+  事，所以对一行被删除或重写内容的备注会挂到如今占据该位置的东西上 —— 而*那*正是发送包会给
+  agent 看的内容。一个其路径在基线里根本不存在的基线锚点会被预先拒绝，绝不静默重新指向。
 
-## Re-anchoring (the file changed under a comment)
+## 重新锚定（评论之下的文件变了）
 
-Recomputed on every snapshot read and before any send (`reanchorWorkspace`), against the worktree:
-1. `contentHash` (sha-256 of the file's bytes) unchanged → `anchored`.
-2. Else search `textQuote.exact` (disambiguated by prefix/suffix) → exactly one match → update
-   `lineRange`, state `moved` (silent re-pin). **`moved` is sticky**: the re-pin refreshes the
-   anchor's `contentHash`, so the very next pass would otherwise see a hash match and silently
-   downgrade it to `anchored` — losing the "drifted since creation" fact the state records.
-3. No/ambiguous match or file gone → `outdated`; the comment keeps its creation-time snapshot
-   (`textQuote.exact`) so it stays meaningful and sendable (the package marks it outdated).
-4. **No `textQuote` to search at all** (a byte-only resource, or a renderer that anchored without text):
-   a **positioned** anchor — any `lineRange`/`structural`/`region` selector — is `outdated`, because a
-   re-pin needs evidence and a changed image or notebook offers none; a **whole-file** anchor (no
-   selectors, the `file` comment kind) stays `moved` with a refreshed hash, because the remark is about
-   the file and not a position in it. This is deliberate, and it is strict on purpose: a re-encoded or
-   metadata-touched PNG with the same dimensions *probably* still has the remark's subject under the same
-   normalized region, but "same dimensions" is not evidence that the pixels there are the same, and
-   the whole point of `outdated` is "look again before you trust this position". A
-   dimensions-preserved → `moved` rule was considered and rejected because the host would be asserting
-   a visual fact it cannot check — the diff viewer (2-up, swipe, onion, difference) is where that check
-   belongs, and an `outdated` thread is still drawn at its region, still sendable, and still carries its
-   creation-time snapshot. The client's UI copy names the reason (`outdatedReason`): text that was not
-   found again, bytes that changed under a position, or a file that is gone.
-`side: "base"` anchors are never re-anchored: `baseRef` is a commit oid, so the blob it names is
-immutable and there is nothing to drift — and re-anchoring them against the *worktree* would be the very re-pointing the
-per-side capture exists to prevent.
+每次快照读取时以及任何发送之前（`reanchorWorkspace`）都对着工作树重新计算：
+1. `contentHash`（文件字节的 sha-256）未变 → `anchored`。
+2. 否则搜索 `textQuote.exact`（用 prefix/suffix 消歧）→ 恰好一处匹配 → 更新 `lineRange`，状态
+   `moved`（静默重钉）。**`moved` 是黏性的**：重钉会刷新锚点的 `contentHash`，所以紧接着的下一趟
+   本会看到哈希匹配并把它静默降级为 `anchored` —— 丢掉该状态所记录的"自创建以来已漂移"这一事实。
+3. 无匹配/歧义匹配，或文件已消失 → `outdated`；评论保留它创建时的快照（`textQuote.exact`），
+   所以它仍然有意义且仍可发送（包会把它标记为 outdated）。
+4. **根本没有 `textQuote` 可搜索**（一个字节专用资源，或一个不用文本锚定的渲染器）：
+   一个**带位置**的锚点 —— 任何 `lineRange`/`structural`/`region` 选择器 —— 是 `outdated`，因为
+   重钉需要证据，而一张变了的图片或笔记本提供不了；一个**整文件**锚点（没有选择器，即 `file`
+   评论种类）保持 `moved` 并带刷新后的哈希，因为那条备注针对的是文件，而不是文件中的某个位置。
+   这是有意的，而严格也是有意为之：一个尺寸相同、被重新编码或被动过元数据的 PNG，*大概*在同一
+   归一化区域下仍有那条备注的对象，但"尺寸相同"并不是"那里的像素相同"的证据，而 `outdated` 的
+   全部意义就是"再次查看之后才可信这个位置"。曾考虑过"尺寸保持 → `moved`"的规则并否决了它，
+   因为那会让宿主断言一个它无法核实的视觉事实 —— 那项核实属于差异查看器
+   （2-up、滑动、洋葱、差异），而一条 `outdated` 讨论串仍画在它的区域上、仍可发送、仍携带它创建
+   时的快照。客户端的 UI 文案会说出原因（`outdatedReason`）：文本未被再次找到、位置之下的字节
+   变了，或文件已消失。
+`side: "base"` 锚点从不重新锚定：`baseRef` 是一个提交 oid，所以它所指的 blob 不可变，没有什么
+可以漂移 —— 而对着*工作树* 重新锚定它们，正是每侧捕获所要防止的那种重新指向。
 
-## Send flows & the context package
+## 发送流程与上下文包
 
-`review.sendComment` / `review.sendBatch` are **composed in `host`'s handlers** (this module never
-imports `agent`): reanchor → render the package (one structured user message with stable comment ids,
-fragment + surrounding context per comment — or, for a position named by geometry or document node rather
-than by lines (a raster or SVG region, a notebook cell), a `<locator>` line naming the region geometry or
-the `<scheme> <ref>` node, since there is no line span to quote; every comment
-carries `anchor-kind` (`region`/`structural`/`line`/`file`) so the agent reads geometry as geometry —
-never the full diff. **Every dynamic attribute and locator value is entity-escaped** (`& < > "`, CR/LF
-as numeric references), because a repo path or a renderer's node ref is untrusted text that could
-otherwise close a tag and forge a comment the user never wrote; fragments, context and body stay
-verbatim, since they are the content the agent is meant to read as-is — and the web card parses the
-same escaping back (see `apps/web/src/chat/SPEC.md`). The agent reads the worktree with its
-own tools; **each side reads its own content** — the worktree for worktree anchors, the anchor's
-`baseRef` blob for base ones, since base line numbers index the pre-change file) →
-`agent.createSession` (or `followUp` into the client's **last open chat** when the send names one —
-the conversation already on the user's screen — else the chat already pinned for that KEY, **re-attached
-from disk when it isn't live**, since review state and pi transcripts both survive a host restart; a
-batch spanning several keys sends each group separately and answers with all of them, so none is left
-running unseen; whatever received the package becomes the key's pin) → `markSent` → prompt. `markSent`
-requires every requested id to still name a draft in the active snapshot — it never silently marks a
-partial set after lifecycle drift. The whole sequence is **serialized per workspace together with every
-review mutation** (`host`'s `withReviewLock`): the draft/session check
-happens *before* the awaited session creation, so in that gap two concurrent sends would both see
-"drafts, no session" and fork the review — and a concurrent `review.close` Clear would invalidate the
-package already built, leaving the agent with comment ids no open review contains.
-**The prompt is fired DETACHED** (`fireReviewPrompt`): the handler returns the
-moment the session exists so the client opens the chat immediately — awaiting the ack meant sitting
-out pi's 10s acceptance window on every send. Because `markSent` is awaited inside the lock, before the
-turn is known-accepted — it must be, so the key's pin exists inside the lock and a concurrent send can't
-fork the chat — a pre-turn rejection (bad model, missing/expired key) both surfaces INSIDE the just-opened chat
-as an extension-UI notice AND **rolls the comments back to `draft`** (`rollbackSend`, keyed off
-`ackSend`'s accept-vs-reject window): a review the agent never received stays retryable instead of
-stranding as `sent` with its send/edit/delete actions gone, and a chat spun up solely for that failed
-send is unpinned unless another comment still backs it. A fault AFTER acceptance is a real turn fault
-(the package *was* delivered) and rides the event stream, leaving the `sent` state correct. The
-rollback runs DETACHED (after the send's lock released) and fully synchronously, so — like
-`reanchorWorkspace` — it stays correct unlocked, and it reads with `load` (never `ensureSnapshot`): a
-`review.close` Clear that lands first makes it a clean no-op against the fresh review instead of
-resurrecting the cleared comments. The **`resolve_comment`** capability is an agent-module custom tool
-(`agent/reviewTool.ts`, registered on every session like `ask_user_question`) whose execution is
-delegated back here through a host-installed seam — the agent module stays dependency-free. **Session-bound**:
-the tool thread's `ctx.sessionManager.getSessionId()` through to `resolveCommentFromAgent`, and
-`applyAgentResolution` only resolves a comment whose `status === "sent"` AND `sessionId` equals the
-caller — the chat `markCommentsSent` recorded as the actual recipient. A `draft` comment is
-unconditionally unresolvable through this tool (a comment resolves only the chat it was truly delivered
-to can call it; nothing, agent or human, resolves its own unsent draft) — this is what keeps a reviewer
-agent from filing a finding and immediately clearing it itself (see [[submodule-server-host]]'s approve
-gate). Resolution
-searches the active snapshots first, then closed archives, so a tool call already in flight when Clear
-lands can still finish its record; archived updates persist without publishing an inactive snapshot.
+`review.sendComment` / `review.sendBatch` 在 **`host` 的处理器里组合**（本模块绝不导入 `agent`）：
+重新锚定 → 渲染包（一条结构化的 user 消息，带稳定的评论 id，每条评论一个片段 + 周边上下文 ——
+或者，对一个由几何或文档节点而非行来命名位置的情形（一个栅格或 SVG 区域、一个笔记本单元格），
+用一行 `<locator>` 命出区域几何或 `<scheme> <ref>` 节点，因为没有行跨度可引用；每条评论都携带
+`anchor-kind`（`region`/`structural`/`line`/`file`），这样 agent 把几何读作几何 ——
+绝不读取整个差异。**每个动态属性和定位器值都做实体转义**（`& < > "`，CR/LF 用数字引用），因为
+仓库路径或渲染器的节点 ref 是不可信文本，否则就能闭合标签并伪造一条用户从未写过的评论；片段、
+上下文与正文保持逐字，因为它们就是 agent 要原样阅读的内容 —— 而 Web 卡片解析回同样的转义（见
+`apps/web/src/chat/SPEC.md`）。agent 用自己的工具读取工作树；**每一侧读取自己的内容** ——
+工作树锚点读工作树，基线锚点读该锚点的 `baseRef` blob，因为基线行号索引的是改动前的文件）
+→ `agent.createSession`（或在发送点名一个聊天时 `followUp` 进客户端的**最后打开的聊天** —— 用户
+屏幕上已经打开的那段对话 —— 否则进该 KEY 已钉住的那个聊天，**当它不活跃时从磁盘重新挂载**，
+因为评审状态与 pi 记录都能在宿主重启后存活；一个跨多个 key 的批量会分别发送每一组并以全部会话
+作答，所以没有一组在无人看见的情况下运行着；无论谁接收了这个包，就成为该 key 的钉子）→
+`markSent` → 提示词。`markSent` 要求每个被请求的 id 仍然命名活跃快照里的一条草稿 —— 它在生命
+周期漂移之后绝不静默标记部分集合。整个序列与**每一次评审变更**一起**按工作区串行化**（`host`
+的 `withReviewLock`）：草稿/会话检查发生在被 await 的会话创建*之前*，所以在那道间隙里两次并发
+发送都会看到"有草稿、无会话"并分叉这次评审 —— 而一次并发的 `review.close` Clear 会让已经建好
+的包失效，留给 agent 的评论 id 不在任何打开的评审里。**提示词是分离（detached）触发的**
+（`fireReviewPrompt`）：会话一存在处理器就返回，好让客户端立即打开聊天 —— await 确认意味着每次
+发送都要坐等 pi 的 10s 接受窗口。因为 `markSent` 在锁内被 await，且在轮次被知晓接受之前 ——
+它必须如此，这样该 key 的钉子在锁内存在，并发发送无法分叉聊天 —— 一次轮次前拒绝（坏模型、
+缺失/过期 key）既会作为扩展 UI 通知出现在**刚打开的聊天内部**，**又会把评论回滚到 `draft`**
+（`rollbackSend`，以 `ackSend` 的接受-对-拒绝窗口为键）：一次 agent 从未收到的评审保持可重试，
+而不是以 `sent` 搁浅、连带发送/编辑/删除动作都没了，而一个专为那次失败发送而开的聊天会被解钉，
+除非还有另一条评论支撑它。接受之后发生的故障是真正的轮次故障（包**确实**交付了）并沿事件流
+传出，让 `sent` 状态保持正确。回滚分离运行（在发送的锁释放之后）且完全同步，所以 —— 和
+`reanchorWorkspace` 一样 —— 它在无锁下保持正确，并且它用 `load`（绝不用 `ensureSnapshot`）读取：
+一个先落地的 `review.close` Clear 会让它对着新评审成为干净的空操作，而不是复活被清除的评论。
+**`resolve_comment`** 能力是一个 agent 模块的自定义工具（`agent/reviewTool.ts`，像
+`ask_user_question` 一样注册在每个会话上），其执行通过一个宿主安装的接缝交回这里 —— agent
+模块因此保持无依赖。**会话绑定**：工具线程的 `ctx.sessionManager.getSessionId()` 一路传到
+`resolveCommentFromAgent`，而 `applyAgentResolution` 只解决 `status === "sent"` **且**
+`sessionId` 等于调用者的评论 —— 即 `markCommentsSent` 记录的实际收件聊天。一条 `draft` 评论
+经该工具无条件不可解决（一条评论只有它真正交付到的那个聊天才能调它；无论 agent 还是人类，都
+不能解决自己未发送的草稿）—— 这正是让评审 agent 无法提交一条发现项后立刻自己清掉它的机制
+（见 [[submodule-server-host]] 的 approve 门禁）。解决先搜活跃快照，再搜已关闭归档，所以一次在
+Clear 落地时已在途的工具调用仍能完成它的记录；归档更新会持久化，但不发布非活跃快照。
 
-## Boundary
+## 边界
 
-- **Owns:** active `reviews/<workspaceId>.json` plus closed record archives at
-  `reviews/archive/<workspaceId>/<reviewId>.json` under the data dir (via `persistence.dataDir`; ids
-  become path segments, so every file touch refuses ids with path segments — `/^[\w-]+$/` — or a
-  wire-supplied `../config`-style string would aim reads/writes/unlinks outside the reviews dir:
-  defense in depth behind the handlers' own lookups), comment CRUD +
-  status/lifecycle transitions, anchor capture + re-anchoring (pure, unit-tested `anchoring.ts`),
-  package rendering (pure `packageRender.ts`), and the `review.changed` publisher seam
-  (`setReviewPublisher`, installed by `host` — full-snapshot pushes, idempotent under last-value replay).
-- **Public surface (barrel):** `getReviewSnapshot`, `addComment`, `updateComment`, `deleteComment`
-  (draft-only), `clearReview`, `markCommentsSent`, `rollbackSend` (undo `markCommentsSent` on a
-  pre-turn send rejection), `markFileDone`, `fileReviewSession` + `reviewSessionKey`/`REVIEW_LEVEL_KEY` (the
-  per-key chat pin), `resolveCommentFromAgent`, `reanchorWorkspace`, `sendableComments`,
-  `buildSendPackage`, `removeWorkspaceReviews`, `setReviewPublisher`, `setReviewGuide` (the newest
-  plan-step verdict's narrative — summary, suggested reading order, verdict, provenance — stored on the
-  open review as `review.guide` and fanned out with the snapshot, so the Changes review tab can walk it
-  without a second read; written by `host`'s verdict recorder, never by a client) (+ the pure
-  anchoring/render helpers: `reanchor`, `buildTextQuote`, `hashContent`, `lineRangeOf`, `textQuoteOf`,
-  `renderPackage`).
-- **Allowed deps:** `contracts` (types), `persistence` (data dir), `log`, `workspaces` (worktree path lookup),
-  `git` (the review's `baseSha` resolve, the diff range behind a base anchor's `baseRef`, and blob
-  reads for the base side), `fs` (`classifyBytes`/`decodeText`/`hashBytes` — textness and the sha-256
-  an anchor's `contentHash` *is* are decided once, there, so a comment's hash and a revert's expectation
-  can never disagree about the same bytes), Node `fs`.
-- **Forbidden:** importing `host`/`agent` or any pi package; publishing except through the seam.
+- **拥有：** 活跃的 `reviews/<workspaceId>.json`，以及数据目录下
+  `reviews/archive/<workspaceId>/<reviewId>.json` 处的已关闭记录归档（经由 `persistence.dataDir`；
+  id 会成为路径段，所以每次文件触碰都拒绝带路径段的 id —— `/^[\w-]+$/` —— 否则一个线上协议传来
+  的 `../config` 式字符串就能把 读/写/unlink 指向 reviews 目录之外：这是处理器自身查找之后的
+  纵深防御）、评论 CRUD + 状态/生命周期迁移、锚点捕获 + 重新锚定（纯函数、有单元测试的
+  `anchoring.ts`）、包渲染（纯函数 `packageRender.ts`），以及 `review.changed` 发布器接缝
+  （`setReviewPublisher`，由 `host` 安装 —— 全快照推送，在末值重放之下幂等）。
+- **Public surface（公开接口，barrel）：** `getReviewSnapshot`, `addComment`, `updateComment`, `deleteComment`
+  （仅草稿）, `clearReview`, `markCommentsSent`, `rollbackSend`（在一次轮次前发送拒绝时撤销
+  `markCommentsSent`）, `markFileDone`, `fileReviewSession` + `reviewSessionKey`/`REVIEW_LEVEL_KEY`
+  （每 key 的聊天钉子）, `resolveCommentFromAgent`, `reanchorWorkspace`, `sendableComments`,
+  `buildSendPackage`, `removeWorkspaceReviews`, `setReviewPublisher`, `setReviewGuide`（最新一条
+  计划步骤裁决的叙述 —— 摘要、建议阅读顺序、裁决、来源 —— 存在打开评审上作为 `review.guide`
+  并随快照一起扇出，所以 Changes 的评审标签页无需二次读取就能走查它；由 `host` 的裁决记录器
+  写入，绝不由客户端写入）（+ 纯的 锚定/渲染 辅助函数：`reanchor`, `buildTextQuote`, `hashContent`,
+  `lineRangeOf`, `textQuoteOf`, `renderPackage`）。
+- **允许的依赖：** `contracts`（类型）、`persistence`（数据目录）、`log`、`workspaces`（工作树
+  路径查找）、`git`（评审 `baseSha` 的解析、基线锚点 `baseRef` 背后的差异范围，以及基线侧的
+  blob 读取）、`fs`（`classifyBytes`/`decodeText`/`hashBytes` —— 文本性与锚点 `contentHash` *就是*
+  的那个 sha-256 都在那里一次决定，所以一条评论的哈希与一次回退的期望，绝不可能对同一批字节
+  意见不一）、Node 的 `fs`。
+- **绝不触碰：** 导入 `host`/`agent` 或任何 pi 包；经该接缝之外发布。
 
-## Get right
+## 必须做对的事
 
-- **Statuses converge via the push, never optimism** — every mutation (UI edit, agent resolve, a
-  reanchor that changed states) emits one full `review.changed` snapshot; clients fold it. Clear emits
-  exactly the fresh open snapshot (never the archived review), so every connected client empties together.
-  The closed archive is written first; a failure cannot replace the active review without preserving its
-  non-draft records, and retrying is idempotent by review id.
-- Sends **re-anchor first**, so the package's line numbers are true at send time — and are **serialized
-  per workspace with every mutation**, so nothing can close or re-send out from under a
-  check-then-mark. A package that quotes a comment id is a promise the id still exists.
-- **A fragment is read from the side it was captured on.** Base anchors never read the worktree, and
-  worktree anchors never read a blob: showing the agent the wrong side is indistinguishable, from its
-  point of view, from the user having said something wrong. A base anchor also carries the **`scope`**
-  it was captured in (next to the resolved `baseRef`) — the diff identity the Review sidebar reopens
-  that remark's own surface by (see `panels/SPEC.md`).
-- **Persistence never loses a review to a damaged file.** Writes are **atomic** (temp file + rename, so
-  a host killed mid-write can't leave a truncated review), and the read treats **only `ENOENT`** as "no
-  review": a file that doesn't parse — or that can't be read at all — **throws** and is left on disk,
-  because the one caller acting on "absent" (`ensureSnapshot`) responds by writing a fresh empty review
-  over it. The failure surfaces on `review.get` (the panel says so) instead of silently discarding every
-  comment. The one exception is the cross-workspace scan behind an agent resolve: a damaged *sibling*
-  is logged and skipped, never allowed to fail a resolve belonging to a healthy review.
-- An **unknown/duplicate agent resolve fails loud** (error text back to the model), never silently. A
-  resolve that arrives after Clear updates the archived record in place and emits no active-review push.
-  An agent resolve accepts `sent` comments AND **agent-authored `draft`s**: with auto-fix off, a
-  reviewer's findings are recorded but never sent, and the re-review package still tells the reviewer to
-  resolve each finding the fix addressed — a sent-only gate would make that instruction unsatisfiable
-  and strand the findings open under an approved item. Human drafts stay unresolvable by the agent
-  (they're the user's unsent scratch).
-- Workspace removal purges both the active review and its archive directory (`removeWorkspaceReviews`,
-  called by the workspace-archive handler).
+- **状态经由推送收敛，绝不靠乐观** —— 每次变更（UI 编辑、agent 解决、一次改变了状态的重锚定）
+  都发出一个完整的 `review.changed` 快照；客户端折叠它。Clear 只发出那份新的打开快照（绝不是
+  被归档的那份评审），于是每个连上的客户端一起清空。已关闭归档先写入；一次失败不可能在未保留
+  其非草稿记录的情况下替换活跃评审，而重试按评审 id 幂等。
+- 发送**先重新锚定**，所以包里的行号在发送时刻是真的 —— 并且**按工作区与每次变更一起串行化**，
+  这样没有任何东西能在一次 检查→标记 之下关闭或重发。一个引用了某评论 id 的包，就是该 id 仍然
+  存在的承诺。
+- **片段读取自它被捕获的那一侧。** 基线锚点绝不读工作树，工作树锚点绝不读 blob：从 agent
+  的角度看，给它看错的那一侧，与用户说错了话毫无区别。一个基线锚点还携带它被捕获时的 **`scope`**
+  （紧挨着已解析的 `baseRef`）—— 评审侧边栏据此重新打开那条备注自己的界面（见 `panels/SPEC.md`）。
+- **持久化绝不因文件损坏而丢掉一次评审。** 写入是**原子的**（临时文件 + rename，所以一个在写入
+  中途被杀掉的宿主不可能留下截断的评审），而读取**只把 `ENOENT`** 当作"没有评审"：一个无法解析
+  —— 或根本无法读取 —— 的文件**抛出**并被留在磁盘上，因为唯一按"不存在"行事的调用方
+  （`ensureSnapshot`）会以在它之上写一份新的空评审作为回应。失败会浮现在 `review.get` 上
+  （面板会这么说），而不是静默丢弃每一条评论。唯一的例外是 agent 解决背后的跨工作区扫描：一个
+  损坏的*兄弟*会被记录并跳过，绝不允许它让属于健康评审的一次解决失败。
+- 一次**未知/重复的 agent 解决会大声失败**（错误文本回到模型），绝不静默。一次在 Clear 之后
+  到达的解决会原地更新归档记录，且不发出活跃评审推送。agent 解决接受 `sent` 评论**以及
+  agent 撰写的 `draft`**：在自动修复关闭时，评审者的发现项被记录但从不发送，而重评审包仍告诉
+  评审者去解决修复所处理的每条发现项 —— 只允许 sent 的门会让该指令无法满足，并把发现项搁在
+  一个已批准事项之下。人类的草稿仍不可由 agent 解决（它们是用户未发送的草稿）。
+- 工作区移除会清除活跃评审及其归档目录（`removeWorkspaceReviews`，由工作区归档处理器调用）。

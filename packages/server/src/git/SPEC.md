@@ -2,285 +2,256 @@
 id: submodule-server-git
 type: submodule-design
 status: active
-title: git — runner + worktree status/diff
+title: git —— 运行器 + 工作树状态/差异
 parent: module-server
 depends-on: [module-contracts]
 tags: [public-surface-checked]
 ---
 
-## Responsibility
+## 职责
 
-Git plumbing: the low-level `git` runner (sync + async) plus a worktree's changed files and diffs over a
-**diff scope**, that scope's single definition (the range resolver), a project repo's branch list for the
-branch pickers, the workspace branch's own commit list, and a background prefetch that warms a remote base
-ref off the workspace-create critical path.
+Git 管道：底层 `git` 运行器（同步 + 异步），加上一个工作树在某个**差异范围**之上的改动文件
+与差异、那个范围的唯一定义（范围解析器）、供分支选择器使用的项目仓库分支列表、工作区分支自己的
+提交列表，以及一个把远端基线 ref 挪出工作区创建关键路径的后台预取。
 
-## Boundary
+## 边界
 
-- **Owns:** `git(cwd, args)` (spawn git *sync*, capture trimmed stdout/stderr + ok; `opts.raw` keeps
-  decoded stdout untrimmed) and its module-internal `gitBytes(cwd, args, opts?)` twin (sync,
-  byte-preserving, retained for `reviews`' synchronous snapshot pass). `gitAsync(cwd, args, opts?)` and
-  **`gitAsyncBytes(cwd, args, opts?)`** are the bounded async twins over `subprocess.runBounded`; the latter
-  preserves stdout as `Uint8Array`, while stderr remains decoded diagnostics. They keep network-bound ops
-  like `fetch` **and request-path historical reads** off the event loop: this module owns only the
-  git-shaped 55s budget and stalled/stderr wording, never child-lifetime mechanics. `opts.env` lets a
-  caller run prompt-free with its own environment and pins blob diagnostics to English; `opts.network`
-  marks fetch/push solely so a no-output timeout can name the remote. **A timeout keeps whatever git wrote
-  before the kill**: the runner drains continuously, so on
-  expiry its `err` already holds the real diagnosis — a publickey rejection, a proxy's refusal, `remote:`
-  progress proving a large transfer was simply still running. When git wrote *nothing*, an explicitly
-  networked operation gets the conditional ssh-key hint; a local `diff`/`log`/ref read gets only the
-  observed fact that git did not exit — never a fabricated remote cause. Both async runners carry
-  `failure: "timeout" | "launch"` for those execution failures; a normal nonzero Git exit carries no
-  execution failure, so semantic probes can distinguish "ref absent" from "Git never answered". The
-  reads take that same 55s default (`opts.timeoutMs` overrides it): a local read that has to be *bounded*
-  at all is a wedged git, and every one of them was unbounded before it moved off the loop;
-  **`remoteTrackingRef(ref, remotes)`** → `refs/remotes/<ref>` when the ref begins with one of the
-  repository's configured remote names (`remoteNameOf`, fed by `listRemotes`), else `null` — **the one
-  place that spelling is built**, so the probe below and `workspaces`' `worktree add` cannot drift apart.
-  Matching chooses the longest remote prefix because Git permits `/` in a remote name (`team/upstream`);
-  first-component parsing would fetch the wrong remote. Remote-ness is decided against the actual remote
-  list, never the string's shape: `upstream/main` and a local `feature/main` are the same shape. So
-  `listBranches` enumerates all of `refs/remotes` (every symbolic alias, including each remote's `HEAD`, is
-  skipped) and reads `git remote` in the same async fan-out to attach authoritative ownership as optional
-  `BranchList.remoteGroups`. An ownership-read failure rejects the catalog rather than making the browser
-  guess; a tracking ref with no configured owner is retained under a `null` group. `prefetchBranch` fetches
-  from whichever configured remote the ref names, and `workspaces` fetches and checks out that same
-  fully-qualified tracking ref.
-  **`resolveDefaultBranch` keeps its sync spawn budget** — it is called by every Default-workspace
-  `folderTruth`, so a spare spawn is shared-event-loop time every workspace listing pays. Origin's HEAD
-  stays a lone `symbolic-ref` (the only read that sees it while dangling), followed by one `for-each-ref`
-  over full `refs/remotes/…` names. Only refs whose full name ends in `/HEAD` may supply another remote's
-  default; arbitrary symbolic aliases are ignored, and the exact full-name check for
-  `refs/remotes/origin/main` cannot be confused by a local branch literally named `origin/main`. A dangling
-  non-origin HEAD remains invisible to `for-each-ref` and degrades to the existing guess. Its
-  reach is **creation only**, and `resolveDiffRange` is the named survivor: `diffBaseRef` hands git the
-  `origin/<b>` shorthand recorded in `baseBranch`, so in the very setup create now guards against — a local
-  branch literally named `origin/main` — the worktree is cut from `refs/remotes/origin/main` while the diff
-  is measured against the decoy. Left alone because `diffBase` is separately user-settable and may name any
-  ref, so qualifying it is a change to what a *pinned* base means, not a spelling fix;
-  **`remoteRefOid(repoPath, ref)`** → the oid `refs/remotes/<ref>` resolves to, or `null` — **the one way
-  to ask whether a remote-tracking ref is present**, shared by `prefetchBranch` (which compares oids to
-  report `moved`) and `workspaces`' create fallback. It
-  gates on `isSafeRef` rather than the remote list, because whether the tracking ref *resolves* is the
-  whole of what it answers and such a ref outlives the remote's configuration. It
-  probes the **full** `refs/remotes/` path behind
-  `--end-of-options`: the `origin/<b>` shorthand goes through git's disambiguation and can resolve to a
-  tag or a local branch of that name, so the call sites would have raced over different objects. "One way"
-  is literal — no caller re-spells the `rev-parse` by hand;
-  **`nonInteractiveGitEnv()`** — the default environment both runners spawn under (`git`'s only option is
-  `raw`; `gitAsync` alone accepts an `opts.env` override, e.g. `pr`'s non-interactive push, which layers its
-  own SSH batch-mode settings): `process.env` plus `GIT_TERMINAL_PROMPT=0`, and **nothing else** by default.
-  It reads no config and rewrites none of the user's ssh setup on its own;
-  **Request-path reads run through `gitAsync`** — `resolveDiffRange`,
-  `gitStatus`, `gitDiffFile`, `listCommits`, `listBranches` and the workspace badge fan-out are async, so a
-  multi-spawn read can never freeze the host's single cooperative event loop (profiled at 119–246ms of
-  frozen loop per `workspace.list` before the migration). The sync runner stays for **writers** (their
-  load→mutate→save atomicity depends on not interleaving — `gitCommitPaths`' index snapshot/restore, the
-  `workspaces` writers) and for **micro-plumbing leaf helpers** shared with those writers
-  (`currentBranch`/`tryCurrentBranch`/`resolveDefaultBranch`/`resolveCommitOid`/`readBlobAt`/`gitHeadSha`
-  — single fast local ref reads), plus `gitUncommittedPaths`, the deliberate lifecycle exception that
-  snapshots a TODO work window before the agent can continue past its `in_progress` tool end;
-  **`snapshotWorktree(worktreePath)`** → the tree oid of the worktree as git sees it right now (tracked
-  edits and untracked files, ignored files excluded), written through a scratch copy of the index under
-  `GIT_INDEX_FILE` so the user's real index, `HEAD`, and reflog never move — the `turns` module's
-  before/after fence around an agent run; it returns `null` instead of throwing because a missed
-  snapshot only costs a receipt. A file git cannot read is skipped, not fatal: `add --ignore-errors`
-  still exits 1 after writing everything else, so only a `fatal:` or a timeout/launch failure voids it;
-  **the scope→range resolver** — `resolveDiffRange(ws, scope?)` → `Promise<DiffRange>` (async — and
-  deliberately kept the *single* implementation: its `reviews` consumers went async with it rather than
-  keeping a drift-prone sync twin) — **the one definition of what
-  a `GitDiffScope` means** (`branch`: `git diff <merge-base(base, HEAD)>` + untracked, sides = **fork
-  point** ↔ worktree — what the workspace changed *since diverging*, so a base that advanced underneath it
-  (a fetch moving `origin/main`, upstream work landing) never surfaces as phantom changes; while the base
-  hasn't diverged the merge-base *is* its tip, and a normal nonzero `merge-base` (missing base, unrelated
-  histories, unborn `HEAD`) falls back to the raw ref, keeping the old error surfaces — and keeping the
-  file list ancestry-consistent with `listCommits`' `base..HEAD`; a timeout or launch failure throws
-  instead of impersonating that semantic outcome. The same distinction keeps a timed-out commit probe
-  from becoming `UNKNOWN_COMMIT`, and a timed-out parent probe from becoming a root commit;
-  `uncommitted`: `git diff HEAD` + untracked, sides = `HEAD` ↔ worktree; `commit`: `git diff <sha>^ <sha>`, no
-  untracked, both sides from history — a **root** commit degrades to `git show --format=` with an empty
-  original, the same add-style degradation an absent path already gets; `pinned`: `git diff <oid>` +
-  untracked, sides = the given immutable commit ↔ worktree — the review sidebar's base-side
-  navigation, validated exactly like a `commit` sha, same `UNKNOWN_COMMIT` rejection; `turn`: `git diff
-  <baseTree> <headTree>`, no untracked, both sides the **tree** snapshots the `turns` module took around
-  one agent run — each oid shape-checked and verified as `^{tree}`, a pruned snapshot rejected with the
-  same `UNKNOWN_COMMIT` so the client resets the scope the same way). Both reads build their argv from it
-  through `changedFileArgs(range, mode)`, so the file list and a file's two sides can never disagree on the
-  range — and that argv brackets its revs on **both** sides: **`--end-of-options`** ahead of them (no ref can be
-  re-parsed as a git option) and a trailing **`--`** after them (a rev that also names a path on disk — a branch
-  called `docs` — is read as a rev instead of failing the command as an "ambiguous argument"). A **failed**
-  `git diff`, untracked `ls-files`, or `git show` **throws**; only Git's explicit path-absent diagnostics
-  produce an empty file side, so a broken read is never reported as no changes or as an add/delete. A
-  `commit` scope's `sha` is validated **twice** — shape (hex-oid regex, so a crafted value can never
-  reach a git argument as an option or a path) then existence (`rev-parse --verify`, whose full oid is what is
-  then used) — and a vanished commit throws a **`CodedError("UNKNOWN_COMMIT")`** (`@thinkrail/shared/codedError`),
-  which the host puts on the wire as `WsResponse.errorCode` and the client turns into "reset the scope, with a
-  toast" — *only* for that named failure, never for a timeout or an unnamed host failure;
-  **`isSafeRef(ref)` / `assertSafeRef(ref)`** — the shape check every **user/repo-supplied ref** passes at its
-  mutation door (`workspaces`' `createWorkspace` base — the **resolved** one, including the value read off the
-  repo's own `HEAD` — + `setWorkspaceDiffBase` target). The rule set is `git check-ref-format`'s, reproduced
-  in-process (no spawn on a validation path): non-empty, no leading `-`, no whitespace/control chars, no `..`,
-  no revision metacharacters (`~ ^ : ? * [ \`), no `@{` and no bare `@`, no empty path component, no component
-  starting with `.`, no `.lock` suffix, no trailing `.` or `/`. A name git itself refuses is never one we accept
-  — and, symmetrically, **no length cap**: `check-ref-format` has none, so a long hierarchical branch the repo
-  really has (and `for-each-ref` really lists) stays selectable; length is not a safety property, and the real
-  limits (filesystem component cap, argv size) fail loudly as a read error instead of "malformed". The threat is an **untrusted
-  repository**, not a malicious client: `git update-ref` accepts a name like `refs/heads/--output=x` (only the
-  `git branch` porcelain refuses it), `listBranches` reads refs with `for-each-ref`, so an option-shaped
-  branch reaches the picker of any repo the user opens — and browsing someone's repo is the product's job;
-  **`diffBaseRef(ws)`** — `diffBase ?? baseBranch`, the single collapse of a workspace's two base meanings
-  (creation provenance vs review target), consumed by the resolver and `listCommits` (the `workspaces`
-  module's `diffStats` reaches it *through* the resolver — see Get right);
-  **`resolveCommitOid(worktreePath, ref)`** — the full commit oid a ref names right now, or `null`. The one
-  place a symbolic ref is FROZEN, and every caller that must still mean the same thing later goes through
-  it: the review's `baseSha`, a base-side comment's `baseRef`. A scope's
-  `originalRef` is not already immutable (`uncommitted` is the literal `HEAD`; a `branch` scope degrades to
-  the raw base ref when `merge-base` fails), so storing one verbatim lets the content move under whoever
-  stored it. A `DiffRange` carries that frozen form as **`resolvedOriginalOid`** (frozen through
-  `resolveCommitOid`, `null` when the original side has no commit — a root commit, an unborn `HEAD`, a base ref that
-  no longer resolves): a caller that must read the *same* original side twice — the `changes` module's
-  load→verify→write pass, the host's immutable `/blob` URL — addresses it by oid rather than by a ref
-  whose meaning a commit can change mid-request;
-  `gitStatus(workspaceId, scope?)` — changed files over the range plus untracked (only when the range ends at
-  the worktree), each carrying per-file `added`/`removed` line counts (`git diff --numstat`, its rename-mangled paths resolved
-  via `numstatPath` to match `--name-status`; binary rows dropped; untracked files count their whole
-  content as added only when `fs.classifyBytes` agrees it is text, so invalid UTF-8, NUL-bearing, and
-  magic-typed untracked files omit counts exactly as their `ResourceMeta` does) for the Changes tree's `+/−` badges;
-  `gitDiffFile(workspaceId, path, scope?)` → `{ original, modified, originalOid, meta: { original, modified } }` — `originalOid` is the range's resolved immutable start (or `null`) and both
-  sides of one file's change for the center diff tab (`original` = the file at the range's start ref, raw,
-  empty when absent there —
-  untracked/added, a renamed file's new path, or a root commit — degrading to an add-style diff; `modified` =
-  the worktree file (empty when deleted) for a range ending there, else the commit's own tree; the path is
-  checked through `fs.resolveWorktreeFile` against lexical escapes, `.git`, and escaping symlinks;
-  historical sides use bounded async `git cat-file blob` with deterministic English diagnostics, so only
-  Git's explicit path-absent result becomes an empty side; trees, commits, gitlinks, ordinary nonzero
-  failures, timeouts and launch failures all throw). **Both sides are read as BYTES and carry a
-  `ResourceMeta`** (`fs.resourceMeta` — sha-256, byte length, textness, sniffed mime): a side is decoded
-  only when it is text, so a byte-only side travels as `""` plus its metadata and the client fetches the
-  bytes over the host's `/files`/`/blob` routes instead of rendering replacement characters. Commit-scope
-  sides are read concurrently through `gitAsyncBytes`, retaining byte identity without blocking the event
-  loop or spawning a second decoded read; **`gitUncommittedPaths(workspaceId)`** → the synchronous
-  tracked + untracked path set reserved for the TODO baseline boundary above, read with NUL delimiters and
-  raw output so legal leading/trailing whitespace (or newlines) in a filename is identity, never trim;
-  `gitStatus` uses the same NUL-safe path treatment for its tracked/untracked rows; **`listCommits(workspaceId)`** → `{ commits: GitCommit[] }` —
-  `git log <diff base>..HEAD`, newest first and capped, one `--format` line per commit whose fields are separated
-  by a **NUL byte** and read at **fixed arity** (the leading four positionally, everything after them joined back
-  as the subject). NUL is the one byte the repository-controlled text cannot smuggle in: an author ident carries
-  neither NUL nor newline, so no crafted `%an` can shift `%cI` or truncate itself, and a `%s` that carried one
-  would land in the tail anyway. (`%an` is free text *between* the structured fields and the subject, which is
-  why "structured fields first" was never enough — an author named `a<sep>2020-01-01T00:00:00Z` shifted the
-  subject one field over.) Free-text fields are then stripped of control characters **and of invisible
-  deception** — bidi overrides/isolates, zero-width and format characters — before they go on the wire, while
-  ordinary international text and emoji survive;
-  an unreadable range (deleted base, unborn HEAD) that makes Git exit normally degrades to an empty list
-  so the scope menu still offers its other scopes; a timeout or launch failure throws instead of erasing a
-  previously valid list; **`countPushDivergence(worktreePath, branch, {fetch?})`** (async — the sync twin would block the shared
-  event loop on every window-focus refetch) → `{ ahead, behind }` via one `rev-list --left-right --count
-  origin/<branch>...HEAD`: **`ahead`** = local commits origin lacks (unpushed), **`behind`** = commits on
-  origin the branch lacks. `behind > 0` means the branch **diverged** — a plain push is non-fast-forward and
-  the histories must be reconciled (the plan page treats this as a sync conflict, not a force cue). `null` only when the remote ref doesn't exist (never pushed);
-  timeout/launch failures throw, and a normal nonzero with a still-present ref throws instead of
-  impersonating absence. With **`fetch`** it best-effort refreshes `origin/<branch>` first so `behind` reflects
-  the *real* remote (offline falls back to the last-known ref rather than failing the whole lookup); the host's
-  `workspace.openReview` passes `fetch` **only on a fresh lookup** (focus / explicit refresh, not a cached
-  activation) and composes `ahead`→`unpushedCommits` and `behind`→`behindCommits` onto an open review (in
-  parallel with the gh lookup, not after it) so the plan page can flag commits the PR doesn't have yet and
-  the diverged sync-conflict state — the `origin/` here is the second
-  deliberate survivor of the all-remotes sweep, because it asks where *this* workspace's own branch was
-  pushed, not which remote a base was branched from; `listBranches(projectId)` → `{ local, remote,
-  remoteGroups?, defaultBranch }` (local `refs/heads`; canonical `remote` = every direct full ref under
-  `refs/remotes` with symbolic aliases omitted; additive `remoteGroups` = host-owned remote/branch metadata
-  for presentation; default = origin's `HEAD`→another remote's `HEAD`→`origin/main`→repo `HEAD`; any ref-list
-  or ownership-list failure throws, never a successful partial catalog),
-  **`resolveDefaultBranch(repoPath)`** — that default-branch
-  resolution factored out (named once), shared by `listBranches` and the `workspaces` module's
-  Default-workspace ensure (its `baseBranch`); its last fallback is `currentBranch`, so an unborn `HEAD`
-  resolves to the branch name it will become, never the literal `"HEAD"` (which would persist into a
-  user-visible `baseBranch`); **`currentBranch(repoPath)`** — the branch a checkout currently has out
-  (`symbolic-ref --short HEAD`, unborn-safe; detached → literal `HEAD`), consumed by the `workspaces`
-  module for a user-owned workspace's folder-truth `branch`, with **`tryCurrentBranch`** its fallible form
-  (`null` when the path is not a readable worktree root, so a refresh never persists an I/O failure as a
-  detach); **`canonicalPath(path)`** — the symlink-resolved form any path compared against git output must
-  take (git resolves symlinks, a caller's path does not), shared with `workspaces`' worktree-identity
-  checks; `prefetchBranch(projectId, ref)` — best-effort background
-  `git fetch` of a configured remote ref (via `gitAsync`), so a later `createWorkspace` branches off a
-  fresh tip without the network round-trip on its critical path (local/unknown ref or offline → no-op).
-  Its ref is
-  **wire-supplied and passes the same `isSafeRef` gate `createWorkspace` uses** before it reaches git:
-  `--` separates *options*, not refspecs, so `--`-after-`fetch` alone stopped a `-`-prefixed name and
-  nothing else — `origin/+main:refs/heads/victim` would have arrived as a **refspec** and let any client
-  force-overwrite or create arbitrary local branches in every open project (an unsafe ref → the same
-  `{ ok: false, moved: false }` no-op, never a throw, because this path is fire-and-forget). Its result also says whether the
-  fetch **`moved`** the local remote-tracking ref (first appearance included; the post-fetch oid is
-  probed even when fetch reports failure, because Git may update the ref before a later failure/timeout;
-  compared on the fully-qualified `refs/remotes/…` — the exact ref a fetch updates — so a local branch literally named
-  `origin/<b>` can't shadow the check via git's DWIM order): a moved ref *may* change what a sibling
-  workspace's branch-scope diff means (its merge-base can move), and it is invisible to the `watch` module
-  (the write lands in the project repo's shared `.git`, outside every watched location) — so the
-  `git.prefetch` handler uses `moved` to fan out the host's pathless `fsChanged` nudge (`host`'s fsNudge
-  seam; an unaffected re-read is an idempotent no-op). `moved` is host-internal; the wire response stays
-  `{ ok }`;
-  **`readBlobAt(worktreePath, ref, path)`** → the file's UTF-8-**decoded** content at a ref, or `null`
-  when the read produced none (the diff sides degrade that to `""`; the `reviews` module renders a
-  base-side anchor's text fragment through it);
-  **`readBlobBytesAt(worktreePath, ref, path)`** → the same read kept **byte-exact** (`Uint8Array`) and
-  synchronous solely for `reviews`' snapshot pass; **`readBlobBytesAtAsync`** is the bounded request-path
-  primitive used by `changes`, whose reads must be whole to be hashed. Both run `git cat-file blob`, return `null`
-  only for Git's explicit path-absent diagnostic, and throw for a non-blob object or every other failure;
-  timeout/launch can therefore never masquerade as absence. **`readBlobStreamAtAsync`** is the same read
-  for the host's `/blob` route, which must not hold a blob in memory: it awaits only the first
-  `CONTENT_SNIFF_BYTES` (the `head` the route classifies) and hands the rest over as a `body` stream
-  that re-emits the head and then relays `git cat-file`'s stdout as it arrives — absence and failure are
-  decided from the exit the first read observes, with the same `null`/throw contract, while a failure
-  *after* the head has been handed over errors the stream rather than closing it, so a consumer sees an
-  aborted transfer, never a silently truncated blob. An optional `signal` (the HTTP request's) cancels
-  the read at any point — including while the head is still awaited, before any response body exists
-  to cancel — and the cancellation kills the `git` child instead of letting it wait out the relay
-  deadline. **`readBlobSizeAtAsync`** performs the same
-  bounded, strict-miss read through `git cat-file -s` before the host admits an immutable blob response;
-  **`readPathModeAtAsync`** reads one path's tree mode with bounded `git ls-tree` so `changes` can reject
-  symlinks and restore Git's executable bit without deriving tree metadata itself;
-  **`gitCommitPaths(workspaceId, message, paths)`** → `{ sha } | null` — commit **exactly `paths`** as one
-  commit for the TODO change-set feature (see [[submodule-server-todos]]): stage them (`git add -A --
-  <paths>`, so a deletion stages as one), then `git commit --no-verify -- <paths>` (the host's commit must
-  not run/fail the user's hooks; author/committer stay the user's git config — it's their branch), and
-  return the new sha. **Only the named paths** — never "whatever is dirty now": the caller passes the set
-  it proved belongs to the item (and, being its filtered delta, it never contains `.thinkrail/`), so dirt
-  that appears between the caller's `gitStatus` and this call cannot be swept in, and the user's other
-  staged work stays staged rather than riding along. The paths are **literal filenames, never pathspecs**:
-  every path-consuming command runs `--literal-pathspecs`, so a tracked file whose *name* is pathspec
-  magic or a glob (`:(top)*`) can't expand beyond the proved delta and defeat the exact-path guarantee or
-  the `.thinkrail/` exclusion. **The index is preserved across failure:** the
-  checkout's real index **file** (`rev-parse --git-path index` — per-worktree in a linked worktree) is
-  snapshotted byte-for-byte before staging and written back on every failure path, so a skipped commit
-  leaves the user's staging area exactly as it was — *including index-only state a tree round-trip would
-  drop* (an intent-to-add entry from `git add -N` has no tree representation, so a `write-tree`/`read-tree`
-  snapshot would silently unstage it). Staging succeeds but committing is fallible (an unset identity, an
-  unavailable signing key), and a best-effort feature must not leave the user's next commit carrying files
-  they never staged. An index with unmerged entries (a conflicted merge in flight) bails out untouched; a
-  half-merged worktree is nothing to auto-commit anyway. Returns `null` for an empty path set, when those paths had nothing to commit
-  (`git diff --cached --quiet -- <paths>`), or on any git failure — the caller (`todos/artifacts`) treats
-  that as "fall back to path-list artifacts" and never lets it throw. It is the one git primitive that
-  **writes** the user's branch; the caller serializes it per workspace.
-  **`gitHeadSha(workspaceId)`** → `string | null` — `rev-parse HEAD` (`null` on an unborn HEAD), recorded
-  into the todos baseline sidecar at `in_progress`.
-  **`readCommitSubject(workspaceId, sha)`** → `string | null` — a commit's subject line (`null` when the
-  sha is malformed or unresolvable), the sync read behind the todos module's adopted-commit review
-  resolver (`base..HEAD` commits owned by no plan item).
-  **`listCommitsSince(workspaceId, sinceSha)`** → `{ sha, subject }[]` for `sinceSha..HEAD`,
-  **oldest-first** (`git log --reverse`, capped at `COMMIT_LIST_MAX`), for the todos module's
-  work-window commit adoption ([[submodule-server-todos]]): commits a subagent/user landed while an
-  item was `in_progress`, so a `done` item claims them instead of leaking them to `adoptedCommits`.
-  `sinceSha` is the item's own baseline head (`gitHeadSha` at `in_progress`); a null/unborn head or a
-  non-hex value yields `[]`, and the sha is bracketed by `--end-of-options` regardless. A timeout/launch
-  failure throws; an unreadable range that exits normally degrades to `[]`.
-  **`resolveListedCommit(workspaceId, sha)`** → `string | null` — the **canonical OID** of `sha` iff it is
-  in the **same capped `base..HEAD` set `listCommits` emits** (same `COMMIT_LIST_MAX` + range), else
-  `null`. Returning the canonical sha lets the adopted-commit review resolver reject an abbreviated /
-  non-canonical id, and the shared cap guarantees it never accepts a commit past the newest
-  `COMMIT_LIST_MAX` — for which no adopted item is ever emitted. Kept in lock-step with `listCommits`.
-- **Public surface (barrel):** `git`, `gitAsync`, `gitAsyncBytes`, `gitAsyncStream`, `nonInteractiveGitEnv`, `remoteRefOid`, `remoteTrackingRef`, `gitStatus`,
+- **拥有：** `git(cwd, args)`（*同步* spawn git，捕获修剪后的 stdout/stderr + ok；`opts.raw` 保留
+  未修剪的解码 stdout）及其模块内部的 `gitBytes(cwd, args, opts?)` 双胞胎（同步、保字节，为
+  `reviews` 的同步快照过程保留）。`gitAsync(cwd, args, opts?)` 与
+  **`gitAsyncBytes(cwd, args, opts?)`** 是架在 `subprocess.runBounded` 之上的有界异步双胞胎；
+  后者把 stdout 保留为 `Uint8Array`，而 stderr 仍是解码后的诊断。它们把 `fetch` 这类网络受限操作
+  **以及请求路径上的历史读取**挡在事件循环之外：本模块只拥有 git 形状的 55s 预算与 停滞/stderr
+  措辞，绝不拥有子进程生命期机制。`opts.env` 让调用方用自己的环境免提示地运行，并把 blob 诊断
+  钉成英文；`opts.network` 单纯标记 fetch/push，好让一次无输出的超时能点名远端。**超时会保留 git
+  在被杀之前写下的全部内容**：运行器持续排空，所以在到期时它的 `err` 已经握着真正的诊断 ——
+  一次 publickey 拒绝、一个代理的拒绝、`remote:` 进度证明一次大传输只是还在跑。当 git *什么都没*
+  写时，一个被显式标记为网络的操作会得到那个有条件的 ssh-key 提示；一次本地 `diff`/`log`/ref
+  读取只会得到观察到的事实：git 没有退出 —— 绝不编造一个远端原因。两个异步运行器都为那些执行
+  失败携带 `failure: "timeout" | "launch"`；一次正常的非零 Git 退出不携带执行失败，所以语义探测
+  能区分"ref 不存在"与"Git 从未作答"。这些读取沿用同一个 55s 默认值（`opts.timeoutMs` 可覆盖
+  它）：一次本地读取若到了必须*有界*的地步，那就是 git 卡死了，而在它被移出事件循环之前，每一次
+  这样的读取都是无界的；
+  **`remoteTrackingRef(ref, remotes)`** → 当 ref 以该仓库某个已配置的远端名开头时为
+  `refs/remotes/<ref>`（`remoteNameOf`，由 `listRemotes` 喂），否则 `null` —— **那个拼法被构造的
+  唯一地方**，所以下面的探测与 `workspaces` 的 `worktree add` 无法彼此漂移。匹配选择最长的远端
+  前缀，因为 Git 允许远端名里出现 `/`（`team/upstream`）；按第一段解析会取到错误的远端。是否是
+  远端是对照实际的远端列表决定的，绝不是对照字符串的形状：`upstream/main` 与一个本地的
+  `feature/main` 形状相同。于是 `listBranches` 枚举整个 `refs/remotes`（每个符号别名，包括每个
+  远端的 `HEAD`，都被跳过），并在同一个异步扇出里读取 `git remote`，以可选的
+  `BranchList.remoteGroups` 附加权威归属。一次归属读取失败会拒绝整个目录，而不是让浏览器去猜；
+  一个没有已配置所有者的跟踪 ref 会保留在一个 `null` 分组下。`prefetchBranch` 从 ref 点名的任何
+  已配置远端取回，而 `workspaces` 取回并检出同一个完整限定的跟踪 ref。
+  **`resolveDefaultBranch` 保留它的同步 spawn 预算** —— 每一个 Default 工作区的 `folderTruth` 都会
+  调用它，所以多一次 spawn 就是每次工作区列表都要付的共享事件循环时间。Origin 的 HEAD 仍是一条
+  单独的 `symbolic-ref`（在它悬空时唯一能看见它的读取），随后是一次覆盖完整 `refs/remotes/…`
+  名字的 `for-each-ref`。只有全名以 `/HEAD` 结尾的 ref 可以供给另一个远端的默认分支；任意的符号
+  别名都被忽略，而对 `refs/remotes/origin/main` 的精确全名检查，不会被一个字面就叫
+  `origin/main` 的本地分支混淆。一个悬空的非 origin HEAD 对 `for-each-ref` 依旧不可见，并退化到
+  既有的猜测。它的作用范围**只在创建时**，而 `resolveDiffRange` 是指名道姓的幸存者：`diffBaseRef`
+  把记录在 `baseBranch` 里的 `origin/<b>` 简写交给 git，所以在创建如今要防的那种设置里 —— 一个字面
+  就叫 `origin/main` 的本地分支 —— 工作树从 `refs/remotes/origin/main` 切出，而差异却是对着那个
+  诱饵量出来的。之所以留着不动，是因为 `diffBase` 由用户单独设置、可以点名任何 ref，所以给它加
+  限定是改变*钉定*基线的含义，而不是修一个拼法；
+  **`remoteRefOid(repoPath, ref)`** → `refs/remotes/<ref>` 解析出的 oid，或 `null` —— **问一个
+  远端跟踪 ref 是否存在的那唯一一种方式**，由 `prefetchBranch`（比较 oid 以报告 `moved`）与
+  `workspaces` 的创建回退共享。它按 `isSafeRef` 门禁，而不是按远端列表，因为该跟踪 ref *能否
+  解析*就是它回答的全部内容，而这样的 ref 会活得比远端的配置更久。它隔着 `--end-of-options`
+  探测**完整的** `refs/remotes/` 路径：`origin/<b>` 简写会走 git 的消歧，可能解析成一个同名 tag
+  或一个该名字的本地分支，那样各调用点就会在不同的对象上竞速。"唯一一种方式"是字面意思 ——
+  没有调用方手工重拼那个 `rev-parse`；
+  **`nonInteractiveGitEnv()`** —— 两个运行器 spawn 时都在其下的默认环境（`git` 唯一的选项是
+  `raw`；只有 `gitAsync` 接受 `opts.env` 覆盖，例如 `pr` 的非交互式推送，它叠加自己的 SSH 批处理
+  模式设置）：`process.env` 加上 `GIT_TERMINAL_PROMPT=0`，默认**别无其他**。它不读任何配置，也不
+  自行改写用户的任何 ssh 设置；
+  **请求路径上的读取走 `gitAsync`** —— `resolveDiffRange`、`gitStatus`、`gitDiffFile`、
+  `listCommits`、`listBranches` 以及工作区徽标扇出都是异步的，所以一次多次 spawn 的读取绝不可能
+  冻结宿主的单一协作式事件循环（迁移前实测每次 `workspace.list` 冻结 119–246ms）。同步运行器留给
+  **写入者**（它们 加载→变更→保存 的原子性依赖于不交错 —— `gitCommitPaths` 的索引快照/恢复、
+  `workspaces` 的各写入者），也留给与那些写入者共享的**微型管道叶子辅助函数**
+  （`currentBranch`/`tryCurrentBranch`/`resolveDefaultBranch`/`resolveCommitOid`/`readBlobAt`/
+  `gitHeadSha` —— 单次快速的本地 ref 读取），再加上 `gitUncommittedPaths`，那个有意为之的生命期
+  例外：它在 agent 能越过其 `in_progress` 工具结束继续之前，对一段 TODO 工作窗口做快照；
+  **`snapshotWorktree(worktreePath)`** → 在 git 此刻看来该工作树的树 oid（跟踪的编辑与未跟踪的
+  文件，被忽略的文件排除在外），通过 `GIT_INDEX_FILE` 下一份临时索引副本写出，所以用户真正的
+  索引、`HEAD` 与 reflog 绝不移动 —— 这是 `turns` 模块围绕一次 agent 运行的前/后围栏；它返回
+  `null` 而不是抛出，因为错过一次快照只损失一份回执。git 读不了的文件会被跳过，而不是致命：
+  `add --ignore-errors` 在写完其他一切之后仍然退出 1，所以只有 `fatal:` 或一次超时/启动失败才会让
+  它作废；
+  **作用域→范围解析器** —— `resolveDiffRange(ws, scope?)` → `Promise<DiffRange>`（异步 —— 而且
+  有意保留*单一*实现：它的 `reviews` 消费者随它一起转成异步，而不是留一个易漂移的同步双胞胎）——
+  **一个 `GitDiffScope` 意味着什么的唯一定义**（`branch`：`git diff <merge-base(base, HEAD)>` +
+  未跟踪，两侧 = **分叉点** ↔ 工作树 —— 工作区*自分叉以来*改了什么，所以一个在其之下推进过的
+  基线（一次 fetch 移动了 `origin/main`、上游工作落地）绝不会冒出来变成幻影改动；而在基线尚未分叉
+  时 merge-base *就是*它的尖端，一次正常的非零 `merge-base`（基线缺失、无共同历史、未出生的
+  `HEAD`）会回退到原始 ref，保住既有的错误面 —— 并保持文件列表与 `listCommits` 的 `base..HEAD`
+  在祖先关系上一致；一次超时或启动失败会抛出，而不是冒充那个语义结果。同一个区分让一次超时的
+  提交探测不会变成 `UNKNOWN_COMMIT`，也让一次超时的父提交探测不会变成根提交；
+  `uncommitted`：`git diff HEAD` + 未跟踪，两侧 = `HEAD` ↔ 工作树；`commit`：`git diff <sha>^ <sha>`，
+  无未跟踪，两侧都来自历史 —— 一个**根**提交退化为 `git show --format=` 且原始侧为空，与一个
+  缺失路径本就得到的同样的"新增式"退化；`pinned`：`git diff <oid>` + 未跟踪，两侧 = 给定的不可变
+  提交 ↔ 工作树 —— 评审侧边栏的基线侧导航，校验方式与 `commit` 的 sha 完全一样，同样
+  `UNKNOWN_COMMIT` 拒绝；`turn`：`git diff <baseTree> <headTree>`，无未跟踪，两侧都是 `turns`
+  模块围绕一次 agent 运行所取的**树**快照 —— 每个 oid 都做形状检查并验证为 `^{tree}`，一个被
+  修剪掉的快照以同样的 `UNKNOWN_COMMIT` 拒绝，好让客户端以同样的方式重置该范围）。两个读取都
+  通过 `changedFileArgs(range, mode)` 从它构建 argv，所以文件列表与一个文件的两侧绝不可能对范围
+  意见不一 —— 而那段 argv 在**两侧**都给它的 rev 加了括号：它们前面是 **`--end-of-options`**
+  （任何 ref 都无法被重新解析成 git 选项），它们后面是一个收尾的 **`--`**（一个同时也命名了磁盘上
+  某条路径的 rev —— 一个叫 `docs` 的分支 —— 会被当作 rev 读取，而不是让命令以"ambiguous argument"
+  失败）。一次**失败**的 `git diff`、未跟踪 `ls-files` 或 `git show` **抛出**；只有 Git 明确的
+  路径不存在诊断才产出一个空的文件侧，所以一次坏掉的读取绝不会被报告成没有改动或一次新增/删除。
+  一个 `commit` 范围的 `sha` 被校验**两次** —— 形状（十六进制 oid 正则，所以一个构造出来的值绝
+  不可能作为选项或路径到达 git 参数）然后是存在性（`rev-parse --verify`，随后用的是它的完整
+  oid）—— 而一个消失的提交抛出一个 **`CodedError("UNKNOWN_COMMIT")`**
+  （`@thinkrail/shared/codedError`），宿主把它作为 `WsResponse.errorCode` 放到线上协议上，客户端
+  把它变成"重置该范围，并弹一个 toast" —— *只*针对那个具名失败，绝不针对超时或一个未具名的宿主
+  失败；
+  **`isSafeRef(ref)` / `assertSafeRef(ref)`** —— 每个**用户/仓库提供的 ref** 在其变更入口都必须通过
+  的形状检查（`workspaces` 的 `createWorkspace` 基线 —— 那个**已解析**的基线，包括从仓库自己的
+  `HEAD` 读到的值 —— 加上 `setWorkspaceDiffBase` 的目标）。规则集就是 `git check-ref-format` 的
+  规则集，在进程内复刻（校验路径上不 spawn）：非空、无前导 `-`、无空白/控制字符、无 `..`、
+  无 rev 元字符（`~ ^ : ? * [ \`）、无 `@{` 且无裸 `@`、无空的路径分量、无以 `.` 开头的分量、
+  无 `.lock` 后缀、无结尾的 `.` 或 `/`。git 自己拒绝的名字，我们绝不接受 —— 而且对称地，**不设
+  长度上限**：`check-ref-format` 就没有，所以仓库真的拥有（且 `for-each-ref` 真的列出）的长分层
+  分支仍可选择；长度不是安全属性，真正的限制（文件系统分量上限、argv 大小）会作为读取错误大声
+  失败，而不是"畸形"。威胁是一个**不可信的仓库**，不是一个恶意客户端：`git update-ref` 接受
+  `refs/heads/--output=x` 这样的名字（只有 `git branch` 这层 porcelain 拒绝它），而 `listBranches`
+  用 `for-each-ref` 读 ref，所以一个选项形状的分支会进到用户打开的任何仓库的选择器里 —— 而浏览
+  别人的仓库正是这个产品的职责；
+  **`diffBaseRef(ws)`** —— `diffBase ?? baseBranch`，一个工作区两种基线含义（创建来源 vs 评审
+  目标）的唯一折叠，由解析器与 `listCommits` 消费（`workspaces` 模块的 `diffStats` *经由*解析器
+  到达它 —— 见必须做对的事）；
+  **`resolveCommitOid(worktreePath, ref)`** —— 一个 ref 此刻点名的完整提交 oid，或 `null`。这是
+  符号 ref 被**冻结**的唯一地方，每个此后仍须意味着同一件事的调用方都经过它：评审的 `baseSha`、
+  一条基线侧评论的 `baseRef`。一个范围的 `originalRef` 本身并不可变（`uncommitted` 是字面的
+  `HEAD`；一个 `branch` 范围在 `merge-base` 失败时退化到原始基线 ref），所以逐字存下一个这样的
+  ref，就让它指的内容在存下它的人脚下移动。一个 `DiffRange` 把那个冻结形式作为
+  **`resolvedOriginalOid`** 携带（经 `resolveCommitOid` 冻结，原始侧没有提交时为 `null` ——
+  一个根提交、一个未出生的 `HEAD`、一个不再解析的基线 ref）：一个必须把*同一*原始侧读两次的
+  调用方 —— `changes` 模块的 加载→校验→写入 过程、宿主的不可变 `/blob` URL —— 按 oid 寻址它，
+  而不是按一个含义可能被某次提交在请求中途改变的 ref；
+  `gitStatus(workspaceId, scope?)` —— 该范围之上的改动文件加上未跟踪文件（仅当范围止于工作树
+  时），每个都携带逐文件的 `added`/`removed` 行数（`git diff --numstat`，其被改名搅乱的路径经
+  `numstatPath` 解析以匹配 `--name-status`；二进制行被丢弃；未跟踪文件只有在 `fs.classifyBytes`
+  同意它是文本时，才把整份内容算作新增，所以非法 UTF-8、含 NUL、以及魔数类型的未跟踪文件都
+  像它们的 `ResourceMeta` 一样省略计数）供 Changes 树的 `+/−` 徽标使用；
+  `gitDiffFile(workspaceId, path, scope?)` → `{ original, modified, originalOid, meta: { original, modified } }`
+  —— `originalOid` 是该范围已解析的不可变起点（或 `null`），并且给出一个文件改动的两侧，供
+  中间的差异标签页使用（`original` = 该文件在范围起始 ref 处的原始内容，缺失时为空 —— 未跟踪/
+  新增、一个被改名文件的新路径，或一个根提交 —— 并退化为新增式差异；对一个止于工作树的
+  范围，`modified` = 该工作树文件（被删除时为空），否则是提交自己的树；路径经
+  `fs.resolveWorktreeFile` 检查，防词法逃逸、`.git` 与逃逸的符号链接；历史侧使用有界异步
+  `git cat-file blob`，带确定性的英文诊断，所以只有 Git 明确的路径不存在结果才变成一个空的侧；
+  树、提交、gitlink、普通的非零
+  失败、超时与启动失败都会抛出）。**两侧都按字节读取，并携带一个 `ResourceMeta`**
+  （`fs.resourceMeta` —— sha-256、字节长度、文本性、嗅探出的 mime）：只有是文本时才解码一侧，所以
+  一个字节专用的侧以 `""` 加它的元数据传行，客户端改为经宿主的 `/files`/`/blob` 路由取那些字节，
+  而不是渲染替换字符。提交范围的侧经 `gitAsyncBytes` 并发读取，保住字节同一性，既不阻塞事件
+  循环，也不 spawn 第二次解码读取；**`gitUncommittedPaths(workspaceId)`** → 为上面那道 TODO 基线
+  边界保留的同步 跟踪+未跟踪 路径集，用 NUL 分隔符与原始输出读取，所以文件名里合法的前导/尾部
+  空白（或换行）就是身份本身，绝不修剪；`gitStatus` 对其跟踪/未跟踪行使用同一套 NUL 安全路径
+  处理；**`listCommits(workspaceId)`** → `{ commits: GitCommit[] }` —— `git log <diff base>..HEAD`，
+  最新在前且封顶，每个提交一行 `--format`，其字段由一个 **NUL 字节**分隔，并以**固定元数**读取
+  （前四个按位置读，其后的一切再拼回去作为标题）。NUL 是仓库控制的文本唯一无法偷带进来的字节：
+  一个 author ident 既不携带 NUL 也不携带换行，所以没有构造出来的 `%an` 能移动 `%cI` 或截断它
+  自己，而一个携带了 NUL 的 `%s` 无论如何都会落在尾部。（`%an` 是*位于*结构化字段与标题*之间*的
+  自由文本，这正是"结构化字段先行"从来不够的原因 —— 一个叫 `a<sep>2020-01-01T00:00:00Z` 的
+  author 把标题挤过去一个字段。）随后自由文本字段在上线上协议之前会剥掉控制字符**以及不可见的
+  欺骗性字符** —— bidi 覆盖/隔离、零宽与格式字符 —— 而普通的国际文本与 emoji 存活下来；
+  一个不可读的范围（被删除的基线、未出生的 HEAD）若让 Git 正常退出则退化为一个空列表，
+  好让范围菜单仍然提供它的其他范围；一次超时或启动失败会抛出，而不是擦掉一个
+  此前有效的列表；**`countPushDivergence(worktreePath, branch, {fetch?})`**（异步 —— 同步双胞胎会在
+  每次窗口聚焦重取时阻塞共享事件循环）→ 经一次 `rev-list --left-right --count origin/<branch>...HEAD`
+  得到 `{ ahead, behind }`：**`ahead`** = origin 缺少的本地提交（未推送），**`behind`** = 分支缺少的
+  origin 上的提交。`behind > 0` 意味着该分支已**分叉** —— 一次普通推送是非快进，两段历史必须被
+  调和（计划页把它当作同步冲突，而不是强推的暗示）。仅当远端 ref 不存在（从未推送）时才为 `null`；
+  超时/启动失败会抛出，而一次 ref 仍在的普通非零退出也会抛出，而不是冒充不存在。带 **`fetch`** 时
+  它先尽力刷新 `origin/<branch>`，好让 `behind` 反映*真实的*远端（离线时回退到最近已知的 ref，
+  而不是让整次查找失败）；宿主的 `workspace.openReview` **只在一次新鲜查找**时传 `fetch`
+  （聚焦 / 显式刷新，而不是一次缓存激活），并把 `ahead`→`unpushedCommits`、`behind`→`behindCommits`
+  组合到一份打开的评审上（与 gh 查找并行，而不是在其后），这样计划页能标出 PR 还没有的提交，
+  以及分叉的同步冲突状态 —— 这里的 `origin/` 是全远端清扫的第二个有意幸存者，因为它问的是*这个*
+  工作区自己的分支被推到了哪里，而不是某个基线是从哪个远端分出来的；`listBranches(projectId)` →
+  `{ local, remote, remoteGroups?, defaultBranch }`（本地 `refs/heads`；规范的 `remote` = `refs/remotes`
+  下每个直接完整 ref，符号别名省略；附加的 `remoteGroups` = 宿主拥有的远端/分支元数据，供呈现用；
+  default = origin 的 `HEAD`→另一个远端的 `HEAD`→`origin/main`→仓库的 `HEAD`；任何 ref 列表或归属
+  列表失败都会抛出，绝不给出一个成功的部分目录），
+  **`resolveDefaultBranch(repoPath)`** —— 那段默认分支解析被抽了出来（只命名一次），由
+  `listBranches` 与 `workspaces` 模块的 Default 工作区 ensure（它的 `baseBranch`）共享；它最后一道
+  回退是 `currentBranch`，所以一个未出生的 `HEAD` 会解析成它将要成为的那个分支名，绝不是字面的
+  `"HEAD"`（那会持久化进一个用户可见的 `baseBranch`）；**`currentBranch(repoPath)`** —— 一次检出
+  当前持有的分支（`symbolic-ref --short HEAD`，未出生安全；分离头指针 → 字面的 `HEAD`），由
+  `workspaces` 模块为用户所有工作区的 folder-truth `branch` 消费，而 **`tryCurrentBranch`** 是它
+  可失败的形式（路径不是可读的工作树根时为 `null`，这样一次刷新绝不会把一次 I/O 失败持久化成
+  一次分离）；**`canonicalPath(path)`** —— 任何要与 git 输出比较的路径都必须取的符号链接已解析
+  形式（git 会解析符号链接，调用方给的路径不会），与 `workspaces` 的工作树身份检查共享；
+  `prefetchBranch(projectId, ref)` —— 尽力而为的后台 `git fetch`，取一个已配置远端的 ref（经
+  `gitAsync`），好让之后的一次 `createWorkspace` 从一个新鲜的尖端分叉，而不在其关键路径上付一次
+  网络往返（本地/未知 ref 或离线 → 空操作）。它的 ref 是**线上协议提供的，且在到达 git 之前通过
+  `createWorkspace` 所用的同一道 `isSafeRef` 门禁**：`--` 分隔的是*选项*，不是 refspec，所以只在
+  `fetch` 之后加 `--` 只挡住了一个以 `-` 开头的名字，别的什么也没挡 ——
+  `origin/+main:refs/heads/victim` 本会作为一个 **refspec** 抵达，让任何客户端在每个打开的项目里
+  强制覆盖或创建任意本地分支（一个不安全的 ref → 同样是 `{ ok: false, moved: false }` 空操作，
+  绝不抛出，因为这条路径是即发即忘的）。它的结果还会说明这次取回是否**`moved`** 了本地远端跟踪
+  ref（首次出现也算在内；即使 fetch 报告失败也会探测取回后的 oid，因为 Git 可能在之后的失败/超时
+  之前就已经更新了该 ref；比较是在完整限定的 `refs/remotes/…` 上做的 —— 也就是一次 fetch 会更新
+  的那个确切 ref —— 所以一个字面就叫 `origin/<b>` 的本地分支无法借 git 的 DWIM 顺序遮住这项检查）：
+  一个被移动的 ref *可能*改变某个兄弟工作区分支范围差异的含义（它的 merge-base 可能移动），而它
+  对 `watch` 模块不可见（这次写入落在项目仓库共享的 `.git` 里，在每个被监视位置之外）—— 所以
+  `git.prefetch` 处理器用 `moved` 扇出宿主的无路径 `fsChanged` 推动（`host` 的 fsNudge 接缝；
+  一次不受影响的重读是幂等的空操作）。`moved` 是宿主内部的；线上响应仍是 `{ ok }`；
+  **`readBlobAt(worktreePath, ref, path)`** → 该文件在一个 ref 处的 UTF-8**解码后**内容，或 `null`
+  当这次读取没有产出任何内容时（差异两侧把它退化为 `""`；`reviews` 模块通过它渲染一个基线侧
+  锚点的文本片段）；**`readBlobBytesAt(worktreePath, ref, path)`** → 同一次读取，但**字节精确**
+  保留（`Uint8Array`）且同步，专为 `reviews` 的快照过程而存在；**`readBlobBytesAtAsync`** 是
+  `changes` 使用的有界请求路径原语，它的读取必须完整才能被哈希。两者都跑 `git cat-file blob`，
+  只在 Git 明确的路径不存在诊断时返回 `null`，对一个非 blob 对象或其他一切失败都抛出；因此
+  超时/启动失败绝不可能冒充不存在。**`readBlobStreamAtAsync`** 是宿主的 `/blob` 路由所用的同一种
+  读取，它绝不能把一个 blob 握在内存里：它只 await 最初的 `CONTENT_SNIFF_BYTES`（路由所分类的
+  `head`），其余作为 `body` 流交出，那条流重新发出 head，然后随着 `git cat-file` 的 stdout 抵达
+  而转发它 —— 不存在与失败由第一次读取观察到的退出码决定，遵循同样的 `null`/抛出契约，而 head
+  交出*之后*的失败会让流报错，而不是关闭它，这样消费者看到的是一次中止的传输，绝不是被静默截断的
+  blob。一个可选的 `signal`（HTTP 请求的）可在任何时刻取消这次读取 —— 包括 head 仍在被 await、
+  响应体尚不存在可供取消的时候 —— 而取消会杀掉 `git` 子进程，而不是让它等满中继期限。
+  **`readBlobSizeAtAsync`** 在宿主接纳一个不可变 blob 响应之前，通过 `git cat-file -s` 执行同样的
+  有界、严格缺失判定读取；**`readPathModeAtAsync`** 用有界的 `git ls-tree` 读取一条路径的树模式，
+  好让 `changes` 能拒绝符号链接并恢复 Git 的可执行位，而无需自己推导树元数据；
+  **`gitCommitPaths(workspaceId, message, paths)`** → `{ sha } | null` —— 为 TODO 改动集特性把
+  **恰好 `paths`** 提交为一次提交（见 [[submodule-server-todos]]）：先暂存它们（`git add -A --
+  <paths>`，所以一次删除也作为一个暂存），然后 `git commit --no-verify -- <paths>`（宿主的提交绝不
+  运行/触发用户的钩子；author/committer 仍是用户自己的 git 配置 —— 那是他们的分支），并返回新的
+  sha。**只有被点名的路径** —— 绝不是"现在脏的那些"：调用方传入它已证明属于该事项的集合（而且
+  作为过滤后的增量，它从不会包含 `.thinkrail/`），所以在调用方的 `gitStatus` 与本次调用之间出现的
+  脏东西无法被扫进来，用户的其他已暂存工作也保持暂存，而不是被顺手带上。这些路径是**字面文件名，
+  绝不是 pathspec**：每个吃路径的命令都以 `--literal-pathspecs` 运行，所以一个名字本身就是
+  pathspec 魔法或通配符（`:(top)*`）的已跟踪文件，无法扩张到已证明的增量之外、击破精确路径保证或
+  `.thinkrail/` 排除。**索引在失败之间是被保留的：** 该检出的真实索引**文件**
+  （`rev-parse --git-path index` —— 在链接工作树里是逐工作树的）在暂存之前逐字节快照，并在每条
+  失败路径上写回，所以一次被跳过的提交让用户的暂存区保持原样 —— *包括一次树往返会丢掉的仅索引
+  状态*（一个来自 `git add -N` 的 intent-to-add 条目没有树表示，所以一次 `write-tree`/`read-tree`
+  快照会静默地把它取消暂存）。暂存会成功但提交可能失败（未设置的身份、一个不可用的签名密钥），
+  而一个尽力而为的特性绝不能让用户的下一次提交带上他们从未暂存的文件。一个有未合并条目的索引
+  （一次在途的冲突合并）会原封不动地退出；一个半合并的工作树反正没什么可自动提交的。路径集
+  为空、那些路径没有可提交的东西（`git diff --cached --quiet -- <paths>`），或任何 git 失败时
+  返回 `null` —— 调用方（`todos/artifacts`）把它当作"回退到路径列表产物"，绝不让它抛出。
+  这是唯一一个**写入**用户分支的 git 原语；调用方按工作区对它串行化。
+  **`gitHeadSha(workspaceId)`** → `string | null` —— `rev-parse HEAD`（未出生的 HEAD 上为 `null`），
+  在 `in_progress` 时记入 todos 基线 sidecar。
+  **`readCommitSubject(workspaceId, sha)`** → `string | null` —— 一个提交的标题行（sha 畸形或无法
+  解析时为 `null`），是 todos 模块"被采纳提交评审解析器"背后的同步读取（`base..HEAD` 之间不被任何
+  计划事项拥有的提交）。
+  **`listCommitsSince(workspaceId, sinceSha)`** → `sinceSha..HEAD` 的 `{ sha, subject }[]`，
+  **最旧在前**（`git log --reverse`，封顶在 `COMMIT_LIST_MAX`），供 todos 模块的工作窗口提交采纳
+  （[[submodule-server-todos]]）：一个事项在 `in_progress` 期间子代理/用户落下的提交，于是 `done`
+  的事项认领它们，而不是把它们漏成 `adoptedCommits`。`sinceSha` 是该事项自己的基线头（`in_progress`
+  时的 `gitHeadSha`）；空/未出生的头或一个非十六进制值产出 `[]`，而 sha 无论如何都用
+  `--end-of-options` 括起来。超时/启动失败会抛出；一个正常退出但不可读的范围退化为 `[]`。
+  **`resolveListedCommit(workspaceId, sha)`** → `string | null` —— 当且仅当 `sha` 落在
+  **`listCommits` 所发出的同一个封顶 `base..HEAD` 集合**里（同样的 `COMMIT_LIST_MAX` + 范围）时，
+  返回它的**规范 OID**，否则 `null`。返回规范 sha 让被采纳提交的评审解析器能拒绝缩写/非规范的
+  id，而共享的上限保证它绝不接受一个越过最新 `COMMIT_LIST_MAX` 窗口的提交 —— 对那样的提交永远
+  不会发出任何被采纳的事项。与 `listCommits` 保持步调一致。
+- **Public surface（公开接口，barrel）：** `git`, `gitAsync`, `gitAsyncBytes`, `gitAsyncStream`, `nonInteractiveGitEnv`, `remoteRefOid`, `remoteTrackingRef`, `gitStatus`,
   `gitUncommittedPaths`, `gitDiffFile`,
   `readBlobAt`, `readBlobBytesAt`, `readBlobBytesAtAsync`, `readBlobStreamAtAsync`, `readBlobSizeAtAsync`,
   `readPathModeAtAsync`, `readCommitSubject`,
@@ -289,85 +260,76 @@ ref off the workspace-create critical path.
   `assertSafeRef`, `listBranches`, `resolveDefaultBranch`, `tryCurrentBranch`, `currentBranch`,
   `canonicalPath`, `resolveListedCommit`, `prefetchBranch`, `countPushDivergence`, `listRemotes`, `remoteNameOf`,
   `snapshotWorktree`.
-- **Allowed deps:** `persistence` (workspace + project lookup), `log`; `fs` (`resourceMeta`/`decodeText` —
-  the one content classification, so a diff side's metadata cannot disagree with `fs.readFile`'s);
-  `contracts` (`Git*`/`BranchList`/`ResourceMeta` types);
-  `subprocess` (`runBounded`, the bounded child behind both async runners);
-  `@thinkrail/shared/codedError` (naming a failure for the wire); `@thinkrail/shared/spawn`
-  (`spawnSyncCaptured` / `spawnSyncCapturedBytes`, the sync runners with `windowsHide`).
-- **Forbidden:** `host`; sibling features.
+- **允许的依赖：** `persistence`（工作区 + 项目查询）、`log`；`fs`（`resourceMeta`/`decodeText` ——
+  那次唯一的内容分类，所以一个差异侧的元数据不会与 `fs.readFile` 的意见不一）；
+  `contracts`（`Git*`/`BranchList`/`ResourceMeta` 类型）；
+  `subprocess`（`runBounded`，两个异步运行器背后的有界子进程）；
+  `@thinkrail/shared/codedError`（为线上协议命名一个失败）；`@thinkrail/shared/spawn`
+  （`spawnSyncCaptured` / `spawnSyncCapturedBytes`，带 `windowsHide` 的同步运行器）。
+- **绝不触碰：** `host`；兄弟特性。
 
-## Get right
+## 必须做对的事
 
-- **A scope is defined once.** Any new read that has to know what "the diff" is goes through
-  `resolveDiffRange` — never its own `git diff <base>` line — and any read of the base ref goes through
-  `diffBaseRef`, so `diffBase ?? baseBranch` exists in exactly one place in the codebase.
-- **A commit scope validates that the commit *exists*, not that it is still reachable** from the branch. A
-  rebase or reset can rewrite history out from under a selection; the object is still there, and showing its
-  diff is *more* useful than silently resetting the user to "All changes". Which commits are *offered* is the
-  scope menu's job (`listCommits`), not the read's — so no read pays for a `merge-base --is-ancestor` pair.
-- **A failed read is an error, never "no changes".** `gitStatus` (and its `--numstat` pass) honours the exit
-  code: a diff that could not run throws, so the panel keeps its last good list and says the refresh failed
-  instead of rendering an empty change set. The `workspaces` module's `diffStats` follows the same rule from
-  the other end — it returns *no* stats (and logs why) rather than a fabricated `+0 −0`. A review surface that
-  calls a dirty worktree clean is the worst failure this product can have.
-- `gitStatus` reports the **live** current branch for a user-owned (`kind: "default" | "external"`)
-  workspace (its branch moves out-of-band — a terminal `git checkout` — and the persisted snapshot
-  self-heals only at list time; the Changes header must not lag).
-- **A network git call is bounded by us, not talked out of waiting.** A `fetch` whose remote wants a
-  passphrase blocks on `/dev/tty` forever, and the only thing that ever ended that wait was the *client's*
-  60s request timeout (`transport.ts` `DEFAULT_TIMEOUT_MS`, not overridden for `workspace.create`) — which
-  by construction carries no cause, so the user got `request "workspace.create" timed out` (issue #209).
-  `gitAsync` therefore races the child against a **55s budget** (`opts.timeoutMs` overrides; the tests
-  drive it at 500ms): on expiry it kills the child and resolves with `timed out after <actual>s — the
-  remote never answered`, which `workspaces` carries into the create failure.
-  **The budget is set as high as the client's 60s allows, on purpose.** Any budget below the client's turns
-  a *slow but healthy* operation that used to finish into a hard failure — the first fetch of a large
-  repository over a slow link is the real case. That window is **not closed, only narrowed** to roughly
-  55–58s, and it cannot be closed: a budget at or above the client's would hand the race back to the
-  causeless `request … timed out` this bullet exists to remove. The remaining ~5s is what the throw needs
-  to travel back and still beat the client; if a blocked loop overshoots it, the client's generic timeout
-  fires — the pre-fix behaviour, a degradation rather than a new failure. The ordering itself is **pinned
-  by nothing**: `transport.ts`'s 60s and this 55s are hand-kept numbers in two independently-shipped
-  artifacts, correct by agreement rather than by construction. Deriving one from the other belongs in
-  `contracts`, and is deliberately out of this change's scope.
-  **The message never names a cause we did not observe.** All we know on expiry is that the remote did not
-  answer; an unloaded SSH key is offered as *a* likely cause, conditional on the remote using SSH, because
-  asserting it outright mis-diagnosed every `https://` stall and every slow-link fetch as an auth problem.
-  Elapsed seconds are floored at 1: `Math.round` renders a sub-500ms wait as `0s`, which reads as a bug.
-  **It is a lower bound, not a ceiling.** `setTimeout` cannot fire while the loop is blocked, and the
-  *sync* runner blocks it by design (`spawnSyncCaptured`), so the real wait is the budget plus whatever
-  sibling `git()` calls hold the loop for — measured at 6× the budget under a deliberate storm. Hence the
-  message reports the **elapsed** time rather than the configured budget: the number the user reads is
-  never a fiction. Closing the gap would mean moving git off the loop entirely, which this ticket does not
-  buy. The timer is `unref`'d: it exists to *bound* a wait, so it must never itself be the reason the host
-  stays alive — an in-flight fire-and-forget `prefetchBranch` would otherwise hold shutdown open for up to
-  the full budget.
-  **`boundedStderr` cuts the middle, not the tail.** git's own words are always last, and a tail cut hid
-  them: `git.ts`'s `exists on disk, but not in` probe sits *after* the path, so losing it turned an
-  ordinary miss into a `console.warn` storm. Residual, unfixed, and inherent to any fixed-size cut — a
-  message long enough to push that phrase into the elided middle (a ~2000-character path *and* a
-  ~800-character ref) still loses it, and moving the head/tail split only moves the window.
-  **The wait ends when git exits, not when git's pipes do.** That distinction is `subprocess`'
-  (`runBounded`) to keep, and getting it wrong inverted this feature: a grandchild `ssh` — a
-  `ControlMaster`, a credential-cache daemon, a corporate wrapper — inherits `stderr` and outlives git, so
-  reading to EOF never returns *even when the fetch succeeded*. With the read as the completion signal, a
-  fetch that finished in milliseconds was reported as a full-budget authentication failure.
-  Verified both ways by `gitExec.test.ts`: a `core.sshCommand` that backgrounds a stderr-holding child and
-  exits 0 yields git's own `Could not read from remote repository` in well under a second, and yielded the
-  stalled message after the full budget before the fix.
-- **We never touch the user's ssh client — that was tried and withdrawn.** Appending `-o BatchMode=yes` to
-  their effective ssh command (`GIT_SSH_COMMAND`, else `core.sshCommand`, else `ssh`) fixes #209 for the
-  common setup, and cannot be made safe. Two of its failures are unfixable
-  in principle, not merely unfixed: `BatchMode` suppresses `SSH_ASKPASS`, so every user whose desktop
-  passphrase dialog *worked* loses it — the dialog **is** a wait for a human, so forbidding the wait
-  forbids the dialog; and delivering a *per-repo* option through `GIT_SSH_COMMAND`, a *process*-scoped
-  variable that outranks `core.sshCommand`, inverts priority for every other repo touched under that env —
-  a submodule with its own deploy key gets the parent's client. Four further defects followed from having to
-  rewrite a command we must first parse the way git does (`split_cmdline`) — a quoted plink path slipping the
-  non-OpenSSH bail-out, corporate wrappers rejecting the `-o`, `GIT_SSH` bailing out with the hang left
-  unfixed, and a `spawnSync` config read per `git()`. The budget above needs none of it: it is blind to which
-  ssh client, which variant, which wrapper, and whether an askpass exists.
-- **The env layers over `process.env`, never replaces it.** `boot`'s `resolveShellEnv()` repairs `PATH`/`LANG`
-  by *mutating* `process.env`; a bare env object would drop that repair and `SSH_AUTH_SOCK` with it, and a
-  live agent socket is what lets the user who did load their key fetch without any prompt at all.
+- **一个范围只被定义一次。** 任何必须知道"差异"是什么的新读取都走 `resolveDiffRange` —— 绝不自己写
+  一行 `git diff <base>` —— 而任何对基线 ref 的读取都走 `diffBaseRef`，所以
+  `diffBase ?? baseBranch` 在代码库里恰好只存在一处。
+- **一个 commit 范围校验该提交*存在*，而非它是否仍可从分支到达。** 一次 rebase 或 reset 会把历史
+  从一个选择之下重写掉；对象还在那里，而展示它的差异比静默把用户重置成"所有改动"*更*有用。哪些
+  提交被*提供*是范围菜单的活（`listCommits`），不是读取的活 —— 所以没有任何读取为一次
+  `merge-base --is-ancestor` 配对付钱。
+- **一次失败的读取是一个错误，绝不是"没有改动"。** `gitStatus`（及其 `--numstat` 过程）尊重退出码：
+  一次跑不起来的 diff 会抛出，所以面板保住它最后一份好列表，并说明刷新失败，而不是渲染一个空的
+  改动集。`workspaces` 模块的 `diffStats` 从另一端遵循同一规则 —— 它返回*没有*统计（并记录原因），
+  而不是编造一个 `+0 −0`。一个把脏工作树说成干净的评审界面，是这个产品可能有的最坏失败。
+- `gitStatus` 为一个用户所有的（`kind: "default" | "external"`）工作区报告**实时**的当前分支
+  （它的分支会带外地移动 —— 一次终端的 `git checkout` —— 而持久化快照只在列表时自愈；Changes 头部
+  绝不能滞后）。
+- **一次网络 git 调用由我们来界定，而不是被劝着别等。** 一次远端索要口令的 `fetch` 会永远阻塞在
+  `/dev/tty` 上，而唯一曾结束那次等待的东西是*客户端的* 60s 请求超时（`transport.ts` 的
+  `DEFAULT_TIMEOUT_MS`，未对 `workspace.create` 覆盖）—— 那个超时从构造上就不携带原因，所以用户
+  得到的是 `request "workspace.create" timed out`（issue #209）。`gitAsync` 因此让子进程与一个
+  **55s 预算**赛跑（`opts.timeoutMs` 可覆盖；测试以 500ms 驱动它）：到期时它杀掉子进程，并以
+  `timed out after <actual>s — the remote never answered` 解决，`workspaces` 把它带进创建失败里。
+  **预算是刻意设在客户端 60s 允许的那么高的。** 任何低于客户端的预算，都会把一个*慢但健康*、本会
+  完成的操作变成硬失败 —— 在慢链路上首次取回一个大仓库就是真实场景。那个窗口**并未被关闭，只是被
+  收窄**到大约 55–58s，而且它无法被关闭：一个等于或高于客户端的预算，会把这场赛跑交还给本条存在的
+  理由——那个无因的 `request … timed out`。剩下的约 5s 是抛出需要一路返回并仍能赢过客户端的时间；
+  如果被阻塞的事件循环超了这一点，客户端的通用超时就会触发 —— 修复前的行为，是一次降级而不是一个
+  新失败。这个次序本身**没有被任何东西钉定**：`transport.ts` 的 60s 与这里的 55s 是两个独立发布的
+  产物里手工维护的数字，靠约定而非靠构造正确。从一个推导另一个属于 `contracts`，且有意不在本次
+  改动的范围之内。
+  **消息绝不说出一个我们未曾观察到的原因。** 到期时我们知道的全部就是远端没有作答；一个未加载的
+  SSH 密钥被作为*一种*可能原因提出，且有条件地仅当远端使用 SSH 时，因为把它直接断言出来，会把每次
+  `https://` 停滞和每次慢链路取回都误诊成认证问题。经过的秒数向下取整到 1：`Math.round` 会把一次
+  不足 500ms 的等待渲染成 `0s`，那读起来像 bug。**它是一个下界，不是上限。** `setTimeout` 在事件
+  循环被阻塞时无法触发，而*同步*运行器按设计就会阻塞它（`spawnSyncCaptured`），所以真实的等待是
+  预算加上兄弟 `git()` 调用占住循环的那些时间 —— 在一次刻意制造的风暴下实测为预算的 6 倍。因此
+  消息报告的是**经过**的时间，而不是配置的预算：用户读到的数字从不是虚构。要关闭这个差距，就得把
+  git 完全移出事件循环，那不是这张工单要买的东西。定时器是 `unref` 掉的：它的存在是为了*界定*一次
+  等待，所以它本身绝不能成为宿主继续存活的原因 —— 否则一个在途的即发即忘 `prefetchBranch` 会让
+  关停挂住，最长达整个预算。
+  **`boundedStderr` 剪的是中间，不是尾部。** git 自己的话总是在最后，而剪尾把它们藏了起来：
+  `git.ts` 的 `exists on disk, but not in` 探针位于路径*之后*，所以丢掉它会把一次普通的未命中变成
+  一场 `console.warn` 风暴。这是残留的、未修的，也是任何固定大小裁剪的固有后果 —— 一条长到足以把
+  那句话推进被省略中段的消息（一个约 2000 字符的路径*加上*一个约 800 字符的 ref）仍然会丢掉它，
+  而移动头/尾的分割点只是移动了窗口。
+  **等待在 git 退出时结束，不是在 git 的管道关闭时。** 那个区分是 `subprocess`（`runBounded`）要
+  守住的，而把它弄错会把这个特性的逻辑颠倒过来：一个孙进程 `ssh` —— 一个 `ControlMaster`、一个
+  凭据缓存守护进程、一个企业包装器 —— 继承了 `stderr` 且比 git 活得更久，所以读到 EOF 永不返回，
+  *即使在取回成功时*。把读取当作完成信号，就会把一次毫秒级完成的取回报告成一次耗满预算的认证失败。
+  由 `gitExec.test.ts` 双向验证过：一个把持有 stderr 的子进程放到后台并退出 0 的 `core.sshCommand`，
+  在远不到一秒内产出 git 自己的 `Could not read from remote repository`，而在修复前则在耗满预算后
+  产出那条停滞消息。
+- **我们绝不碰用户的 ssh 客户端 —— 那被尝试过并撤回了。** 把 `-o BatchMode=yes` 追加到他们生效的
+  ssh 命令（`GIT_SSH_COMMAND`，否则 `core.sshCommand`，否则 `ssh`）能为常见设置修好 #209，却无法做
+  到安全。它的两个失败是原则上无法修复的，不只是尚未修复：`BatchMode` 会压制 `SSH_ASKPASS`，于是
+  每个桌面口令对话框*本来能用*的用户都失去它 —— 那个对话框**就是**在等待人类，所以禁止等待就禁止
+  了对话框；而通过 `GIT_SSH_COMMAND`（一个*进程*作用域、排序高于 `core.sshCommand` 的变量）下发一个
+  *按仓库*的选项，会为该环境之下触及的每个其他仓库反转优先级 —— 一个自带部署密钥的子模块会拿到
+  父仓库的客户端。还有四个缺陷来自"必须先按 git 的方式解析（`split_cmdline`）一条我们必须重写的
+  命令"—— 一条带引号的 plink 路径溜过非 OpenSSH 的退出分支、企业包装器拒绝那个 `-o`、`GIT_SSH` 退出
+  却把挂起留着未修，以及每次 `git()` 多一次 `spawnSync` 配置读取。上面的预算这些都不需要：它对哪个
+  ssh 客户端、哪个变种、哪个包装器、以及是否存在 askpass 一概不感知。
+- **环境是叠加在 `process.env` 之上，绝不替换它。** `boot` 的 `resolveShellEnv()` 通过*改写*
+  `process.env` 修复 `PATH`/`LANG`；一个裸的环境对象会丢掉那项修复，并连带丢掉 `SSH_AUTH_SOCK`，
+  而一个活着的 agent socket 正是让那些确实加载了密钥的用户完全免提示地取回的原因。

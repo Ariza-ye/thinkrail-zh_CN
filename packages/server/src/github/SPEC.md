@@ -2,34 +2,33 @@
 id: submodule-server-github
 type: submodule-design
 status: active
-title: github — local gh auth status
+title: github —— 本地 gh 认证状态
 parent: module-server
 depends-on: [module-contracts]
 tags: [public-surface-checked]
 ---
 
-## Responsibility
+## 职责
 
-Read-only local GitHub CLI (`gh`) auth status for the New-Workspace dialog's "Connected" pill + Refresh
-(and the Settings "Local GitHub" block). Shell-out only, server-side, on the host's resolved login PATH.
+只读的本地 GitHub CLI（`gh`）认证状态，供新建工作区对话框的“已连接”胶囊 + 刷新使用（以及设置的
+“本地 GitHub”区块）。仅通过 shell 调用，在服务端进行，使用宿主解析后的登录 PATH。
 
-## Boundary
+## 边界
 
-- **Owns:** `githubAuthStatus()` → `Promise<{ connected, login?, scopes? }>` by shelling `gh auth status`
-  (parsing its report for the account + token scopes); `githubRefresh()` (re-shells the same check).
-  Degrades gracefully — a missing / un-authed / non-responding `gh` all resolve to `{ connected: false }`
-  so the dialog works fully offline. `THINKRAIL_GH_OFFLINE=1` forces the disconnected result without
-  shelling (e2e drives the offline path). Also `ghSetupProblem()` → `Promise<GhSetupProblem | null>` — the
-  *named* reason the direct gh path is unavailable (`missing` when `Bun.which("gh")` finds no binary or the
-  probe never launched, `unauthenticated` when the probe exits non-zero, `null` when gh is usable or the
-  offline seam is on). Both probes run the same `gh auth status` under `subprocess`' `runBounded` at an 8s
-  budget (`GH_PROBE_TIMEOUT_MS`): `gh auth status` does a network round-trip, and the host is one event
-  loop — a `spawnSync` here would freeze every session for the probe's duration, which is exactly the
-  failure `runBounded` exists to rule out (see `subprocess/SPEC.md`). A probe that TIMED OUT reports `null`/
-  `{ connected: false }` (a transient network stall is not "signed out" — the silent compare fallback,
-  never the sign-in dialog). `pr` consumes `ghSetupProblem` (after a failed gh flow only) so the client can
-  show setup guidance instead of silently degrading to the compare page.
-- **Public surface (barrel):** `githubAuthStatus`, `githubRefresh`, `ghSetupProblem`.
-- **Allowed deps:** `contracts` (`GithubAuthStatus`); `subprocess` (`runBounded`, the bounded child both
-  probes spawn under); Bun (`which`). No `git`/`projects` reach — it's a pure `gh` probe.
-- **Forbidden:** `host`; sibling features; being bundled into the browser (`gh` is shelled, never bundled).
+- **拥有：** `githubAuthStatus()` → `Promise<{ connected, login?, scopes? }>`，通过 shell 调用
+  `gh auth status`（解析其报告以取得账号 + token scope）；`githubRefresh()`（重新执行同一检查）。
+  优雅降级 —— `gh` 缺失 / 未认证 / 无响应一律解析为 `{ connected: false }`，因此该对话框在完全
+  离线时也能用。`THINKRAIL_GH_OFFLINE=1` 会强制返回断开状态而不调用 shell（e2e 走这条离线路径）。
+  另外还有 `ghSetupProblem()` → `Promise<GhSetupProblem | null>` —— 直接 gh 路径不可用的*具名*
+  原因（`Bun.which("gh")` 找不到二进制或探测从未启动时为 `missing`，探测以非零退出时为
+  `unauthenticated`，gh 可用或离线接缝打开时为 `null`）。两个探测都在 `subprocess` 的
+  `runBounded` 下、以 8s 预算（`GH_PROBE_TIMEOUT_MS`）运行同一条 `gh auth status`：`gh auth status`
+  会做一次网络往返，而宿主只有一个事件循环 —— 在这里用 `spawnSync` 会让每个会话在探测期间冻结，
+  而这正是 `runBounded` 存在所要排除的失败（见 `subprocess/SPEC.md`）。超时（TIMED OUT）的探测
+  报告 `null`/`{ connected: false }`（一次短暂的网络卡顿不等于“已登出”—— 走静默的对比页回退，
+  绝不是登录对话框）。`pr` 会消费 `ghSetupProblem`（仅在 gh 流程失败之后），使客户端能展示设置
+  指引，而不是静默降级到对比页。
+- **Public surface（公开接口，barrel）：** `githubAuthStatus`, `githubRefresh`, `ghSetupProblem`
+- **允许的依赖：** `contracts`（`GithubAuthStatus`）；`subprocess`（`runBounded`，两个探测所基于的
+  有界子进程）；Bun（`which`）。不触达 `git`/`projects` —— 它是纯 `gh` 探测。
+- **绝不触碰：** `host`；兄弟特性；被打包进浏览器（`gh` 通过 shell 调用，绝不打包）。

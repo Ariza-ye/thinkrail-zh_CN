@@ -2,147 +2,123 @@
 id: submodule-server-subprocess
 type: submodule-design
 status: active
-title: subprocess — bounded child processes
+title: subprocess —— 有界的子进程
 parent: module-server
 depends-on: []
 tags: [host, public-surface-checked]
 ---
 
-## Responsibility
+## 职责
 
-Run one child process to completion under a wall-clock budget, and return what it wrote. The single
-answer to "how does this host spawn something that might never come back" — the lifetime mechanics only,
-never what a particular child's output means.
+在墙钟预算之内把一个子进程运行到完成，并返回它写出的内容。对“这个宿主如何派生某个可能永远不返回的
+东西”的唯一回答 —— 只涉及生命周期机制，绝不涉及某个具体子进程的输出意味着什么。
 
-## Boundary
+## 边界
 
-- **Owns:** `runBounded(argv, { timeoutMs, cwd?, env?, stdout? })` →
-  `{ ok, out, err, timedOut, launchFailed, waitedMs }`: capture both streams and complete on the child's
-  **exit**; stdout defaults to decoded text, while `stdout: "bytes"` preserves it as `Uint8Array` for
-  callers reading opaque content (stderr remains text diagnostics). POSIX children are detached
-  process-group leaders, while Windows children retain a nonvisual console. Expiry kills the POSIX group
-  or the direct Windows child. A failed launch is a result (`ok: false`, `launchFailed: true`, the launch
-  error as `err`), never a throw; callers can distinguish infrastructure failure from a child that ran
-  and exited nonzero.
-- **Also owns:** `streamBounded(argv, { timeoutMs, cwd?, env? })` → `{ stdout, exited }` — the same
-  spawn, deadline, group kill and stderr capture, for the one caller that must relay a child's stdout
-  while it is still being produced (the host's `/blob` route). Completion is still the child's exit,
-  with the same pipe-holding-grandchild rule as `runBounded`: a read that is still pending
-  `DRAIN_GRACE_MS` after the child exited is cancelled, because what has not arrived by then is not
-  our child's output; a read issued *after* the exit gets the same grace from the moment it is issued,
-  so a slow consumer draining the pipe's remainder is never cut short — back-pressure is preserved up
-  to the exit, and only the hang is bounded. The `stdout` stream **closes** only after a zero exit and
-  **errors** after a nonzero exit, an expiry or a failed launch, so a consumer can never mistake a
-  truncated relay for a complete one; cancelling the stream kills the child. `exited` resolves to the
-  same shape `runBounded` returns, minus `out`.
-- **Public surface:** `runBounded`, `streamBounded`, `BoundedRun`, `BoundedBytesRun`, `BoundedRunOptions`,
-  `BoundedBytesRunOptions`, `BoundedStream`, `BoundedStreamOptions`.
-- **Allowed deps:** Bun/Node process APIs. Nothing else — it knows no feature, no wire type, no
-  persistence.
-- **Forbidden:** message wording, retry, truncation, or any policy about a specific program. `git`'s
-  stalled/stderr text and `branch-review`'s degrade-to-`null` are the callers' business.
-- **Known non-consumers.** Two callers spawn something that can outlast a human's patience and still do
-  it themselves, each deliberately and each a standing debt rather than a settled design:
-  - `@thinkrail/shared/jbcentral` — already deadline-first, and a different contract (bounded-byte reads, a
-    closed outcome vocabulary, an injectable `run` seam, Central's confidentiality rules). Folding it in
-    would grow this surface for one caller in another package.
-  - `dialog`'s `selectDirectory` (`dialog.ts`) — still the EOF-gated shape this module replaces, around
-    `zenity`/`kdialog`/`osascript`, whose forked helpers inherit stdio. Unmigrated because a picker's real
-    budget is a human at a dialog: it needs a cancellation seam, which `runBounded` does not offer.
+- **拥有：** `runBounded(argv, { timeoutMs, cwd?, env?, stdout? })` →
+  `{ ok, out, err, timedOut, launchFailed, waitedMs }`：捕获两个流，并在子进程的**退出**时完成；
+  stdout 默认为解码后的文本，而 `stdout: "bytes"` 为读取不透明内容的调用方把它保留为
+  `Uint8Array`（stderr 仍是文本诊断）。POSIX 子进程是分离的进程组首领，而 Windows 子进程保留一个
+  非可视控制台。到期会杀掉 POSIX 进程组或那个直接的 Windows 子进程。一次失败的启动是一个结果
+  （`ok: false`、`launchFailed: true`，启动错误作为 `err`），绝不是一次抛出；调用方能区分基础
+  设施失败与一个运行过并以非零退出的子进程。
+- **还拥有：** `streamBounded(argv, { timeoutMs, cwd?, env? })` → `{ stdout, exited }` —— 同一个
+  派生、截止期、进程组击杀与 stderr 捕获，服务于唯一一个必须在子进程的 stdout 仍被产出时就转发它的
+  调用方（宿主的 `/blob` 路由）。完成仍是子进程的退出，并带有与 `runBounded` 相同的“孙进程持有管道”
+  规则：一次在子进程退出之后仍挂起 `DRAIN_GRACE_MS` 的读取会被取消，因为到那时还没到达的不是我们
+  子进程的输出；在退出*之后*发起的读取从其发起时刻起获得同样的宽限，因此一个慢慢排空管道剩余内容的
+  消费者绝不被截断 —— 背压在退出之前被保持，只有挂起被设限。`stdout` 流只在零退出之后**关闭**，
+  并在非零退出、一次到期或一次失败的启动之后**报错**，因此消费者绝不可能把一次被截断的转发误当作
+  完整的一份；取消该流会杀掉子进程。`exited` 结算为与 `runBounded` 返回相同的形状，只是没有 `out`。
+- **Public surface（公开接口）：** `runBounded`, `streamBounded`, `BoundedRun`, `BoundedBytesRun`,
+  `BoundedRunOptions`, `BoundedBytesRunOptions`, `BoundedStream`, `BoundedStreamOptions`
+- **允许的依赖：** Bun/Node 的进程 API。别无其他 —— 它不认识任何特性、线上类型或持久化。
+- **绝不触碰：** 消息措辞、重试、截断，或任何针对某个具体程序的策略。`git` 的卡住/stderr 文本与
+  `branch-review` 的降级为 `null` 都是调用方的事。
+- **已知的非使用方。** 有两个调用方派生着某种可能比人类耐心活得更久的东西，却仍然自己做，各自刻意，
+  各自是一笔存量债务而不是已定的设计：
+  - `@thinkrail/shared/jbcentral` —— 已经是截止期优先，且契约不同（有界字节读取、封闭的结果词表、
+    可注入的 `run` 接缝、Central 的保密规则）。把它折进来会为另一个包里的一个调用方撑大这一接口。
+  - `dialog` 的 `selectDirectory`（`dialog.ts`）—— 仍是本模块所替换的那种以 EOF 为门控的形状，围绕
+    `zenity`/`kdialog`/`osascript`，其 fork 出的辅助程序继承 stdio。未迁移，因为一个选择器真实的
+    预算是对话框前的人类：它需要一个取消接缝，而 `runBounded` 并不提供。
 
-  `github`'s `githubAuthStatus` (`github.ts`) used to be a third — a `spawnSync` HTTPS call on the single
-  event loop — until it moved onto `runBounded`, which is also why `ghSetupProblem` no longer hand-rolls its
-  own TERM+KILL escalation: both `gh auth status` probes now share this module's timeout mechanics instead
-  of duplicating them.
+  `github` 的 `githubAuthStatus`（`github.ts`）曾是第三个 —— 在唯一的事件循环上做一次 `spawnSync`
+  的 HTTPS 调用 —— 直到它迁到 `runBounded`，这也是为什么 `ghSetupProblem` 不再手工实现自己的
+  TERM+KILL 升级：两个 `gh auth status` 探测现在共享本模块的超时机制，而不是各自复制一份。
 
-  The census above is about *unbounded waits*, not about every spawn in the repo — the rest are already
-  bounded or cannot wait on anything: `git`'s sync `git()` and `terminal/shellBusy` go through
-  `@thinkrail/shared/spawn`'s `spawnSyncCaptured` (`shared/shellEnv` keeps its own `Bun.spawnSync` — a
-  win32 no-op), and `editors`, `cli/bootstrap` and `cli/powershell` are fire-and-forget
-  `@thinkrail/shared/spawn` `spawnDetached`s whose output nobody reads. `trash`'s helper `execFile` is the
-  one true straggler: unbounded, but a local trash helper with no network and no prompt, so it fails the
-  letter of this module and not its purpose.
+  上面的盘点是关于*无界等待*的，而不是关于仓库里的每一次派生 —— 其余要么已经有界，要么无法等待任何
+  东西：`git` 的同步 `git()` 与 `terminal/shellBusy` 走 `@thinkrail/shared/spawn` 的
+  `spawnSyncCaptured`（`shared/shellEnv` 保留自己的 `Bun.spawnSync` —— 在 win32 上是 no-op），而
+  `editors`、`cli/bootstrap` 与 `cli/powershell` 是即发即忘的 `@thinkrail/shared/spawn`
+  `spawnDetached`，其输出没人读。`trash` 的辅助 `execFile` 是唯一真正的落伍者：无界，但作为一个不带
+  网络、也不带提示的本地回收站辅助程序，它违背的是本模块的字面要求而非其目的。
 
-## Get right
+## 必须做对的事
 
-- **Completion is the child exiting, never its pipes reaching EOF.** A grandchild that inherits the child's
-  `stdout`/`stderr` and outlives it holds the write end open, so an EOF-gated read never returns — and
-  because the read *was* the completion signal, a child that finished successfully in milliseconds was
-  reported as a full-budget timeout (`git` + a backgrounded `ssh`, issue #209's second face). `Bun.spawn`'s
-  own `timeout` option gates the same way and is not an alternative.
-- **The deadline races the child's *exit*, and the drain grace runs after that race is decided.** The
-  grace is not part of the budget: racing the deadline against the *post-grace* settle instead turned the
-  last `DRAIN_GRACE_MS` of every budget into a false-timeout window, because a grandchild holding the pipes
-  makes the grace run to full term every time. A `git fetch` that answered at 54.9s of its 55s came back as
-  the stalled wording with `ok: false`, and its healthy process group was SIGKILLed on the way out. Pinned
-  by a test whose child exits immediately behind a pipe-holding grandchild under a 250ms budget.
-- **The drain grace (250ms) runs on *both* outcomes, exit and expiry.** It cannot truncate the child's own
-  output: a pipe holds at most its buffer, and a child that writes more than that is *blocked* until the
-  reader drains it — so at exit everything left is already buffered and drains in microseconds; the grace
-  only covers scheduler latency. Anything arriving after it can only come from a process that is not our
-  child — and is still captured as if it were the child's, which is a known wart, not a guarantee. The
-  constant is pinned from the other side: a test asserts each path *waits it out* (and no longer) when a
-  grandchild keeps the pipes from ever reaching EOF, which is the only case where it is observable at all.
-- **The timeout path drains too — cancelling the readers on the spot dropped the diagnosis.** The group
-  kill is what closes the write ends, so the bytes still in the pipe at expiry are exactly the ones the
-  caller's message is built from: git's `Permission denied (publickey)`, a proxy's refusal, a `remote:`
-  progress line proving a large transfer was simply still running. Killing and then cancelling in the same
-  synchronous step raced a pending `read()` against that cancel and could throw the last chunk away —
-  a caller promising "whatever git wrote before the kill" while dropping git's last word. Post-kill the
-  reads hit EOF almost at once, so the grace costs nothing in the normal case and caps the pathological one
-  (a holder that escaped the group via its own `setsid`, which is what the test uses to make the wait
-  observable).
-- **`timeoutMs` is clamped before it reaches `setTimeout`.** The type says `number`, and `setTimeout`
-  silently collapses `Infinity`, `NaN`, negatives, and anything ≥ 2^31 to ~1ms — so `Infinity`, the natural
-  spelling of "no budget", bought an instant timeout, an immediate group-`SIGKILL` of a healthy child, and
-  a `TimeoutOverflowWarning` on the host's stderr. Non-finite now means the longest budget `setTimeout` can
-  hold (~24.8 days) — the only reading of "no budget" that is not a lie. `NaN` is **not** given that
-  reading: "not a number" is a broken caller, and the safe failure for a broken budget is to expire at
-  once, not to wait 24 days. Finite values clamp into `[0, 2^31-1]`, and a negative budget expires
-  immediately because it already had.
-- **On POSIX expiry, kill the process group — that, not the timer, is what releases the descriptors.**
-  `detached: true` (`setsid`) makes the child a group leader, so `process.kill(-pid, "SIGKILL")` reaps the
-  grandchildren still holding our pipes; the reads then hit EOF on their own. Abandoning reads instead is
-  what pins Bun's event loop for the orphan's whole lifetime — measured at a 20s hold against an unref'd
-  400ms timer, and ~1.4 descriptors leaked per stall. Reaping the group instead leaves nothing resident:
-  no surviving grandchild, no descriptor growth, and the host free to exit.
-- **The exit path never kills the group.** The grandchildren there are healthy and deliberate — an `ssh`
-  `ControlMaster`, a credential-cache daemon — and killing them would cost the user their multiplexed
-  connection or their cached credentials for a call that *succeeded*. The readers are cancelled instead.
-- **`setsid` drops the controlling terminal — a deliberate trade, not a free win.** A child can no longer
-  open `/dev/tty` to prompt, which is what turns issue #209 from a 55s wait into an immediate
-  `Permission denied (publickey)` for most users; `SSH_ASKPASS` is unaffected (no-tty is exactly its
-  trigger), which is why the caller's budget still has to be sized for a human at a dialog. **What it costs
-  is real:** the CLI entrypoint is a `thinkrail` bin launched from a terminal that stays in the foreground, and
-  a user sitting there could until now *see* `ssh`'s `Enter passphrase for key …` on `/dev/tty` (ssh reads
-  the tty directly, so our piped stdio never hid it) and type it. They no longer can. Accepted because the
-  UI is a browser client and a hidden terminal prompt is not a flow it can ever show, wait on, or report —
-  a fast legible failure beats a prompt only the launching shell can see. It also puts the child outside the
-  host terminal's signal group, so the budget — never a `Ctrl-C` on the host — is what ends a stalled call.
-  Surfacing the passphrase request in the UI (#209's headline ask, as opposed to its "at minimum" clause)
-  stays unbuilt and needs the cancellation seam `dialog` wants above.
-- **Windows children are hidden, not detached.** `windowsHide: true` with `detached: false` preserves a
-  nonvisual console for ordinary descendants to inherit. Detachment removes that console: the immediate
-  child stays hidden, but a helper it launches can allocate a visible console. This is why a focus-triggered
-  `gh` lookup could still flash `tzutil`, Git, and SSH windows despite hiding the direct child. Windows
-  does not support the POSIX group-kill path; expiry still terminates only the direct child, not a promised
-  whole tree. Non-detached children participate in libuv's normal job lifetime; this runner is for bounded
-  host-owned work, not independently surviving daemons. The native Windows regression uses a no-console
-  driver, the real runner, and an ordinary console grandchild, with a detached positive control. It checks
-  native console ownership/window state rather than option presence, output success, or browser DOM.
-- **The env defaults to the live `process.env`, not the launch-time snapshot** — `boot`'s
-  `resolveShellEnv()` repairs `PATH`/`LANG` by mutating `process.env` *after* startup, and a child spawned
-  from the snapshot silently misses that repair. Both halves are pinned separately — a caller's `env`/`cwd`
-  arriving at the child, and a post-startup mutation being visible to one spawned without `env` — because a
-  test that only asserts the defaults cannot tell the two apart.
-- `stdin` is always `ignore`, and both output streams are always piped and **read from the moment of
-  spawn**; text is decoded incrementally and byte stdout is accumulated without decoding — an undrained
-  pipe is how a chatty child deadlocks. The readers are
-  cancelled once the outcome is decided *and* the grace above has run, never before it. Every
-  timer is `unref`'d, so a bounded wait never holds shutdown open, and `waitedMs` comes from
-  `performance.now()`, so a clock adjustment cannot render a negative wait.
-- **Neither stream is capped.** `runBounded` accumulates whatever the child writes for as long as the
-  budget allows, so a caller's byte ceiling (`git`'s 2000-char `boundedStderr`) bounds what reaches a
-  client, never what this module holds in memory. Adequate for `git`/`gh`/`glab`, where the worst case is a
-  progress log measured in hundreds of KB; a caller that can spew unboundedly needs a `maxBytes` option
-  here rather than a truncation after the fact.
+- **完成是子进程退出，绝不是其管道到达 EOF。** 一个继承了子进程 `stdout`/`stderr` 并比它活得更久的
+  孙进程会持有写端，因此以 EOF 为门控的读取永不返回 —— 而由于那次读取*就是*完成信号，一个在毫秒内
+  成功结束的子进程会被报告为用尽整个预算的超时（`git` + 一个被放到后台的 `ssh`，issue #209 的第二
+  张面孔）。`Bun.spawn` 自己的 `timeout` 选项以同样的方式门控，不构成替代方案。
+- **截止期是与子进程的*退出*赛跑，而排空宽限在这次赛跑判定之后才运行。** 宽限不是预算的一部分：把
+  截止期改与*宽限之后*的结算赛跑，反而会把每个预算的最后 `DRAIN_GRACE_MS` 变成一段假超时窗口，因为
+  一个持有管道的孙进程每次都会让宽限跑满。一次在其 55s 中的 54.9s 回答的 `git fetch` 带着卡住的
+  措辞以 `ok: false` 返回，它那个健康的进程组在退出途中被 SIGKILL。由如下测试固定：其子进程在一个
+  持有管道的孙进程之后立即退出，预算为 250ms。
+- **排空宽限（250ms）在退出与到期*两种*结果上都会运行。** 它不可能截断子进程自己的输出：一根管道
+  至多只持有其缓冲区，而写入超过该量的子进程会被*阻塞*直到读者把它排空 —— 因此在退出时剩下的东西
+  都已在缓冲区里，会在微秒级排空；宽限只覆盖调度延迟。在此之后到达的任何东西只可能来自一个不是我们
+  子进程的进程 —— 而它仍会被当作子进程的输出捕获，那是一个已知的瑕疵，不是一项保证。该常量从另一侧
+  被固定：一个测试断言当孙进程使管道永远无法到达 EOF 时，每条路径都会*等完它*（且不会更久），那是
+  它唯一可被观察到的情形。
+- **超时路径同样排空 —— 当场取消读取丢掉了诊断。** 进程组击杀才是关闭写端的东西，因此到期时还留在
+  管道里的字节，正是调用方消息所由构建的那些：git 的 `Permission denied (publickey)`、一个代理的
+  拒绝、一行证明大传输只是还在跑的 `remote:` 进度。先击杀然后在同一个同步步骤里取消，会让一次挂起的
+  `read()` 与那次取消赛跑，可能把最后一块扔掉 —— 一个承诺“杀掉之前 git 写的任何东西”的调用方却丢掉
+  了 git 的最后一句话。击杀之后读取几乎立刻遇到 EOF，因此宽限在正常情况下不花任何代价，而在病态
+  情况下给它设限（一个通过自己的 `setsid` 逃出进程组的持有者，那正是测试用来让该等待可观察的手法）。
+- **`timeoutMs` 在到达 `setTimeout` 之前被钳制。** 类型说是 `number`，而 `setTimeout` 会把
+  `Infinity`、`NaN`、负数以及任何 ≥ 2^31 的值静默压成约 1ms —— 因此 `Infinity` 这个“没有预算”的
+  自然写法换来了一次瞬时超时、对一个健康子进程立刻执行的进程组 `SIGKILL`，以及宿主 stderr 上的一条
+  `TimeoutOverflowWarning`。非有限值现在意味着 `setTimeout` 能持有的最长预算（约 24.8 天）—— 这是
+  “没有预算”唯一不撒谎的读法。`NaN` **不**获得这一读法：“不是一个数”是一个坏掉的调用方，而一个坏掉
+  预算的安全失败是立刻到期，而不是等 24 天。有限值被钳制进 `[0, 2^31-1]`，而负预算立即到期，因为
+  它本来就已经到期了。
+- **在 POSIX 到期时，杀掉进程组 —— 释放文件描述符的是它，不是定时器。** `detached: true`（`setsid`）
+  让子进程成为进程组首领，因此 `process.kill(-pid, "SIGKILL")` 会清理仍然持有我们管道的孙进程；
+  读取随后自行遇到 EOF。改为放弃读取会让 Bun 的事件循环在整个孤儿的生命周期里被钉住 —— 对一个
+  400ms 的 unref 定时器实测被扣住 20s，每次卡顿泄漏约 1.4 个文件描述符。改为清理进程组则什么也不
+  留在内存里：没有存活的孙进程、没有文件描述符增长，宿主可以自由退出。
+- **退出路径绝不杀掉进程组。** 那里的孙进程是健康的、刻意的 —— 一个 `ssh` 的 `ControlMaster`、一个
+  凭据缓存守护进程 —— 为了一次*成功*的调用而杀掉它们，会让用户失去其多路复用连接或缓存的凭据。改为
+  取消读取。
+- **`setsid` 丢掉了控制终端 —— 这是一次刻意的取舍，不是白得的胜利。** 子进程不能再打开 `/dev/tty`
+  去提示，这正是把 issue #209 对大多数用户从 55s 的等待变成立刻的 `Permission denied (publickey)` 的
+  原因；`SSH_ASKPASS` 不受影响（无 tty 恰好是它的触发条件），这就是为什么调用方的预算仍必须按对话框
+  前的人类来设定。**代价是真实的：** CLI 入口是一个 `thinkrail` bin，从保持在前台的终端里启动，而
+  坐在那里的用户此前能*看见* `ssh` 在 `/dev/tty` 上的 `Enter passphrase for key …`（ssh 直接读 tty，
+  因此我们管道化的 stdio 从未遮住它）并把它敲进去。他们不再能了。被接受，因为 UI 是浏览器客户端，
+  而一个隐藏的终端提示是它永远无法展示、等待或报告的流程 —— 一次快速可读的失败胜过只有启动它的 shell
+  能看见的提示。它还把子进程放到了宿主终端的信号组之外，因此终结一次卡住调用的是预算 —— 绝不是宿主上
+  的一次 `Ctrl-C`。在 UI 里呈现口令请求（#209 的标题诉求，相对于它那句“至少”）仍未建，且需要
+  `dialog` 上面想要的那个取消接缝。
+- **Windows 子进程是隐藏的，不是分离的。** `windowsHide: true` 配合 `detached: false` 会保留一个非
+  可视控制台供普通后代继承。分离会移除那个控制台：直接子进程保持隐藏，但它启动的一个辅助程序可能分配
+  出一个可见控制台。这就是为什么一次由焦点触发的 `gh` 查找，尽管隐藏了直接子进程，仍可能闪出
+  `tzutil`、Git 与 SSH 的窗口。Windows 不支持 POSIX 的进程组击杀路径；到期仍只终止直接子进程，而不
+  是一个承诺的整棵树。非分离的子进程参与 libuv 的普通任务生命周期；本运行器是为了宿主拥有的有界工作，
+  不是为独立存活的守护进程。原生 Windows 回归使用一个无控制台的驱动、真实运行器与一个普通控制台的
+  孙进程，外加一个分离的正向对照。它检查原生控制台归属/窗口状态，而不是选项是否存在、输出成功或浏览器
+  DOM。
+- **环境默认为活的 `process.env`，不是启动时的快照** —— `boot` 的 `resolveShellEnv()` 在启动*之后*
+  通过改动 `process.env` 来修复 `PATH`/`LANG`，而从快照派生的子进程会静默错过那次修复。两半分别被
+  固定 —— 调用方的 `env`/`cwd` 到达子进程，以及一次启动后的改动对一个未传 `env` 派生的子进程可见 ——
+  因为只断言默认值的测试无法区分这两者。
+- `stdin` 始终是 `ignore`，两个输出流始终被管道化并**从派生的那一刻就被读取**；文本被增量解码，字节
+  stdout 在不经解码的情况下累积 —— 一根未被排空的管道正是爱说话的子进程死锁的方式。读取在结果被判定
+  *且*上面的宽限跑完之后才被取消，绝不在之前。每个定时器都被 `unref`，因此一次有界等待绝不把关闭
+  挂住，而 `waitedMs` 来自 `performance.now()`，因此一次时钟调整不可能让等待变成负数。
+- **两个流都不设上限。** `runBounded` 会在预算允许的时间内累积子进程写出的任何东西，因此调用方的字节
+  上限（`git` 的 2000 字符 `boundedStderr`）限定的是到达客户端的东西，绝不是本模块在内存里持有的
+  东西。对 `git`/`gh`/`glab` 而言足够，其最坏情况是以数百 KB 计的进度日志；一个可能无限倾泻的调用方
+  需要这里的 `maxBytes` 选项，而不是事后的截断。

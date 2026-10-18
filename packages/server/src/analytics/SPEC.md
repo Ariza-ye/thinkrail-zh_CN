@@ -2,167 +2,145 @@
 id: submodule-server-analytics
 type: submodule-design
 status: active
-title: analytics — basic events and preference-controlled product insights
+title: analytics —— 基础事件与受偏好控制的产品洞察
 parent: module-server
 depends-on: [module-contracts]
 tags: [analytics, privacy]
 ---
 
-## Responsibility and boundary
+## 职责与边界
 
-Host-only product analytics shared by CLI/source/desktop, delivered personless to PostHog EU.
-The module owns the closed event vocabulary, catalog bucketing, installation identity usage, delivery,
-consent gates and bounded shutdown. Host alone observes feature outcomes and captures events; feature
-modules remain analytics-free. Sibling dependency edges belong to [[module-server]].
+由 CLI/源码/桌面共享的、仅宿主侧的产品分析，以无个人身份的方式投递到 PostHog EU。本模块拥有封闭的
+事件词汇表、目录分桶、安装身份的使用方式、投递、同意门禁与有界关闭。只有宿主观察特性结果并捕获事件；
+特性模块保持与分析无关。兄弟依赖边属于 [[module-server]]。
 
-- **Public surface:** initialization, basic capture, consent-scoped additional capture, additional-data
-  enablement, shutdown/test reset, event types, bucket helpers and `BuildKind`.
-- **Allowed deps:** persistence, log, contracts types, pi-ai's built-in catalog, Node, and `posthog-node`
-  inside the sink only.
-- **Forbidden:** importing host/feature siblings; being imported outside host; exposing the installation
-  UUID on the wire; copying rich feature payloads into telemetry; browser autocapture or a native-only sink.
+- **Public surface（公开接口）：** 初始化、基础捕获、按同意范围限定的附加捕获、附加数据启用、
+  关闭/测试重置、事件类型、分桶辅助函数与 `BuildKind`。
+- **允许的依赖：** persistence、log、contracts 类型、pi-ai 的内置目录、Node，以及仅在 sink 内部
+  使用的 `posthog-node`。
+- **绝不触碰：** 导入宿主/特性兄弟；在宿主之外被导入；在线上协议上暴露安装 UUID；把丰富的特性负载
+  复制进遥测；浏览器自动捕获或仅原生的 sink。
 
-## Events
+## 事件
 
-Basic events are always on in keyed human runs: `app_installed`, `app_started`,
-`chat_started { provider, model, auth_method }`, `message_sent { mode, provider, auth_method }`, and
-`provider_login { provider, method, auth_method }`. `app_installed` carries only the standard environment
-properties and is emitted before `app_started` once when a non-CI/non-test binary or desktop initialization
-claims the shared installation marker. Initialization constructs the basic sink before claiming; once claimed,
-the state is installed before enqueue. A sink-construction failure therefore leaves the marker available, while
-a later delivery failure does not clear or retry it. Existing `{ id }` records emit on their first eligible packaged boot. Launch means
-host boot, not UI readiness. Chats can be empty; a chat the host had to create without any usable model
-reports `provider` and `model` as `none` with `auth_method: unknown`; the host's own model resolution
-decides that case rather than pi's placeholder model (which would otherwise bucket as `custom`), while
-a resolved chat reports the model the created session actually holds (a startup extension may switch it).
-"Created a chat but had nothing to send with" thus stays distinguishable from a configured custom provider.
-Sends count after `ackSend`, exclude TODO-control nudges, and do not prove successful execution. Login
-requires correlated success, or the existing applied Central connection action. `auth_method` is a closed
-`api_key | subscription | oauth | central | other | unknown` category, never credentials or account/plan
-identities. It describes the observed authentication path, not billing entitlement. Host captures send
-metadata before dispatch, uses each session/login's retained runtime, and leaves ambiguous modes
-other/unknown. Central provenance uses loader registration metadata without inspecting opaque auth.
+在带 key 的人工运行中，基础事件始终开启：`app_installed`、`app_started`、
+`chat_started { provider, model, auth_method }`、`message_sent { mode, provider, auth_method }`，以及
+`provider_login { provider, method, auth_method }`。`app_installed` 只携带标准的环境属性，并在
+非 CI、非测试的二进制或桌面初始化认领共享的安装标记时，先于 `app_started` 发出一次。初始化在认领
+之前就构造好基础 sink；一旦认领，状态在入队之前就已安装。因此 sink 构造失败会让标记保持可用，而
+之后的投递失败既不清除也不重试它。既有的 `{ id }` 记录在其首次符合条件的打包启动时发出。启动指
+宿主启动，而不是 UI 就绪。聊天可以是空的；宿主不得不在没有任何可用模型的情况下创建的聊天，会把
+`provider` 与 `model` 报告为 `none`，`auth_method: unknown`；这种情况由宿主自己的模型解析
+决定，而不是 pi 的占位模型（后者否则会分桶为 `custom`），而已解析的聊天会报告所创建会话实际持有的
+模型（启动扩展可能切换它）。因此"创建了聊天却没有可用于发送的东西"始终能与配置的自定义提供商区分
+开来。发送在 `ackSend` 之后计数，排除 TODO 控制类的提醒，并且不证明执行成功。登录要求相关联的成功，
+或既有的已应用 Central 连接动作。`auth_method` 是封闭类别
+`api_key | subscription | oauth | central | other | unknown`，绝不是凭据或账户/套餐身份。它描述观察到
+的认证路径，而不是计费权益。宿主在派发之前捕获发送元数据，使用每个会话/登录所保留的运行时，并把
+模棱两可的模式留作 other/unknown。Central 出处使用加载器注册元数据，而不检查不透明的 auth。
 
-Additional events follow the `analyticsEnabled` preference. Their exact property unions and payload tests are
-the schema. Product outcome fields use fixed enums or bounded buckets; acquisition touch fields below are
-bounded browser-derived strings, never resource identities or arbitrary product payloads.
+附加事件遵循 `analyticsEnabled` 偏好。它们确切的属性并集与负载测试就是 schema。产品结果字段使用固定
+枚举或有界分桶；下面的获取触点字段是有界的、由浏览器派生的字符串，绝不是资源身份或任意的产品负载。
 
-| Event | Signal |
+| 事件 | 信号 |
 | --- | --- |
-| `setup_state_observed` | Provider/model/project readiness (`yes/no/unknown`); first current observation and changes, not every poll. |
-| `setup_action_finished` | Explicit setup operation, outcome and fixed failure category; automatic Default provisioning is excluded. `directory_pick` is the native folder picker (succeeded / cancelled / failed, never the path); `project_open` reports the typed `not_git` / `already_open` reasons from the projects module's coded errors, and every untyped failure stays `unknown` — reasons are never derived from error text. |
-| `agent_run_started` | Work-cycle origin, workspace kind and catalog-bucketed provider/model. |
-| `agent_run_settled` | Final outcome, elapsed-time/retry/compaction buckets; only `agent_settled`, never attempt-level `agent_end`. |
-| `task_completed` | Nonempty task-group completion transition after artifact reconciliation, change evidence and whether verification was recorded. |
-| `plan_opened` | The plan surfaced for the user, by `surface` (`page`/`rail`); a deliberate open action, not every plan refetch. |
-| `plan_item_added` | A user-added plan item (`origin:"user"`), by `surface` (`chat`/`page`/`rail`); the user curating the plan, not agent re-plans. |
-| `review_decided` | Actual user/agent approval or changes-requested decision, not aborted-review cleanup. |
-| `review_comment_added` | A review comment created on a file/diff/doc, by `author` (`user`/`agent`) and `kind`; the human draft flow and the reviewer agent's findings, distinguished — not draft edits. |
-| `review_comment_sent` | One event **per comment** delivered to the agent (the value moment), with `outdated` (`yes`/`no`); per-comment so added→sent→resolved is a countable funnel, and `outdated` is the re-anchoring quality signal. Delivery, not proof the agent acted usefully. |
-| `review_comment_resolved` | A comment's terminal outcome, by `actor` (`user`/`agent`) and `outcome` (`resolved`/`dismissed`); the human update and the agent `resolve_comment` tool, not draft deletes or Clear. An agent `resolved` is the agent's claim, never proof the concern was fixed. |
-| `pr_action_finished` | Outcome/category; created PRs remain distinct from updates, pushes and compare-page handoffs; `source` = `plan_page` when driven from the plan page's PR stage, else `other`. |
-| `acquisition_linked` | One successful browser-claim redemption, carrying the transient journey/bridge ids and normalized first/last acquisition fields. |
+| `setup_state_observed` | 提供商/模型/项目的就绪状态（`yes/no/unknown`）；当前状态的首次观察与后续变化，而不是每次轮询。 |
+| `setup_action_finished` | 显式的设置操作、结果与固定的失败类别；自动的 Default 预置被排除。`directory_pick` 是原生文件夹选择器（成功 / 取消 / 失败，绝不是路径）；`project_open` 报告来自 projects 模块编码错误的带类型 `not_git` / `already_open` 原因，而每个未类型化的失败都保持 `unknown` —— 原因绝不从错误文本推导。 |
+| `agent_run_started` | 工作周期的来源、工作区种类，以及按目录分桶的提供商/模型。 |
+| `agent_run_settled` | 最终结果、耗时/重试/压缩的分桶；只有 `agent_settled`，绝不是尝试级的 `agent_end`。 |
+| `task_completed` | 产物归并之后非空任务组的完成转换、变更证据，以及是否记录过验证。 |
+| `plan_opened` | 计划向用户呈现，按 `surface`（`page`/`rail`）；一次有意的打开动作，而不是每次计划重取。 |
+| `plan_item_added` | 用户新增的计划条目（`origin:"user"`），按 `surface`（`chat`/`page`/`rail`）；是用户在整理计划，而不是 agent 重新规划。 |
+| `review_decided` | 真实的用户/agent 批准或请求修改决定，而不是被中止的评审清理。 |
+| `review_comment_added` | 针对文件/差异（diff）/文档创建的评审评论，按 `author`（`user`/`agent`）与 `kind`；人类草稿流程与评审 agent 的发现被区分开 —— 不是草稿编辑。 |
+| `review_comment_sent` | 每一条投递给 agent 的评论**各一个**事件（价值时刻），带 `outdated`（`yes`/`no`）；按评论计数，使 added→sent→resolved 成为可数的漏斗，而 `outdated` 是重锚定的质量信号。这是投递，不是 agent 有效行动的证明。 |
+| `review_comment_resolved` | 评论的终态结果，按 `actor`（`user`/`agent`）与 `outcome`（`resolved`/`dismissed`）；即人类更新与 agent 的 `resolve_comment` 工具，而不是草稿删除或 Clear。agent 的 `resolved` 是 agent 的声明，绝不是问题已修复的证明。 |
+| `pr_action_finished` | 结果/类别；创建 PR 与更新、推送、对比页移交保持区分；当由计划页的 PR 阶段驱动时 `source` = `plan_page`，否则为 `other`。 |
+| `acquisition_linked` | 一次成功的浏览器认领兑换，携带瞬时的 journey/bridge id 与规范化后的首次/末次获取字段。 |
 
-The review-comment funnel is host-observed off existing wire/tool actions: `review_comment_added`
-off the `review.commentAdd` handler (human, `author:user`) and each plan-review finding the host files
-into the Review tab (`author:agent`, with the persisted `kind`, so an anchor fallback reads as `review`).
-`review_comment_sent` fires once per comment for every delivery to an agent: `review.sendComment` /
-`review.sendBatch`, the plan-review fix delivered to the worker (button path after its acknowledgement,
-tool path when its locked file+mark+record transaction commits), and the user's Request-fix. Per-comment
-keeps added→sent→resolved countable across a personless population (a per-action count bucket would make
-that ratio unrecoverable); `outdated` reports anchor drift in the already-re-anchored send set. It fires on
-**acceptance**, not when a detached prompt starts: a pre-turn rejection (bad model/expired key) rolls the
-comments back to draft, so an early capture would inflate the conversion. `review_comment_resolved` fires
-only on an actual transition into `resolved`/`dismissed` — `review.commentUpdate` (user) and the agent
-`resolve_comment` seam (`agent`/`resolved`) — so an idempotent repeat from a stale client never counts
-twice. No comment body, path, anchor text or line numbers are ever copied — only the closed
-`author`/`kind`/`actor`/`outcome`/`outdated` enums.
+评审评论的漏斗是宿主基于既有线上/工具动作观察到的：`review_comment_added` 取自
+`review.commentAdd` 处理器（人类，`author:user`）以及宿主归档进 Review 标签页的每条计划评审判定
+（`author:agent`，带持久化的 `kind`，因此锚点回退会读作 `review`）。`review_comment_sent` 每条评论
+对每一次投递给 agent 都触发一次：`review.sendComment` / `review.sendBatch`、投递给 worker 的计划评审
+修复（在确认之后走按钮路径，当其锁定的 file+mark+record 事务提交时走工具路径），以及用户的
+Request-fix。按评论计数使 added→sent→resolved 在无个人身份的人群中仍然可数（按动作计数的分桶会让
+该比率无法还原）；`outdated` 报告的是已重锚定后的发送集合中的锚点漂移。它在**接收**时触发，而不是
+在分离的提示词启动时：轮次之前的拒绝（模型不对/密钥过期）会把评论回滚为草稿，因此过早捕获会虚高
+转化率。`review_comment_resolved` 只在真正转入 `resolved`/`dismissed` 时触发 ——
+`review.commentUpdate`（用户）与 agent 的 `resolve_comment` 接缝（`agent`/`resolved`）—— 因此来自
+陈旧客户端的幂等重复绝不会被计两次。绝不复制评论正文、路径、锚点文本或行号 —— 只有封闭的
+`author`/`kind`/`actor`/`outcome`/`outdated` 枚举。
 
-The plan/TODO funnel rides existing wire actions, never browser autocapture: the host captures
-`plan_opened` off a deliberate `todo.list { opened }` call (the plan page open or the TODO rail open —
-not the automatic refetches), `plan_item_added` off a successful `todo.add` (`surface` names the TODO rail add row, the chat's
-add path, or the plan page's add row), and stamps the `source` discriminator on
-`pr_action_finished` from the `pr.open` caller (`plan_page` when the plan page's PR button drove it). The
-plan page's Review stage runs through pi-subagents delegation ([[submodule-server-host]]'s plan review),
-whose asynchronous verdict is decoupled from the triggering surface, so `review_decided` carries no source
-today. `surface`/`source` are closed enums; absence defaults to `chat`/`other`, so an omitted param never
-fabricates plan-page attribution.
+计划/TODO 漏斗同样搭乘既有的线上动作，绝不使用浏览器自动捕获：宿主从一次有意的 `todo.list { opened }`
+调用中捕获 `plan_opened`（计划页打开或 TODO 侧栏打开 —— 不是自动重取），从成功的 `todo.add` 捕获
+`plan_item_added`（`surface` 指明 TODO 侧栏的新增行、聊天的新增路径或计划页的新增行），并根据
+`pr.open` 的调用方给 `pr_action_finished` 打上 `source` 判别符（当由计划页的 PR 按钮驱动时为
+`plan_page`）。计划页的 Review 阶段经 pi-subagents 委派运行（[[submodule-server-host]] 的计划评审），
+其异步判定与触发它的界面解耦，因此 `review_decided` 目前不带 source。`surface`/`source` 是封闭枚举；
+缺省分别默认为 `chat`/`other`，因此省略的参数绝不会凭空造出计划页归因。
 
-The acquisition touch schema is a strict server-side mirror of [[submodule-website-attribution]]: bounded
-normalized UTM source/medium/campaign/content strings, closed referrer class, timestamp, and policy version.
-The website and server copies change together; product packages never import website code. The landing page
-is not transferred; PostHog joins website events to `acquisition_linked` through `journey_id`. While the
-additional grant is active, persisted campaign-only first/last fields enrich later basic and additional
-events except `app_installed`; enriched basics use only the current grant's revocable sink, while
-unenriched basics stay on the permanent basic sink. Revocation therefore drops queued/retrying enriched
-basics together with additional events, without stopping ordinary basics; only `acquisition_linked` carries
-journey/bridge ids. Acquisition expires 30 days after `last_touch`: startup terminalizes expired or invalid
-state, and every capture checks before enrichment so a process crossing expiry clears memory and atomically
-replaces the file with the terminal attempt marker. The first `app_started` remains unenriched when linking
-occurs during that launch.
+获取触点的 schema 是 [[submodule-website-attribution]] 的严格服务端镜像：有界的规范化 UTM
+source/medium/campaign/content 字符串、封闭的 referrer 类别、时间戳与策略版本。网站与服务端两份拷贝
+一起变动；产品包绝不导入网站代码。落地页不会被传输；PostHog 通过 `journey_id` 把网站事件与
+`acquisition_linked` 关联起来。当附加授权处于活跃状态时，持久化的、只含活动信息的首次/末次字段会
+充实之后的基础事件与附加事件，但 `app_installed` 除外；被充实的基础事件只使用当前授权中可撤销的
+sink，而未被充实的基础事件仍走永久的基础 sink。因此撤销会连附加事件一起丢弃已排队/重试中的被充实
+基础事件，而不停止普通基础事件；只有 `acquisition_linked` 携带 journey/bridge id。获取信息在
+`last_touch` 之后 30 天过期：启动时把过期或无效状态终结，且每次捕获在充实之前都会检查，因此跨越过期
+时刻的进程会清空内存，并以终结性的尝试标记原子地替换该文件。若关联发生在某次启动期间，该次启动的
+首个 `app_started` 仍保持未充实状态。
 
-Correlation is transient and scoped to one enabled-preference period. No history replay or reconstruction
-of work started before sharing is enabled; asynchronous results from a disabled period remain discarded
-after re-enabling.
-Internal/unknown work never inflates user activation. A normal stop or agent-declared task/verification
-status is not proof of value, correctness or a passed test. Arrival order is not execution order.
+关联是瞬时的，且只限于一个已启用偏好的时期。不重放历史，也不重建在共享启用之前就已开始的工作；
+来自禁用时期的异步结果在重新启用之后仍会被丢弃。
+内部/未知的工作绝不虚高用户激活。正常的停止，或 agent 声明的任务/验证状态，并非价值、正确性或测试
+通过的证明。到达顺序不是执行顺序。
 
-## Preference and delivery
+## 偏好与投递
 
-`analyticsEnabled` is the additional-data preference and host delivery gate; `analyticsConsentConfirmed` records
-completion of the first-run dialog, not a continuing delivery gate. Host initialization keeps an unconfirmed
-configuration off until that dialog mounts. The dialog's default-on mount prime persists `analyticsEnabled: true`
-without confirmation and enables delivery as soon as the applied settings update succeeds, before the user presses
-Done. Changing the switch applies its preference immediately. Done persists the current preference with
-confirmation; that confirmation controls prompt lifecycle only. After initialization, only an applied settings
-update that explicitly includes `analyticsEnabled` changes the grant; unrelated full-config broadcasts preserve
-it. Settings changes write preference and confirmation together. Window behavior belongs to
-[[submodule-web-panels]]. Confirmed later launches do not prime or reopen.
+`analyticsEnabled` 是附加数据偏好兼宿主投递门禁；`analyticsConsentConfirmed` 记录首次运行对话框已完成，
+而不是持续生效的投递门禁。宿主初始化会让未确认的配置保持关闭，直到该对话框挂载。对话框默认开启的挂载
+预置会在未确认的情况下持久化 `analyticsEnabled: true`，并在所应用的设置更新成功的那一刻就启用投递，
+早于用户按下 Done。切换开关会立即应用其偏好。Done 会带着确认一起持久化当前偏好；该确认只控制提示流程
+的生命周期。初始化之后，只有显式包含 `analyticsEnabled` 的已应用设置更新才改变授权；无关的整份配置
+广播会保留它。设置变更把偏好与确认一起写入。窗口行为属于 [[submodule-web-panels]]。已确认的后续启动
+不再预置，也不再重新打开对话框。
 
-Only builds stamped with a project key report (see Data boundary); unkeyed source/dev builds, CI and
-`NODE_ENV=test` create no vendor clients and claim no installation marker. `--no-analytics` / `THINKRAIL_NO_ANALYTICS` suppress only
-additional events without changing consent. Host-side analytics is the sole environment-policy reader
-across launchers. Browser attribution is additionally limited to binary/desktop human runs with both
-preference and confirmation true, an injected launcher opener, and no prior attempt. Source, CI/test,
-per-run suppression, explicit off, and CLI `--no-open` do not consume the attempt. The dialog's
-unconfirmed on-prime can enable ordinary additional events but cannot start attribution; the final
-confirmed update can. Saved confirmed-on starts only after the CLI has opened its normal local UI or the
-desktop window's first `dom-ready`; server boot and elapsed time do not imply launcher readiness.
+只有盖了项目 key 的构建才会上报（见数据边界）；没有 key 的源码/dev 构建、CI 与 `NODE_ENV=test` 不创建
+任何厂商客户端，也不认领安装标记。`--no-analytics` / `THINKRAIL_NO_ANALYTICS` 只抑制附加事件，不改变
+同意状态。宿主侧分析是各启动器之间唯一的环境策略读取者。浏览器归因还额外限于满足以下条件的二进制/
+桌面人工运行：偏好与确认均为真、注入了启动器 opener，且此前没有尝试过。源码、CI/测试、单次运行抑制、
+显式关闭以及 CLI 的 `--no-open` 都不消耗该次尝试。对话框未确认的在挂载预置阶段可以启用普通的附加事件，
+但不能启动归因；最终确认的更新才可以。已保存的"确认开启"只有在 CLI 打开其常规本地 UI 之后，或桌面
+窗口首个 `dom-ready` 之后才开始；服务端启动与流逝的时间都不代表启动器已就绪。
 
-The host generates a random 32-byte verifier, sends its SHA-256 challenge, requires strict protocol
-responses, invokes the returned same-origin relative claim URL opener exactly once without awaiting it,
-and performs at most 54 status polls at 10-second intervals followed by one redeem. Each request has an
-abort timeout and the whole claim has a nine-minute deadline, below the website claim lifetime. The current
-consent generation owns an AbortController; revocation and shutdown abort fetch and body reading and remove
-enrichment before subsequent capture.
-Failures and completed attempts are terminal and never auto-retry; re-enabling only restores a still-valid
-stored campaign record. A validated redemption activates memory and emits `acquisition_linked` while its
-generation remains active even if best-effort campaign persistence fails.
+宿主生成随机的 32 字节 verifier，发送其 SHA-256 challenge，要求严格的协议响应，只调用一次返回的同源
+相对 claim URL 打开器且不等待它，并最多进行 54 次、间隔 10 秒的状态轮询，随后做一次兑换。每个请求都有
+中止超时，整个认领有九分钟的截止时间，低于网站的认领有效期。当前同意代次拥有一个 AbortController；
+撤销与关闭会中止 fetch 与正文读取，并在后续捕获之前移除充实。
+失败与已完成的尝试是终结性的，绝不自动重试；重新启用只会恢复一份仍然有效的已存活动记录。一次通过校验
+的兑换会在其代次仍然活跃时激活内存并发出 `acquisition_linked`，即使尽力而为的活动持久化失败也是如此。
 
-Additional revocation drops queued/retrying requests at the transport boundary without stopping basics;
-an already-sent request cannot be recalled. Revoked queues never revive. Capture/boot never block product
-flows or throw into callers; graceful shutdown awaits an idempotent two-second SDK drain.
+附加授权的撤销会在传输层边界处丢弃已排队/重试中的请求，而不停止基础事件；已经发出的请求无法召回。
+被撤销的队列绝不复活。捕获/启动绝不阻塞产品流程，也绝不向调用方抛出错误；优雅关闭会等待一次幂等的
+两秒 SDK 排空。
 
-## Data boundary
+## 数据边界
 
-The stable installation UUID and optional `appInstalled: true` field remain server-only;
-[[submodule-server-persistence]] owns exclusive ID creation and the at-most-once cross-process install claim.
-A crash after claiming may lose that event, never duplicate it. Separate `attribution.json` stores either a
-terminal browser-attempt marker or validated first/last campaign context, never a claim ID, verifier,
-challenge, claim URL, journey/bridge IDs, IP, or user agent. Expired or invalid context becomes terminal; stored campaign data
-survives preference off/on, while active enrichment does not. Other state has no single-instance coordination.
-Counts describe installations, not people. Every event carries `app_version`, `channel`, `os`, `arch`, `build`
-plus its
-closed properties. Only built-in provider/model names pass raw; custom values become `custom`, preserving
-the existing explicit `jbcentral` login name. No chat/file contents, paths/names, resource IDs, credentials,
-arbitrary errors, token/cost counts or recordings are collected.
+稳定的安装 UUID 与可选的 `appInstalled: true` 字段只存在于服务端；
+[[submodule-server-persistence]] 拥有独占的 ID 创建与至多一次的跨进程安装认领。认领之后崩溃可能丢失
+那次事件，但绝不会重复。单独的 `attribution.json` 存的是终结性的浏览器尝试标记，或通过校验的首次/
+末次活动上下文，绝不存 claim ID、verifier、challenge、claim URL、journey/bridge id、IP 或 user agent。
+过期或无效的上下文会转为终结；已保存的活动数据在偏好关闭/开启之间存活，而活跃的充实不会。其他状态
+没有单实例协调。计数描述的是安装，而不是人。每个事件都携带 `app_version`、`channel`、`os`、`arch`、
+`build` 以及其封闭属性。只有内置的提供商/模型名原样通过；自定义值变为 `custom`，同时保留既有的显式
+`jbcentral` 登录名。不收集任何聊天/文件内容、路径/名称、资源 ID、凭据、任意错误、token/成本计数或
+录屏。
 
-The sink uses the launcher-supplied public key, EU endpoint, disabled GeoIP enrichment and
-`$process_person_profile: false`; key/endpoint/fetch injection supports tests and self-hosting. The
-repository carries no key: release CI stamps it into [[module-shared]]'s version seam, so source, dev
-and locally built artifacts (`channel=dev`, `0.0.0-*`) can never pollute production data. A 2026-10-06
-spike of 275 `app_installed` from unstamped dev desktop/binary harness runs without `CI=1` motivated
-this; the `CI`/test mutes alone relied on every harness remembering them. The `phc_` key stays a public
-ingestion key extractable from shipped binaries, so this stops accidental pollution, not deliberate abuse. Personless
-processing does not remove UUID linkage; vendor IP-discard/retention policy is separate. Automated/schema,
-consent-revocation, migration, host-trigger and packaged loopback-delivery tests pin these boundaries.
+sink 使用启动器提供的公开 key、EU 端点、关闭的 GeoIP 充实与 `$process_person_profile: false`；
+key/端点/fetch 注入支持测试与自托管。仓库不携带任何 key：发布 CI 把它盖进 [[module-shared]] 的版本
+接缝，因此源码、dev 与本地构建的产物（`channel=dev`、`0.0.0-*`）绝不可能污染生产数据。2026-10-06
+一次针对未盖章的 dev 桌面/二进制测试装置运行（未设 `CI=1`）中 275 条 `app_installed` 的突增，促成了
+这一点；仅靠 `CI`/测试静默，依赖于每个测试装置都记得设置它们。`phc_` key 仍是从已发布二进制中可提取
+的公开摄取 key，因此这只阻止意外污染，而不是刻意滥用。无个人身份的数据处理并不会去掉 UUID 关联；
+厂商的 IP 丢弃/保留策略是另一回事。自动化/schema、同意撤销、迁移、宿主触发以及打包后的回环投递测试
+固定了这些边界。

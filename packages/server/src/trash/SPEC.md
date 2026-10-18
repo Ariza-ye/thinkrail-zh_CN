@@ -2,40 +2,38 @@
 id: submodule-server-trash
 type: submodule-design
 status: active
-title: trash — move a path to the OS trash
+title: trash —— 把路径移到操作系统回收站
 parent: module-server
 tags: [public-surface-checked]
 ---
 
-## Responsibility
+## 职责
 
-Move a path to the operating system's trash, through the launcher-staged helpers when the host runs as a
-compiled artifact. The one way anything in the host destroys a user's file.
+把一个路径移到操作系统的回收站；当宿主以编译产物运行时，经由启动器暂存的辅助程序完成。宿主里任何
+东西销毁用户文件的唯一途径。
 
-## Boundary
+## 边界
 
-- **Owns:** `trashFile(path, implementation?)` — one path, globbing disabled, **allowed to throw**: a
-  caller that cannot recover the file must learn that the move failed instead of inheriting a silent
-  permanent delete. `setBundledTrashHelpers` is the launcher seam (staged `macos-trash` /
-  `windows-trash.exe` executables, because the `trash` package's own `new URL(…, import.meta.url)`
-  points inside `/$bunfs/` after compilation); source mode and Linux delegate to `trash` itself, whose
-  Linux path also needs the statically installed `@stroncium/procfs` `processMountinfo` parser that a
-  compiled bundle cannot reach through a template-literal `require`. `setTrashImplementationForTests`
-  swaps the whole implementation for tests that must not touch a real recycle bin.
-- **Public surface (barrel):** `trashFile`, `setBundledTrashHelpers`, `setTrashImplementationForTests`,
-  `TrashImplementation`, `BundledTrashHelpers`.
-- **Allowed deps:** `trash` + `@stroncium/procfs` (external — its deep imports name their `.js` files,
-  since Node ESM, which hosts the workflow harness, rejects directory and extensionless specifiers);
-  Node `child_process`/`util`.
-- **Forbidden:** `host`; sibling features; any permanent-`unlink` fallback.
+- **拥有：** `trashFile(path, implementation?)` —— 一个路径，禁用通配（globbing），**允许抛错**：
+  无法恢复该文件的调用方必须得知移动失败，而不是继承一次静默的永久删除。
+  `setBundledTrashHelpers` 是启动器接缝（暂存的 `macos-trash` / `windows-trash.exe` 可执行文件，
+  因为 `trash` 包自己的 `new URL(…, import.meta.url)` 在编译后会指向 `/$bunfs/` 内部）；源码模式
+  与 Linux 委托给 `trash` 本身，其 Linux 路径还需要静态安装的 `@stroncium/procfs` 的
+  `processMountinfo` 解析器，而编译后的 bundle 无法通过模板字符串形式的 `require` 触达它。
+  `setTrashImplementationForTests` 为那些绝不能碰真实回收站的测试替换整个实现。
+- **Public surface（公开接口，barrel）：** `trashFile`, `setBundledTrashHelpers`,
+  `setTrashImplementationForTests`, `TrashImplementation`, `BundledTrashHelpers`
+- **允许的依赖：** `trash` + `@stroncium/procfs`（外部—— 其深层导入写明了各自的 `.js` 文件，因为
+  承载工作流测试装置的 Node ESM 拒绝目录形式与无扩展名的说明符）；Node 的
+  `child_process`/`util`。
+- **绝不触碰：** `host`；兄弟特性；任何永久 `unlink` 的回退。
 
-## Consumers
+## 使用方
 
-Two features need "remove this file, recoverably", which is why this is a module of its own rather than
-a helper inside either of them:
+有两个特性需要“以可恢复的方式移除这个文件”，这就是为什么它是一个独立模块，而不是其中任一特性内的
+辅助函数：
 
-- `agent` — a chat's delete moves pi's transcript to the trash and rolls its tombstone back when that
-  fails (see [[submodule-server-agent]]).
-- `changes` — a whole-file revert of an added/untracked file trashes the worktree file and records
-  where, so the most likely destructive mistake in review stays recoverable even after the host's own
-  undo receipt is gone (see [[submodule-server-changes]]).
+- `agent` —— 聊天的删除会把 pi 的对话记录移到回收站，并在失败时回滚其墓碑记录（见
+  [[submodule-server-agent]]）。
+- `changes` —— 对新增/未跟踪文件的整文件还原会把工作树文件送进回收站并记录位置，因此评审中最可能
+  出现的破坏性误操作在宿主自己的撤销回执消失之后依然可恢复（见 [[submodule-server-changes]]）。

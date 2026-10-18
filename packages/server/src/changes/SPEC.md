@@ -2,124 +2,108 @@
 id: submodule-server-changes
 type: submodule-design
 status: active
-title: changes — host-owned revert of a hunk or file, with undo receipts
+title: changes —— 宿主拥有的单 hunk 或整文件回退，附带撤销回执
 parent: module-server
 depends-on: [module-contracts, submodule-server-git, submodule-server-fs]
 tags: [review, git, public-surface-checked]
 ---
 
-## Responsibility
+## 职责
 
-The review surface's write path: **revert one hunk or one file's whole change in the worktree**, and undo
-that revert. Git and the worktree are the authority — a mutation names *what the user saw* (the scope, a
-line span per side, a sha-256 per side) and this module re-derives the change from its own reads.
-The platform decision behind it is [[architecture]] decision #19; the rules below are this module's own.
+评审界面的写入路径：**在工作树中回退一个 hunk 或一个文件的全部改动**，并撤销该次回退。
+Git 与工作树是权威 —— 一次变更操作只申明*用户看到了什么*（范围、每一侧的行区间、每一侧的
+sha-256），而本模块从自己的读取中重新推导出改动。
+背后的平台决策是 [[architecture]] 决策 #19；下面的规则是本模块自己的。
 
-## Boundary
+## 边界
 
-- **Owns:** `revertChange(params)` and `undoChange(params)` — load awaits (scope resolution plus the
-  bounded historical-byte read) followed by a **synchronous verify→write/claim pass**, like the
-  `reviews` module's snapshot passes; the per-workspace **receipt ring**; the whole-file semantics table
-  below.
-- **Public surface (barrel):** `revertChange`, `undoChange`, `RevertChangeParams`, `UndoChangeParams`,
+- **拥有：** `revertChange(params)` 与 `undoChange(params)` —— 先做加载期的 await（范围解析加
+  有界的历史字节读取），随后是一次**同步的校验→写入/认领过程**，与 `reviews` 模块的快照过程
+  相同；每工作区的**回执环**；下面那张整文件语义表。
+- **Public surface（公开接口，barrel）：** `revertChange`, `undoChange`, `RevertChangeParams`, `UndoChangeParams`,
   `forgetWorkspaceChanges`, `retainReceipts`.
-- **Allowed deps:** `contracts` (`ChangeReceipt`/`RevertTarget`/`LineSpan`/`GitDiffScope`), `git`
-  (`resolveDiffRange`, bounded `readBlobBytesAtAsync` + `readPathModeAtAsync`), `fs` (`resolveWorktreeFile` for containment, `classifyBytes`/
-  `hashBytes`/`decodeText` for identity and textness), `persistence` (workspace lookup), `trash`,
-  `@thinkrail/shared/codedError`, Node `fs`/`crypto`/`path`.
-- **Forbidden:** `host`, `agent`, `reviews`; any write outside `fs`'s contained path; `unlink`.
+- **允许的依赖：** `contracts`（`ChangeReceipt`/`RevertTarget`/`LineSpan`/`GitDiffScope`）、`git`
+  （`resolveDiffRange`、有界的 `readBlobBytesAtAsync` + `readPathModeAtAsync`）、`fs`
+  （`resolveWorktreeFile` 用于围栏，`classifyBytes`/`hashBytes`/`decodeText` 用于同一性与文本性）、
+  `persistence`（工作区查询）、`trash`、`@thinkrail/shared/codedError`、Node 的 `fs`/`crypto`/`path`。
+- **绝不触碰：** `host`、`agent`、`reviews`；`fs` 围栏路径之外的任何写入；`unlink`。
 
-## What a revert means
+## 回退意味着什么
 
-- **The scope is resolved once, through `resolveDiffRange`** — the single definition of what "the diff"
-  is. Only a range whose modified side *is* the worktree is mutable; a `commit` scope is rejected with
-  `SCOPE_IMMUTABLE` (there is nothing in the worktree it describes). The original side is read at the
-  range's **`resolvedOriginalOid`**, not its ref, so the two reads of a load→verify→write pass cannot
-  straddle a commit that moved `HEAD`.
-- **Compare-and-swap on both sides, inside the lock.** `expect.originalHash` and `expect.modifiedHash`
-  must equal the sha-256 of the two sides as *this* pass reads them (`null` = the path is absent, which
-  is how "added" and "deleted" are expressed). Either mismatch is `STALE_VIEW` and nothing is written:
-  the agent is not paused for a mutation, so CAS is the whole protection. An `uncommitted` scope's
-  original side is `HEAD`, which a commit moves, so it is checked exactly like the modified one.
-- **Hunk identity is engine-neutral.** A `range` target carries line spans on both sides, never a patch,
-  because two client diff engines split hunks differently. The revert replaces modified lines
-  `[start, start+count)` with original lines `[start, start+count)`; `count: 0` names an insertion point
-  before `start`, which is what makes "delete the lines the change added" and "restore the lines it
-  removed" the same operation in both directions. Spans are validated against *these* reads
-  (`RANGE_INVALID`), never trusted.
-- **Range reverts are text-only and never change a file's existence.** A byte-only side, or a worktree
-  file that is absent, is `RANGE_INVALID` — the whole-file revert is the operation for those.
-- **The line model is jsdiff's:** only `\n` terminates a line, a preceding `\r` remains part of that
-  terminated segment, and a lone `\r` is ordinary content. This is the model that produced the client's
-  `structuredPatch` spans, so the same span cannot address a different server line.
-- **Line endings and the final newline follow the side the lines come from.** Restored original lines
-  carry their own EOLs (a CRLF base stays CRLF); a line that stopped being the file's last line is
-  re-terminated with the file's dominant ending, so an unterminated base tail spliced into the middle
-  cannot glue two lines together. The pre-splice worktree's final-newline state is preserved unless
-  **both** spans reach their respective tails; only then does the original's state win, because that tail
-  is the base the user was shown.
-- **Whole-file revert, by the file's status in the scope** (read from the two sides, not from a status
-  word): present in both → write the original bytes (bytes, so binary files are covered); **absent in
-  the original** (added or untracked) → rename the CAS-verified worktree file to a hidden same-directory
-  claim, then move that claim to the OS trash; **absent in the worktree** (deleted) → restore the original
-  bytes, creating missing parent directories. Undo uses the same claim before an inverse removes a file.
-  The rename occurs in the synchronous verify pass, so a later agent write recreates the real path and
-  cannot become the object an awaited trash helper removes. If trash fails, the claim is restored only
-  while the destination is absent; a concurrent recreation wins, and the original claim is preserved as
-  `.thinkrail-recovery-<ulid>` beside it with that absolute recovery path in the thrown error.
-  `receipt.trashed` is the helper's absolute input path, so the file appears in the OS trash under its
-  `.thinkrail-revert-<ulid>` temporary name. Absent on both sides is not a change and is refused. A
-  *renamed* file reverts as its two halves — the new path trashes, the old path restores — because that
-  is what the two sides of each path actually say.
-- **Symlinks and mode-only changes are refused as `UNSUPPORTED_CHANGE`.** Worktree identity is read with
-  `lstat`, and the original tree mode comes from `git ls-tree`; a symlink on either side is never followed.
-  Equal bytes with a different mode are not a content revert and are refused. A whole-file restore
-  applies the original Git mode (`100755` maps to executable permissions); a range keeps the worktree mode.
-- **Writes are atomic**: a temp file in the same directory, the selected mode applied, then `rename`.
-  A crash mid-write leaves either the old file or the new one, never a truncated one.
+- **范围只解析一次，经由 `resolveDiffRange`** —— 那是"差异"是什么的唯一定义。只有修改侧*就是*
+  工作树的范围才可变更；`commit` 范围以 `SCOPE_IMMUTABLE` 拒绝（工作树里并不存在它所描述
+  的东西）。原始侧按范围的 **`resolvedOriginalOid`** 读取，而不是按它的 ref，这样一次
+  加载→校验→写入过程中的两次读取就不会跨越一个移动了 `HEAD` 的提交。
+- **两侧都比较后交换（compare-and-swap），且在锁内。** `expect.originalHash` 与
+  `expect.modifiedHash` 必须等于*本次*过程读到的两侧的 sha-256（`null` = 该路径不存在，"新增"
+  与"删除"就是这样表达的）。任何一处不匹配都是 `STALE_VIEW`，且什么都不写：变更操作不会暂停
+  agent，所以 CAS 就是全部的保护。`uncommitted` 范围的原始侧是 `HEAD`，而提交会移动它，
+  所以它要与修改侧一样被校验。
+- **Hunk 身份与引擎无关。** `range` 目标在两侧都携带行区间，从不携带 patch，因为两个客户端
+  差异引擎对 hunk 的切分方式不同。回退把修改侧的行 `[start, start+count)` 替换为原始侧的行
+  `[start, start+count)`；`count: 0` 表示 `start` 之前的一个插入点，这正是"删除本次改动新增的
+  行"与"恢复它删掉的行"在双向都成为同一个操作的原因。行区间要对着*这些*读取结果校验
+  （`RANGE_INVALID`），绝不采信。
+- **范围回退只针对文本，且绝不改变文件的存在性。** 字节专用的一侧，或不存在的工作树文件，
+  都是 `RANGE_INVALID` —— 那些情形该用的是整文件回退。
+- **行模型是 jsdiff 的：** 只有 `\n` 终止一行，它前面的 `\r` 仍属于被终止的那一段，单独的 `\r`
+  则是普通内容。正是这个模型产出了客户端的 `structuredPatch` 行区间，所以同一区间不可能指向
+  服务端另一行。
+- **行尾与末尾换行跟随行来自的那一侧。** 恢复的原始行携带自己的行尾（CRLF 基线保持 CRLF）；
+  一行若不再是文件的最后一行，就用文件的主导行尾重新终止，这样一条未终止的基线尾部拼进中间时
+  不会把两行粘在一起。拼接前工作树的末尾换行状态被保留，除非**两侧**区间都各自抵达自己的
+  尾部；只有那时原始侧的状态才胜出，因为那条尾部才是展示给用户的基线。
+- **整文件回退，由文件在该范围中的状态决定**（从两侧读出，而不是从某个状态词读出）：两侧都存在
+  → 写入原始字节（是字节，所以二进制文件也被覆盖）；**原始侧不存在**（新增或未跟踪）→ 把 CAS
+  校验过的工作树文件改名到同目录下的一个隐藏认领物（claim），再把该认领物移入操作系统
+  回收站；**工作树中不存在**（已删除）→ 恢复原始字节，并创建缺失的父目录。撤销在某个逆操作
+  删除文件之前使用同一套认领机制。改名发生在同步校验过程里，所以之后 agent 的写入会重建真实
+  路径，不会变成那个处于 await 中的回收站辅助函数所删除的对象。若回收站失败，只在目标不存在时
+  才恢复认领物；并发重建胜出，而原始认领物以 `.thinkrail-recovery-<ulid>` 保留在其旁边，并在
+  抛出的错误中给出该绝对恢复路径。`receipt.trashed` 是该辅助函数的绝对输入路径，所以文件在
+  操作系统回收站里以其 `.thinkrail-revert-<ulid>` 临时名出现。两侧都不存在不算改动，会被拒绝。
+  *改名*的文件按其两半回退 —— 新路径进回收站，旧路径被恢复 —— 因为每条路径的两侧实际就是这么
+  说的。
+- **符号链接与仅模式变化的改动以 `UNSUPPORTED_CHANGE` 拒绝。** 工作树身份用 `lstat` 读取，
+  原始树模式来自 `git ls-tree`；任一侧的符号链接都不会被跟随。字节相同而模式不同不是内容回退，
+  会被拒绝。整文件恢复应用原始 Git 模式（`100755` 映射为可执行权限）；范围回退保持工作树
+  模式。
+- **写入是原子的**：同目录下的临时文件、应用选定的模式，然后 `rename`。写入中途崩溃只会留下旧
+  文件或新文件，绝不会留下被截断的文件。
 
-## Receipts
+## 回执
 
-- Every mutation answers with a **`ChangeReceipt`** whose id is also the undo token. The host keeps a
-  per-workspace ring in memory, each entry holding the path's **`before` bytes and mode** — restoring
-  what the path held *is* the inverse of every operation here, so there is no separate inverse payload to keep in
-  step. A trashed file is therefore undone by **writing its bytes back**, not by reaching into the
-  trash, which no OS offers portably.
-- **The ring is bounded twice** (`retainReceipts`): at most **20 receipts** and at most **64 MiB of held
-  bytes** per workspace, evicting oldest-first, and the **newest receipt is always kept** even when it
-  alone exceeds the byte budget — the Undo toast just shown must work. Twenty is more than a toast's
-  8-second life can stack; 64 MiB caps what one workspace can pin in host memory at the size of the
-  largest blob `/blob` will serve. `workspace.remove` calls `forgetWorkspaceChanges`, so a removed
-  workspace pins nothing — and because removal is not serialized behind the change lock, `record`
-  itself refuses to hold a receipt for a workspace the host no longer lists, so a revert that was
-  awaiting the trash helper when its workspace disappeared cannot resurrect the ring. `retainReceipts`
-  is exported as the pure policy so its bounds are tested without a 64 MiB fixture.
-- `undoChange` CAS-checks the current worktree file against the client's `expect.modifiedHash` **and**,
-  when both the receipt's `after` and the current file have a mode, against the receipt's `after.mode` —
-  the inverse rewrites the mode too, and identical bytes under a newer executable bit are still a change
-  the user did not see; a file re-created after a whole-file trash has no `after.mode` to compare, so there
-  the client's hash alone decides, as before — then applies the inverse,
-  then **consumes** the receipt and emits an `undo` receipt that is itself undoable once — so redo is the
-  same operation, not a second mechanism. A refused undo (`STALE_VIEW`) or failed inverse leaves the
-  receipt usable; every attempt re-runs `resolveWorktreeFile`, so a symlink introduced after the revert
-  cannot redirect the inverse outside the worktree.
-- **Receipts are host memory only**, lost on restart: the worktree is git-tracked and a trashed file is
-  recoverable from the OS trash, so persisting them would add a data-dir format for a convenience those
-  two already back. An id the host no longer holds — evicted, forgotten with its workspace, or lost to a
-  restart behind a still-visible toast — is `RECEIPT_UNKNOWN`, never a silent no-op; the client treats
-  it as information (reload, "can no longer be undone"), not as a failure.
-- Receipt ids are ULIDs generated from Node crypto; ring order remains insertion order rather than being
-  re-derived from the token.
+- 每次变更都以一个 **`ChangeReceipt`** 作答，其 id 同时就是撤销令牌。宿主按工作区在内存中维护
+  一个环，每个条目持有该路径的 **`before` 字节与模式** —— 把该路径此前持有的内容恢复回去，
+  *就是*这里每个操作的逆操作，所以没有单独的逆负载需要保持一致。因此，一个被移入回收站的文件
+  是通过**把它的字节写回**来撤销的，而不是伸手进回收站，因为没有哪个操作系统可移植地提供后者。
+- **环在两方面有界**（`retainReceipts`）：每工作区最多 **20 份回执**、最多 **64 MiB 持有的
+  字节**，按最旧优先淘汰，而**最新的回执始终保留**，即使它单独就超出字节预算 —— 刚弹出的撤销
+  toast 必须可用。20 已多于一个 toast 的 8 秒生命周期所能堆叠的数量；64 MiB 把单个工作区能钉在
+  宿主内存里的量封顶在 `/blob` 会提供的最大 blob 大小。`workspace.remove` 调用
+  `forgetWorkspaceChanges`，所以被移除的工作区不钉住任何东西 —— 而且因为移除并未在变更锁之后
+  串行化，`record` 自身会拒绝为宿主已不再列出的工作区持有回执，于是当工作区消失时仍在等待
+  回收站辅助函数的回退操作无法复活这个环。`retainReceipts` 作为纯策略被导出，这样不必用 64 MiB
+  的夹具也能测试它的边界。
+- `undoChange` 用客户端的 `expect.modifiedHash` 对当前工作树文件做 CAS 校验，**此外**，
+  当回执的 `after` 与当前文件都有模式时，还要对回执的 `after.mode` 校验 —— 逆操作也会重写模式，
+  在更新的可执行位下字节相同仍然是用户没看到的改动；整文件回收站之后重建的文件没有
+  `after.mode` 可比，那里就只由客户端的哈希决定，与以往一样 —— 然后应用逆操作，然后**消耗**
+  该回执并发出一个本身还能再撤销一次的 `undo` 回执 —— 所以重做是同一个操作，不是第二套机制。
+  被拒绝的撤销（`STALE_VIEW`）或失败的逆操作会让回执保持可用；每次尝试都重新运行
+  `resolveWorktreeFile`，所以回退之后引入的符号链接无法把逆操作重定向到工作树之外。
+- **回执只存在于宿主内存中**，重启即丢失：工作树受 git 跟踪，被回收的文件可从操作系统回收站
+  恢复，所以持久化它们只会为这两个已有的后盾新增一种数据目录格式。宿主已不再持有的 id —— 被
+  淘汰、随其工作区被遗忘，或在仍可见的 toast 背后丢失于一次重启 —— 是 `RECEIPT_UNKNOWN`，
+  绝不是静默的空操作；客户端把它当作信息（重新加载，"已无法撤销"），而不是失败。
+- 回执 id 是由 Node crypto 生成的 ULID；环的顺序保持插入顺序，而不是从令牌重新推导。
 
-## Get right
+## 必须做对的事
 
-- **The client never sends content.** Params carry a scope, spans and hashes; every byte written comes
-  from this module's own reads. That is what keeps a stale tab from clobbering the agent's work, and it
-  is why the expectation hashes are mandatory rather than advisory.
-- **A failed original read is never absence.** `git.readBlobBytesAtAsync` returns `null` only for Git's
-  explicit path-absent diagnostic and throws every other failure, matching `git.diffFile`. That
-  distinction is load-bearing because an absent original is exactly the input that makes a whole-file
-  revert trash the worktree file.
-- **Serialization is the host's job** (`withChangeLock`, a chain per workspace, separate from the review
-  lock — see [[submodule-server-host]]). This module assumes it is not re-entered for one workspace; it
-  does not assume the agent is idle.
+- **客户端从不发送内容。** 参数只带范围、行区间与哈希；写入的每个字节都来自本模块自己的读取。
+  这正是让过期标签页无法覆盖 agent 成果的原因，也是这些期望哈希是强制性而非建议性的原因。
+- **读取原始侧失败绝不等于不存在。** `git.readBlobBytesAtAsync` 只在 Git 明确给出路径不存在的
+  诊断时返回 `null`，其他一切失败都抛出，与 `git.diffFile` 一致。这个区分是承重的，因为原始侧
+  不存在恰恰就是让整文件回退去回收站掉工作树文件的那个输入。
+- **串行化是宿主的职责**（`withChangeLock`，每工作区一条链，与评审锁分开 —— 见
+  [[submodule-server-host]]）。本模块假定同一个工作区不会被重入；它不假定 agent 空闲。

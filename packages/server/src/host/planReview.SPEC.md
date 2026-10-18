@@ -2,185 +2,164 @@
 id: submodule-server-host-plan-review
 type: submodule-design
 status: active
-title: plan review — a hidden delegation subagent, not a reviewer chat
+title: 计划评审 —— 一个隐藏的委派子代理，而不是评审者聊天
 parent: submodule-server-host
 depends-on: [submodule-server-host, submodule-server-todos, module-pi-delegation]
 references: [submodule-server-todos, submodule-server-reviews, submodule-server-agent]
 tags: [host, review]
 ---
 
-## Responsibility
+## 职责
 
-Review one completed plan step, independently of the agent that wrote it, and turn the outcome into
-state: the item's review record, findings in the Review tab, and — when the fix budget allows — a fix
-request delivered to the worker chat.
+独立于写下它的 agent，评审一个已完成的计划步骤，并把结果变成状态：该事项的评审记录、Review
+标签页里的发现项，以及在修复预算允许时 —— 一个交付给工作者聊天的修复请求。
 
-Files: `requestReview.ts` (the flow), `reviewerRole.ts` (the reviewer's prompt + output contract),
-`planReviewQueue.ts` (per-plan serialization + per-item claim).
+文件：`requestReview.ts`（流程）、`reviewerRole.ts`（评审者的提示词 + 输出契约）、
+`planReviewQueue.ts`（按计划的串行化 + 按事项的认领）。
 
-## Why a subagent and not a chat
+## 为什么用子代理而不是聊天
 
-The first implementation ran the reviewer as a **second visible pi session** pinned per plan, holding
-its own tools (`add_review_comment`, `review_verdict`, `reflect_finding`). That shape cost more than it
-bought:
+最初的实现把评审者当作**第二个可见的 pi 会话**，按计划钉住，持有自己的工具
+（`add_review_comment`、`review_verdict`、`reflect_finding`）。那种形状付出的比得到的多：
 
-- **A session is a lifetime to police.** A reviewer that crashed, aborted, or simply finished its turn
-  without calling `review_verdict` left the item's `pending` mark set forever, spinning `Reviewing…` and
-  deadlocking Review All. Recovering from that needed a settle tee, a reviewer→worker registry, a
-  termination classifier, and a queue that advanced on settles rather than on results
-  (`reviewerSessionMonitor`, `reviewQueue`) — roughly 400 lines whose only job was to notice that a
-  session had stopped.
-- **Tools made the verdict a mid-turn side effect.** `review_verdict` cleared the durable mark while the
-  reviewer was still streaming, so every guard downstream had to distinguish "verdict recorded" from
-  "turn over", and provenance had to be pinned in a `currentReview` map that could be clobbered by the
-  next package.
-- **The user never wanted the chat.** Its only affordance was watching the reviewer think.
+- **一个会话就是一条要一直看守的生命期。** 一个崩溃、被中止，或只是完成了自己的轮次却没调用
+  `review_verdict` 的评审者，会让该事项的 `pending` 标记永远挂着，转着 `Reviewing…` 并让
+  Review All 死锁。要从那种状态恢复，需要一条 settle tee、一个 评审者→工作者 注册表、一个终止
+  分类器，以及一个按 settle 而非按结果推进的队列（`reviewerSessionMonitor`、`reviewQueue`）——
+  大约 400 行，唯一的工作就是注意到某个会话已经停了。
+- **工具把裁决变成了轮次中途的副作用。** `review_verdict` 在评审者还在流式输出时就把持久标记
+  清掉了，于是下游每一道守卫都必须区分"裁决已记录"与"轮次结束"，而来源必须钉在一个
+  `currentReview` 映射里，那个映射会被下一个包覆盖。
+- **用户从来就不想要那个聊天。** 它唯一的用处就是看着评审者思考。
 
-A delegation child inverts all of it: `runReviewSubagent` returns a **promise**. Completion is the
-resolution, failure is a rejection, and the whole recovery surface collapses into one `catch` that calls
-`cancelTodoReview`. The reviewer needs no tools of ours — it reads the code with `read`/`grep`/`find`/
-`ls`/`bash` and returns a fenced-JSON verdict the host parses and applies.
+一个委派子代理把这一切颠倒过来：`runReviewSubagent` 返回一个 **promise**。完成就是 resolve，
+失败就是 reject，整个恢复面坍缩成一个调用 `cancelTodoReview` 的 `catch`。评审者不需要我们的
+任何工具 —— 它用 `read`/`grep`/`find`/`ls`/`bash` 读代码，返回一个围栏 JSON 裁决，由宿主解析
+并应用。
 
-## Invariants
+## 不变量
 
-- **The reviewer uses the host's new-chat defaults with the repository's reviewer profile.** `runReview`
-  resolves the child's model as the pinned `reviewModel`, else `resolveNewChatModel({})`: AppConfig's
-  `defaultModel`, falling back to the first available model (or no model when none are available) — never
-  the worker's silently inherited model. The reviewer's **effort** resolves the same way: the pinned
-  `reviewEffort`, else AppConfig's `defaultEffort`, falling back to `medium`; the resolver clamps it for
-  the selected model when one is available. `runReview` passes `thinkingLevel` **unconditionally** — an
-  omitted level makes pi-delegation inherit the parent worker's effort, so an unset setting would silently
-  run the reviewer at the worker's effort instead of the default. `runReviewSubagent` spawns the child
-  with `contextFiles: true` and `extensions: true`, and `REVIEWER_TOOLS` carries `spec_grep`/`spec_get`/
-  `spec_graph` alongside `read`/`grep`/`find`/`ls`/`bash`, reproducing the built-in `reviewer` agent's
-  context/tool policy so plan review follows repository guidance and can audit invariants. Only the
-  system prompt + JSON output contract differ (the host parses the verdict).
-- **The host owns the reviewer's role, the package owns only facts.** `reviewerRole.ts` holds the
-  system prompt (review order, what counts as a finding, the JSON contract); `todos.renderReviewPackage`
-  renders a change-set *reference* and the worker's claims, and names no tool. A package that instructs
-  tools the reviewer does not have is a prompt that contradicts itself — the bug this split prevents.
-- **Model output is untrusted.** `parseVerdict` is strict on the verdict word and validates every finding
-  through contracts' `isPlanReviewResult`: each needs a non-empty `id` + `body`, a `kind` (if present) from
-  the known enum, and a coherent positive line range (a line requires a path, an `endLine` requires a
-  `startLine`, `endLine >= startLine`) — a malformed location would otherwise throw in `fileFinding`'s
-  anchor resolution and drop the finding silently. Cardinality is enforced too: a `request_changes` with no
-  finding is rejected (it would strand the worker with nothing to fix), while an `approve` may carry none.
-  Any invalid output is a failed review, not a silent approve: the mark is cleared and the item returns to
-  unreviewed. `parseVerdict` also **constructs the result explicitly** (verdict/summary/readingOrder/findings only — `readingOrder`
-  is the reviewer's optional ordered `{ path, why }` list, capped at `REVIEW_READING_ORDER_LIMIT` by the
-  contract validator; **every accepted verdict** replaces the workspace review's `guide` through
-  `reviews.setReviewGuide` — summary and order empty when the reviewer gave none — in the SAME
-  `withReviewLock` hold as its findings and successful verdict record. A queued Clear therefore removes
-  guide and findings together, never only the guide before filing resumes. Rejected, filing/record-failed,
-  and open-findings-blocked approvals leave the previous guide unchanged, never a new successful badge.
-  Guide persistence remains best-effort after acceptance; a fix preparation/send failure retains the
-  accepted request-changes guide and existing cycle/mark compensation. Worker delivery stays outside
-  the lock) rather
-  than spreading the model object, so a host-only field the model hallucinates — e.g. `blockedByOpenFindings`
-  — can never survive to mislead the card; the host sets it solely from its own open-finding check.
-- **The `reviewing` mark is set synchronously** at start/enqueue, so the panel pulses the instant the
-  client re-reads the plan — before any await. An accepted button or auto-review also records workspace
-  activity in the same synchronous step — a review is work on the workspace, like a chat turn, so it keeps
-  the row off the Settled shelf.
-- **A detached failure is published, not just logged.** `todo.startReview`/`todo.reviewAll` ack the moment
-  the review is enqueued; the run then fails on a detached path (provider error, invalid output, abort) with
-  no chat of its own to show it. `startPlanReview` clears the `reviewing` mark and calls
-  `reviewFailedPublisher` (`ReviewFailedPayload`, broadcast on `review.failed`) so the plan page can raise a
-  toast — the panel spec's requirement that the toast carry failure. The payload carries the owning
-  `sessionId` so only that plan's view toasts (not every plan in the workspace); split views of one session
-  dedupe on the toast body. The awaited tool path needs no publish: it rejects to the worker. Pinned by the
-  post-ack failure test in `planReview.test.ts`.
-- **`autoCycles` must match what actually happened.** `1` stands only when the worker really accepted the
-  fix request; a rejected fix — the send OR any of its preparation steps (snapshot/package/mark) failing —
-  or a refused fix latch re-records `2` (terminal), always after rolling the marked findings back to
-  `draft`. `deliverFixToWorker` wraps prepare+send in one catch precisely so a preparation failure cannot
-  slip out as a throw and leave the optimistic `1` standing. Writing `1` without a delivered request
-  strands the item: the auto-re-review trigger waits for a delta that nothing will produce, and a later
-  review reads the cycle as already spent. Pinned by the rejected-send and rejected-preparation tests in
-  `planReview.test.ts`.
-- **An approve is a verdict, not a settlement.** `recordVerdict` settles `reviewed` only when
-  `itemOpenFindings` is empty; otherwise it clears the mark, leaves the record, and reports
-  `approve-blocked` so the worker is told to resolve what it fixed. Round 2 of a fix cycle is a separate
-  run from round 1, so nothing structural stops an approve from landing over an unresolved `sent`
-  finding — only this check does.
-- **The tool path awaits artifact reconciliation before it snapshots the change set.** `request_review`
-  fires immediately after `todo_update`, while `maybeAttachChangeArtifacts` may still be committing the
-  step's work. `handleRequestReview` awaits `settleChangeArtifacts` (the same barrier `listTodos` uses)
-  before `startTodoReview`, so the reviewer never sees a step with no change set, nor snapshots a
-  superseded artifact. The button path needs no such await — the user starts it on an already-reconciled
-  plan. Pinned by the held-reconcile ordering test in `planReview.test.ts`.
-- **A claim must not outlive the call that took it.** `handleRequestReview` claims the item, so every
-  post-claim exit — including `startTodoReview` throwing on a step with no change set — has to run the
-  release. Leaking it wedges that step as "already being reviewed" until the host restarts. Both are
-  pinned in `planReview.test.ts`.
-- **Both entry points share the cap.** The worker's `request_review` tool and the Start review button
-  compute the same `canAutoFix`; the tool path reports it in the tool result text, the button path acts
-  on it by sending the fix. Without a shared cap the tool path loops fix → review → fix forever.
-- **The static tool guidance is policy-neutral; the tool result carries the next action.** `composeText`
-  can say either “fix and request_review again” or “do NOT fix now — report to the user” depending on
-  `canAutoFix`. So `requestReviewTool`'s description/promptGuidelines must NOT hardcode “always fix and
-  re-review” — they tell the worker to follow the tool result's stated next action, so a stronger
-  system-level prompt can't override the configured stop.
-- **The worker-facing finding identity is the persisted comment, not the model's id.** `fileFinding`
-  persists each finding as a new `rc_*` comment; the model's own ids (`f1`…) are transient. On the tool
-  path the tool result *is* the delivery, so when the worker is asked to fix (`canAutoFix`), `recordVerdict`
-  files and marks those `rc_*` comments `sent` to the invoking session as one `withReviewLock`
-  transaction (before spending the cycle) and the result text/card names their canonical ids. Filing and
-  marking must be atomic: a concurrent Review clear or a non-draft collision mid-flight would otherwise
-  leave open findings whose canonical ids the worker never received, wedging a later approve behind
-  drafts it cannot name — so a mark failure deletes the just-filed drafts and rejects the request. Otherwise `resolve_comment` — which only closes a `sent` comment
-  assigned to this worker, by its persisted id — can never satisfy the open-finding gate, wedging
-  request_changes → fix → approve. The terminal path ("do not fix") leaves them `draft` for the user.
-  Filing itself is all-or-nothing on every path: `fileFindings` deletes the drafts it already persisted if
-  a later write throws, and it always runs inside `withReviewLock` (the button and auto-fix-off paths take
-  the lock around filing; the tool path already holds it) so a concurrent Review send can't mark one
-  finding `sent` between two writes and defeat that compensation — an already-sent finding can't be
-  deleted, and would strand undelivered. On the **button path** filing goes further: `deliverFixToWorker`
-  files, records the cycle, selects the drafts, and marks them `sent` in ONE `withReviewLock` hold before
-  the (necessarily unlocked) chat send, so no interleaved Review send can mark the just-filed drafts
-  between filing and reservation — which would leave `itemFixFindings` (draft-only) empty and hand the
-  worker a generic request with no canonical ids while still spending a cycle. Failure splits on whether
-  filing completed: a *filing* failure throws (nothing recorded → the review cancels), any *post-filing*
-  failure records cycle 2 to give the auto cycle back and rolls marked findings to draft. The cycle-record
-  write is itself part of the filing transaction on every path: if it throws after the findings are
-  persisted, they are undone under the same lock — any `sent` assignment rolled back, then the drafts
-  deleted (`unfileFindings`) — before the cancel propagates, so a sidecar failure never leaves an open
-  finding whose id the worker never received. The record write is atomic in turn: `recordAgentChangesRequested`
-  (and `approveTodoReview`) persist the item's record, its auto-cycle count, and its pending-mark clear
-  as ONE snapshot write (`commitReviewTransition`), never three, so a partial failure can't strand the
-  item `changes_requested` at a spent cycle with pending still set. Pinned by the tool-path
-  finding-identity test, the interleaved-send / partial-persist / race-before-delivery / record-failure
-  regression tests in `planReview.test.ts`, and the one-snapshot atomicity test in `reviewFlow.test.ts`.
-- **The agent's in-session entry point is gated; the button is not.** The worker's `request_review` tool
-  is always registered, but kept in a session's active tool set only while the `agentReviewEnabled` config
-  flag is on. The host injects `setAgentReviewEnabledResolver(() => getConfig().agentReviewEnabled !== false)`
-  so the agent module never takes a settings edge (see `agent/SPEC.md`), and toggling the setting calls
-  `refreshAgentReviewTool()` to apply the change **live** to open sessions (idle sessions synchronously, a
-  streaming session at its next `agent_settled`). Because `setActiveToolsByName` rebuilds the system prompt
-  from only the active tools' guidelines, dropping the tool also drops its guidance — no stale "always
-  request_review" instruction survives a disable. It gates only the tool: the Review button
-  (`startPlanReview`) and its downstream auto-fix / auto-re-review are independent and always available.
-- **One review per plan at a time, one per step ever.** Both entry points serialize on the plan's chain
-  (`planReviewQueue.onPlanChain`): the button path via `enqueuePlanReview` (fire-and-forget), the worker's
-  `request_review` tool by awaiting `onPlanChain` for its result. The chain keeps Review All — and a tool
-  request racing a button review of a different step — from opening two provider streams at once; the
-  per-item claim keeps two verdicts from racing onto one record.
+- **评审者使用宿主的新聊天默认值，加上仓库的评审者配置。** `runReview` 把子代理的模型解析为
+  钉定的 `reviewModel`，否则 `resolveNewChatModel({})`：AppConfig 的 `defaultModel`，回退到第一个
+  可用模型（没有可用模型时不使用模型）—— 绝不是静默继承来的工作者模型。评审者的**思考力度**
+  同样解析：钉定的 `reviewEffort`，否则 AppConfig 的 `defaultEffort`，回退到 `medium`；有可用
+  模型时，解析器会按选中的模型对它做夹取。`runReview` **无条件**传 `thinkingLevel` —— 省略该
+  层级会让 pi-delegation 继承父工作者的力度，于是一个未设置的配置会静默地让评审者跑在工作者的
+  力度上而不是默认值上。`runReviewSubagent` 以 `contextFiles: true` 与 `extensions: true` 生成
+  子代理，而 `REVIEWER_TOOLS` 携带 `spec_grep`/`spec_get`/`spec_graph` 以及
+  `read`/`grep`/`find`/`ls`/`bash`，复刻内建 `reviewer` agent 的上下文/工具策略，使计划评审
+  遵循仓库指引并能审计不变量。只有系统提示词 + JSON 输出契约不同（宿主解析裁决）。
+- **宿主拥有评审者的角色，包只拥有事实。** `reviewerRole.ts` 持有系统提示词（评审顺序、什么算
+  一条发现项、JSON 契约）；`todos.renderReviewPackage` 渲染一个改动集*引用*与工作者的主张，且不
+  点名任何工具。一个指示评审者使用它并不持有的工具的包，就是一段自相矛盾的提示词 —— 这次拆分
+  防止的正是这个 bug。
+- **模型输出不可信。** `parseVerdict` 对裁决词严格，并通过 contracts 的 `isPlanReviewResult`
+  校验每一条发现项：每条都需要非空 `id` + `body`、一个（若存在则来自已知枚举的）`kind`，以及
+  一个连贯的正值行区间（一行需要路径，`endLine` 需要 `startLine`，`endLine >= startLine`）——
+  否则一个畸形的定位会在 `fileFinding` 的锚点解析中抛出并静默丢掉这条发现项。基数也被强制：
+  一个不带发现项的 `request_changes` 会被拒绝（那会让工作者无从修复地搁浅），而一个 `approve`
+  可以不携带任何发现项。任何非法输出都是一次失败的评审，而不是静默 approve：标记被清除，事项
+  回到未评审。`parseVerdict` 还**显式构造结果**（只构造
+  verdict/summary/readingOrder/findings —— `readingOrder` 是评审者可选的、有序的
+  `{ path, why }` 列表，由契约校验器封顶在 `REVIEW_READING_ORDER_LIMIT`；**每一次被接受的裁决**
+  都在与它的发现项和成功的裁决记录**同一次** `withReviewLock` 持有中，通过
+  `reviews.setReviewGuide` 替换该工作区评审的 `guide` —— 评审者未给时摘要与顺序为空。因此一个
+  排队的 Clear 会把 guide 与发现项一起移除，绝不会只在提交中途移除 guide。被拒绝的、提交/记录
+  失败的，以及被未解决发现项挡住的 approve 都保持原 guide 不变，绝不出现新的成功徽标。guide 的
+  持久化在接受之后仍是尽力而为；一次修复准备/发送失败会保留已接受的 request-changes guide 以及
+  现有的周期/标记补偿。工作者交付仍留在锁外）而不是摊开模型对象，所以一个模型幻觉出来的仅宿主
+  字段 —— 例如 `blockedByOpenFindings` —— 绝不可能存活下来误导卡片；宿主只从它自己的未解决
+  发现项检查中设置它。
+- **`reviewing` 标记在开始/入队时同步设置**，所以面板在客户端重新读取计划的那一刻就脉动 ——
+  在任何 await 之前。一次被接受的按钮评审或自动评审也会在同一步同步记录工作区活动 —— 一次评审
+  是对工作区的劳作，和一次聊天轮次一样，所以它让该行留在 Settled 架之外。
+- **一次分离的失败会被发布，而不只是记日志。** `todo.startReview`/`todo.reviewAll` 在评审入队
+  的那一刻就 ack；随后运行在一条分离路径上失败（提供商错误、非法输出、中止），而它自己没有聊天
+  能展示这件事。`startPlanReview` 清除 `reviewing` 标记并调用 `reviewFailedPublisher`
+  （`ReviewFailedPayload`，在 `review.failed` 上广播），这样计划页可以举起一个 toast —— 面板
+  规范要求该 toast 携带失败。负载携带所属的 `sessionId`，所以只有那个计划的视图会 toast（不是
+  工作区里的每个计划）；同一会话的分屏视图按 toast 正文去重。被 await 的工具路径无需发布：它
+  reject 给工作者。由 `planReview.test.ts` 里的 ack 后失败测试钉定。
+- **`autoCycles` 必须与实际发生的事相符。** 只有在工作者真的接受了修复请求时 `1` 才成立；一次
+  被拒绝的修复 —— 发送**或**它任何准备步骤（快照/包/标记）失败 —— 或一次被拒的修复闩锁会重记
+  `2`（终态），且总是在把已标记的发现项回滚为 `draft` 之后。`deliverFixToWorker` 把 准备+发送
+  包在同一个 catch 里，正是为了让一次准备失败不能作为抛出溜出去、把乐观的 `1` 留在那里。写 `1`
+  却没有交付请求会让事项搁浅：自动重评审的触发在等一个没有任何东西会产生的增量，而之后的一次
+  评审会把该周期读作已用掉。由 `planReview.test.ts` 里的 发送被拒 与 准备被拒 测试钉定。
+- **一次 approve 是一个裁决，不是一次结算。** `recordVerdict` 只在 `itemOpenFindings` 为空时才把
+  事项结算为 `reviewed`；否则它清除标记、保留记录，并报告 `approve-blocked`，好告诉工作者去解决
+  它修好的东西。修复周期的第 2 轮是与第 1 轮分开的运行，所以没有任何结构性东西阻止一次 approve
+  落在一条未解决的 `sent` 发现项之上 —— 只有这道检查能阻止。
+- **工具路径在快照改动集之前 await 产物协调。** `request_review` 在 `todo_update` 之后立即触发，
+  而 `maybeAttachChangeArtifacts` 可能仍在提交该步骤的工作。`handleRequestReview` 在
+  `startTodoReview` 之前 await `settleChangeArtifacts`（与 `listTodos` 使用的同一道屏障），所以
+  评审者绝不会看到一个没有改动集的步骤，也绝不会快照一个被取代的产物。按钮路径不需要这种
+  await —— 用户是在一个已经协调好的计划上启动它的。由 `planReview.test.ts` 里的持锁协调顺序
+  测试钉定。
+- **一次认领绝不能活得比取它的那次调用更久。** `handleRequestReview` 认领该事项，所以认领之后的
+  每一次退出 —— 包括 `startTodoReview` 在一个没有改动集的步骤上抛出 —— 都必须执行释放。泄漏它
+  会把该步骤卡成"已在评审中"，直到宿主重启。两者都由 `planReview.test.ts` 钉定。
+- **两个入口共享同一个上限。** 工作者的 `request_review` 工具与 Start review 按钮算出同一个
+  `canAutoFix`；工具路径在工具结果文本里报告它，按钮路径通过发送修复来对它行事。没有共享上限，
+  工具路径就会 修复 → 评审 → 修复 无限循环。
+- **静态工具指引是策略中立的；工具结果携带下一步动作。** 依 `canAutoFix`，`composeText` 可以说
+  “修复并再次 request_review”，也可以说“现在不要修复 —— 报告给用户”。所以
+  `requestReviewTool` 的 description/promptGuidelines **必须不**硬编码“总是修复并重评审” ——
+  它们告诉工作者遵照工具结果所述的下一步动作，这样更强的系统级提示词也无法覆盖已配置的停止。
+- **面向工作者的发现项身份是持久化的评论，不是模型的 id。** `fileFinding` 把每条发现项持久化为
+  一条新的 `rc_*` 评论；模型自己的 id（`f1`…）是瞬态的。在工具路径上工具结果*就是*交付，所以当
+  工作者被要求修复（`canAutoFix`）时，`recordVerdict` 在一个 `withReviewLock` 事务里提交这些
+  `rc_*` 评论并把它们标记为 `sent` 给发起会话（在花掉该周期之前），结果文本/卡片命出它们的
+  规范 id。提交与标记必须原子：否则一次并发的 Review clear 或一次在途的非草稿冲突，会留下工作
+  者从未收到规范 id 的未解决发现项，把之后的一次 approve 卡在它无法命名的草稿之后 —— 所以一次
+  标记失败会删除刚提交的草稿并拒绝该请求。否则 `resolve_comment` —— 它只按持久化 id 关闭分配给
+  这个工作者的 `sent` 评论 —— 永远无法满足未解决发现项的门禁，把 request_changes → 修复 →
+  approve 卡死。终态路径（"不要修复"）把它们留作 `draft` 给用户。提交本身在每条路径上都是全有
+  或全无：若后续写入抛出，`fileFindings` 会删除它已持久化的草稿，且它总是在 `withReviewLock`
+  内运行（按钮路径与 auto-fix 关闭路径在提交周围取锁；工具路径已持有它），所以一次并发的
+  Review 发送无法在两次写入之间把某条发现项标成 `sent` 从而击破那项补偿 —— 一条已发送的发现项
+  无法被删除，且会未交付地搁浅。在**按钮路径**上提交走得更远：`deliverFixToWorker` 在（必然
+  无锁的）聊天发送之前，在**一次** `withReviewLock` 持有中提交、记录周期、挑选草稿并标记它们
+  `sent`，所以没有交错的 Review 发送能在提交与预留之间标记刚提交的草稿 —— 那会让
+  `itemFixFindings`（仅草稿）变空，并把一个不带规范 id 的通用请求交给工作者，同时还花掉一个
+  周期。失败按提交是否完成来分叉：一次*提交*失败会抛出（什么都没记录 → 评审取消），任何*提交
+  之后*的失败会记录周期 2 以把自动周期还回去，并把已标记的发现项回滚为草稿。周期记录写入本身
+  在每条路径上都是提交事务的一部分：若它在发现项持久化之后抛出，它们会在同一把锁下被撤销 ——
+  任何 `sent` 指派都回滚，然后删除草稿（`unfileFindings`）—— 之后取消才传播，所以一次 sidecar
+  失败绝不会留下一条工作者从未收到其 id 的未解决发现项。记录写入本身也是原子的：
+  `recordAgentChangesRequested`（以及 `approveTodoReview`）把该事项的记录、它的自动周期计数与
+  它的 pending 标记清除持久化为**一次**快照写入（`commitReviewTransition`），绝不是三次，所以
+  一次部分失败不可能把事项搁在"周期已用尽、pending 仍设置"的 `changes_requested` 状态。由
+  工具路径的发现项身份测试、`planReview.test.ts` 里的 交错发送 / 部分持久化 / 交付前竞态 /
+  记录失败 回归测试，以及 `reviewFlow.test.ts` 里的单快照原子性测试钉定。
+- **agent 的会话内入口受门禁；按钮不受。** 工作者的 `request_review` 工具始终被注册，但只有在
+  `agentReviewEnabled` 配置标志打开时才留在会话的活跃工具集里。宿主注入
+  `setAgentReviewEnabledResolver(() => getConfig().agentReviewEnabled !== false)`，这样 agent 模块
+  绝不取一条 settings 边（见 `agent/SPEC.md`），而切换该设置会调用 `refreshAgentReviewTool()`
+  把改动**实时**应用到打开的会话（空闲会话同步应用，流式会话在它下一个 `agent_settled` 时应用）。
+  因为 `setActiveToolsByName` 只从活跃工具的指引重建系统提示词，丢掉该工具也就丢掉了它的指引
+  —— 没有任何陈旧的"总是 request_review"指令能在禁用后存活。它只门禁该工具：Review 按钮
+  （`startPlanReview`）及其下游的自动修复 / 自动重评审是独立的，且始终可用。
+- **每个计划同时一次评审，每个步骤至多一次。** 两个入口都在计划的链上串行
+  （`planReviewQueue.onPlanChain`）：按钮路径经 `enqueuePlanReview`（即发即忘），工作者的
+  `request_review` 工具则 await `onPlanChain` 取它的结果。该链让 Review All —— 以及一个面对另
+  一步骤按钮评审的工具请求 —— 不会同时开两条提供商流；按事项的认领让两份裁决不会争着落到同一
+  条记录上。
 
-## Boundary
+## 边界
 
-- **Owns / public surface:** `startPlanReview(workspaceId, sessionId, itemId, runSubagent?)`,
+- **Owns / public surface（拥有 / 公开接口）：** `startPlanReview(workspaceId, sessionId, itemId, runSubagent?)`,
   `maybeAutoReReview(workspaceId, sessionId)`, `installRequestReviewSeam()`,
-  `setReviewFailedPublisher(fn)`, and the pure `parseVerdict` / `composeText`; `planReviewQueue`'s `enqueuePlanReview` / `onPlanChain` / `claimItemReview` /
+  `setReviewFailedPublisher(fn)`, 以及纯函数 `parseVerdict` / `composeText`；`planReviewQueue` 的 `enqueuePlanReview` / `onPlanChain` / `claimItemReview` /
   `releaseItemReview` / `itemReviewActive` / `planReviewRunning`.
-- **Allowed deps:** `agent` (`runReviewSubagent`, `sendReviewFixToSession`, `getSessionWorkspaceId`,
-  `notifyExtUi`), `todos`, `reviews`, `settings`, and host siblings `ackSend` / `reviewLock` /
-  `todoReview` (the fix latch + finding scoping).
-- **Forbidden:** importing `requestReview` from `todoReview` (the dependency runs one way, so
-  `planReviewQueue` — which has no imports at all — is where both sides read the in-flight state);
-  reaching into `todos/reviews.ts` or `reviews/*` internals past their barrels.
-- **Testing:** `planReview.test.ts` injects a stub runner through `startPlanReview`'s last parameter and
-  drives the real record → file-findings → deliver path against a faux-model worker session, so the
-  verdict semantics are covered with no provider. One integration test omits the stub so the real
-  `runReviewSubagent` creates a delegated child (faux model, scripted verdict) and exercises child
-  creation → request_changes → canonical finding resolution → re-review → approve end to end.
-  `requestReview.test.ts` pins the pure parsing/compose rules.
+- **允许的依赖：** `agent`（`runReviewSubagent`、`sendReviewFixToSession`、
+  `getSessionWorkspaceId`、`notifyExtUi`）、`todos`、`reviews`、`settings`，以及宿主兄弟
+  `ackSend` / `reviewLock` / `todoReview`（修复闩锁 + 发现项范围界定）。
+- **绝不触碰：** 从 `todoReview` 导入 `requestReview`（依赖只单向流动，所以双方都在没有任何
+  导入的 `planReviewQueue` 里读取在途状态）；越过 barrel 深入 `todos/reviews.ts` 或 `reviews/*`
+  的内部。
+- **测试：** `planReview.test.ts` 通过 `startPlanReview` 的最后一个参数注入一个桩运行器，并对着
+  一个假模型的工作者会话驱动真实的 记录 → 提交发现项 → 交付 路径，所以裁决语义在没有提供商的
+  情况下也被覆盖。一个集成测试省略该桩，让真实的 `runReviewSubagent` 创建一个委派子代理（假
+  模型、脚本化裁决），并端到端地走一遍 子代理创建 → request_changes → 规范发现项解决 → 重评审
+  → approve。`requestReview.test.ts` 钉定纯解析/组合规则。

@@ -2,126 +2,117 @@
 id: submodule-server-history
 type: submodule-design
 status: active
-title: history — chat-history search index
+title: history —— 聊天历史搜索索引
 parent: module-server
 depends-on: [module-contracts]
 tags: [history]
 ---
 
-## Responsibility
-The `history.search` backend: a **lazy in-memory index** over pi's session JSONL files (prompt recall +
-full-conversation matches). Enumerates and reads session files **itself** (async `readdir`/`stat`/
-`readFile`, replicating pi's pinned discovery layout below) — it must **never call
-`SessionManager.listAll()`** on any search/refresh path: `listAll` reads and JSON-parses *every session
-file in full* just to build its `SessionInfo`s (`messageCount`/`allMessagesText` we never use), so an
-index refresh through it costs the whole corpus even when nothing changed, on the event loop every live
-session shares. **Never writes** session files. Because discovery walks every pi session on disk, the
-host handler's `all` scope (`host/historyScope.ts`'s `filter = () => true`) deliberately surfaces pi-CLI
-sessions outside any registered ThinkRail workspace too — a bit more than `session.getMessages` itself
-ever exposes for a single session, but consistent with an owner-scoped host (no multi-tenant isolation
-to preserve).
+## 职责
+`history.search` 的后端：一个覆盖 pi 会话 JSONL 文件的**惰性内存索引**（提示词召回 + 整段对话
+匹配）。它**自己**枚举并读取会话文件（异步 `readdir`/`stat`/`readFile`，复刻下面钉定的 pi 发现
+布局）—— 在任何搜索/刷新路径上都**绝不调用 `SessionManager.listAll()`**：`listAll` 会把*每个会话
+文件整体读出并 JSON 解析*，只为构建它的 `SessionInfo`（其中的 `messageCount`/`allMessagesText`
+我们从不使用），所以通过它做一次索引刷新，即使什么都没变也要付出整个语料的代价，而且是在每个
+活会话共享的事件循环上。它**绝不写入**会话文件。因为发现逻辑会遍历磁盘上的每个 pi 会话，宿主
+处理器的 `all` 范围（`host/historyScope.ts` 的 `filter = () => true`）有意也暴露任何已注册
+ThinkRail 工作区之外的 pi-CLI 会话 —— 比 `session.getMessages` 自己为单个会话所能暴露的略多
+一点，但与一个按所有者划分范围的宿主一致（没有多租户隔离需要维护）。
 
-## Design
-- `extract.ts` — pure JSONL→`ExtractedSession | null` (`extractSession`): the session's identity
-  (`id`/`cwd` from the header, mirroring pi's own rejection rule — the first parseable entry must be a
-  `type: "session"` header with a string `id`, else `null`), its `title` (the **latest** `session_info`
-  entry's name, including explicit clears — the same latest-wins rule as pi's `buildSessionInfo`), and its
-  `HistoryEntry[]` — all from **one parse**, so the index never needs a second source (`listAll`) for
-  metadata. Pi session files are **trees** (abandoned branches) that compaction rewrites, so it resolves
-  the file the way pi does before the client renders it — `parseSessionEntries` →
-  `migrateSessionEntries` → `buildSessionContext` (follow the current leaf, apply the latest compaction,
-  drop summarized/abandoned entries) — then indexes the resolved messages, filtered through contracts'
-  **`isTranscriptMessageRole`**, the very guard `getSessionMessages` sends by (one policy, not a local copy
-  of it). So `messageIndex` matches the client's `turnIdByMessageIndex` exactly
-  (no raw-file-order drift), and abandoned/summarized text never becomes a hit — the compaction summary is
-  sent (it renders the client's compaction marker), so it consumes an index slot without being searchable.
-  The internal
-  `TODO_NUDGE_PREFIX` control message (hidden from the transcript on hydrate) is skipped after its index
-  slot is consumed, so alignment holds; a **superseded auto-retry attempt** (the shared
-  `isRetriedAttempt` reading from contracts — an errored assistant immediately followed by another
-  assistant, the adjacent shape pi's `_prepareRetry` produces,
-  which hydration renders as no turn / null anchor) is skipped the same way, so a
-  failed partial's text never becomes a hit that could only resolve to "couldn't locate the message". Entry text is **full, never truncated** — a hit's `text` is what
-  recall inserts and what the overlay's preview presents as the whole prompt, so a cap would silently
-  corrupt recall of long pasted-log prompts and make terms past the cutoff unsearchable (the memory
-  precedent is pi itself: `SessionInfo.allMessagesText` holds every session's full text in memory). Tool
-  results/thinking are not indexed.
-- `historyIndex.ts` — `HistoryIndex`: cold build on first search (async per-file IO yields the event loop;
-  blocks the search up to a budget, then returns partial with `indexing: true`). Discovery is its own
-  async enumeration (see "pi file format" below for the pinned layout): a custom `sessionDir` is a flat,
-  non-recursive dir of `.jsonl` files; the default root is `<agentDir>/sessions` — agent dir resolved
-  **per refresh** via pi's exported `getAgentDir()`, which reads `PI_CODING_AGENT_DIR` live — holding one
-  level of per-cwd directories, including top-level symlinks Pi treats as candidate directories. Broken
-  or non-directory symlinks degrade to the same unreadable-directory empty result as Pi. Freshness = `(mtime, size)`
-  revalidation throttled to ~2 s (pi appends live messages to the file, so the file IS the live feed — no
-  agent-module hook; size is compared alongside mtime so an append landing in the same coarse mtime tick
-  still reloads); only a **new or changed** file is read (once, `readFile`) and re-parsed — an unchanged
-  corpus costs one `readdir` walk + one `stat` per file, no reads, no parses. A warm revalidation runs in
-  the **background** — a bulk change (first refresh after restart, a git checkout) can still mean many
-  parses, so a search never blocks on it; results are at most one cycle stale, and the background
-  refresh swallows its own errors (an unhandled rejection could crash the in-process host). `indexing` is
-  reported whenever any build is in flight (cold OR a background revalidation), so the client's retry loop
-  polls until a just-written session lands — read-your-writes without blocking the search. Matching:
-  case-insensitive substring AND over whitespace terms (query length + result `limit` clamped to the
-  protocol caps, `MAX_HISTORY_QUERY_LENGTH`/`MAX_HISTORY_LIMIT`, at both the handler and `search()`);
-  strict recency order; prompts deduped by normalized text keeping newest; caps + true totals.
-  The messages section (and `messageTotal`) is filtered to `role === "assistant"` only — a user-role hit
-  is always a textual duplicate of its own prompt entry (user text IS a prompt in this extraction), so it
-  would add no text, only a location; that location moves onto the prompt hit instead, via the two
-  fields below.
-- Jump anchors are drift-tolerant: hits carry `anchorText` (message-text prefix) the client validates.
-  Every prompt hit now also carries its kept-newest occurrence's `messageIndex`/`anchorText` —
-  the same two fields `MessageHit` always had — making the prompt row itself jumpable. Both fields are
-  optional on `PromptHit` (absent only when the host predates this feature).
-- `testFixtures.ts` — test-only session-file builders (pinned by A5): `writeFixtureSession` writes a
-  minimal but real pi-shaped JSONL, one flat file per session, that `historyIndex` tests, the e2e fixture
-  seeder, and its own format-pinning test (`testFixtures.test.ts`) drive against; `defaultSessionDirFor`
-  replicates pi's private default-layout directory encoding (not importable — see "pi file format" below)
-  so fixtures can land where a real no-arg `listAll()` would actually look.
+## 设计
+- `extract.ts` —— 纯函数 JSONL→`ExtractedSession | null`（`extractSession`）：会话的身份
+  （`id`/`cwd` 取自头部，遵循 pi 自己的拒绝规则 —— 第一个可解析条目必须是 `type: "session"`
+  的头部且带字符串 `id`，否则为 `null`）、它的 `title`（**最新**一条 `session_info` 条目的
+  名字，包含显式清空 —— 与 pi 的 `buildSessionInfo` 相同的"最新者胜"规则），以及它的
+  `HistoryEntry[]` —— 全部来自**一次解析**，所以索引从不需要第二个来源（`listAll`）去取元数据。
+  Pi 会话文件是**树**（被弃用的分支），压缩（compaction）会重写它们，所以它按 pi 的方式解析
+  该文件，之后再交给客户端渲染 —— `parseSessionEntries` → `migrateSessionEntries` →
+  `buildSessionContext`（跟随当前叶子、应用最新的压缩、丢弃被摘要/被弃用的条目）—— 然后为
+  解析出的消息建索引，经 contracts 的 **`isTranscriptMessageRole`** 过滤，也就是
+  `getSessionMessages` 发送时所用的同一个守卫（一份策略，不是它的本地副本）。于是
+  `messageIndex` 与客户端的 `turnIdByMessageIndex` 精确吻合（没有原始文件顺序的漂移），被弃用
+  /被摘要的文本也绝不会变成命中 —— 压缩摘要会被发送（它渲染客户端的压缩标记），所以它占掉一个
+  索引槽位但不可搜索。内部的 `TODO_NUDGE_PREFIX` 控制消息（在 hydrate 时对对话记录隐藏）在其
+  索引槽位被占用之后被跳过，从而保持对齐；一个**被取代的自动重试尝试**（contracts 中共享的
+  `isRetriedAttempt` —— 一个出错的 assistant 紧跟另一个 assistant，即 pi 的 `_prepareRetry`
+  产生的相邻形状，hydrate 会把它渲染为没有轮次 / 空锚点）也以同样方式跳过，所以失败的部分输出
+  的文本绝不会变成只能解析为"找不到该消息"的命中。条目文本是**完整的，绝不截断** —— 一次命中的
+  `text` 就是召回所插入的内容，也是浮层预览作为整个提示词呈现的内容，所以加上限会静默损坏对
+  很长的粘贴日志提示词的召回，并使超出截断点的词无法搜索（先例是 pi 自己：
+  `SessionInfo.allMessagesText` 把每个会话的完整文本都放在内存里）。工具结果/思考不建索引。
+- `historyIndex.ts` —— `HistoryIndex`：首次搜索时冷构建（逐文件异步 IO 让出事件循环；阻塞搜索
+  到一个预算为止，然后返回部分结果并带 `indexing: true`）。发现过程是它自己的异步枚举（钉定的
+  布局见下面"pi 文件格式"）：自定义 `sessionDir` 是一个扁平的、非递归的 `.jsonl` 文件目录；默认
+  根是 `<agentDir>/sessions` —— agent 目录**每次刷新**都通过 pi 导出的 `getAgentDir()` 解析，
+  它实时读取 `PI_CODING_AGENT_DIR` —— 持有一层按 cwd 分的目录，包括 Pi 视为候选目录的顶层
+  符号链接。损坏的或非目录的符号链接退化为与 Pi 相同的"目录不可读即空"结果。新鲜度 =
+  `(mtime, size)` 重新校验，节流到约 2 s（pi 会向文件追加实时消息，所以文件*本身*就是实时馈源
+  —— 不需要 agent 模块钩子；size 与 mtime 一起比较，这样落在同一粗糙 mtime tick 里的追加仍会
+  触发重载）；只有**新增或变化**的文件会被读取（读一次，`readFile`）并重新解析 —— 未变的语料
+  只花一次 `readdir` 遍历 + 每个文件一次 `stat`，没有读取，没有解析。热态重新校验在**后台**
+  运行 —— 批量变化（重启后的首次刷新、一次 git checkout）仍可能意味着大量解析，所以搜索绝不
+  阻塞在它上面；结果最多有一个周期的陈旧，而后台刷新自己吞掉自己的错误（未处理的 rejection
+  可能让进程内宿主崩溃）。只要有构建在进行（冷的或后台重新校验），就上报 `indexing`，这样客户
+  端的重试循环会一直轮询，直到刚写入的会话落地 —— 读你所写，且不阻塞搜索。匹配：对按空白切分
+  的词做大小写不敏感的子串 AND（查询长度与结果 `limit` 在处理器和 `search()` 两处都被夹到协议
+  上限 `MAX_HISTORY_QUERY_LENGTH`/`MAX_HISTORY_LIMIT`）；严格按新近排序；提示词按归一化文本
+  去重、保留最新；带上限与真实总数。消息段（以及 `messageTotal`）只过滤 `role === "assistant"`
+  —— 一个 user 角色的命中必然与它自己的提示词条目文本重复（在这次提取里用户文本*就是*提示词），
+  所以它不会增加文本，只会增加一个位置；那个位置改为通过下面两个字段移到提示词命中上。
+- 跳转锚点是抗漂移的：命中携带客户端会校验的 `anchorText`（消息文本前缀）。
+  现在每个提示词命中还携带其保留的最新一次出现的 `messageIndex`/`anchorText` ——
+  也就是 `MessageHit` 一直拥有的同样两个字段 —— 从而使提示词行本身也可跳转。这两个字段在
+  `PromptHit` 上都是可选的（仅当宿主早于本特性时才缺失）。
+- `testFixtures.ts` —— 仅测试用的会话文件构建器（由 A5 钉定）：`writeFixtureSession` 写出一个
+  最小但真实的 pi 形状 JSONL，每个会话一个扁平文件，供 `historyIndex` 测试、e2e 夹具播种器，
+  以及它自己的格式钉定测试（`testFixtures.test.ts`）驱动；`defaultSessionDirFor` 复刻 pi 私有的
+  默认布局目录编码（不可导入 —— 见下面"pi 文件格式"），这样夹具可以落在真实的、无参
+  `listAll()` 实际会去找的地方。
 
-## On-disk JSONL structure (observed from pi session files)
-- **`message` entries:** `{ type: "message", ..., message: { role: "system"|"user"|"assistant"|"toolResult", content: string|array, timestamp: ms-number } }`.
-  System messages carry prompt `sections` and/or `toolsAdded`/`toolsRemoved`; the first request persists the
-  full system message and later prompt/tool changes persist patches. `isTranscriptMessageRole` excludes system,
-  so it renders no transcript row and consumes no `messageIndex` slot. A `toolResult` whose tool ran nested
-  calls (`ctx.executeTool`) carries a bounded `nestedCalls` record; it is not a transcript row of its own.
-- **`usage` entries:** `{ type: "usage", ..., kind, provider, model, usage, note? }`; they are hidden from the
-  conversation tree and context, but pi includes their token/cost data in session totals. Compaction entries may
-  carry a `systemMessage` snapshot alongside their summary.
-- **`custom_message` entries:** `{ type: "custom_message", customType: string, content: string|array, timestamp: ISO-string, display: boolean, ... }`.
-  They have no `message` wrapper and become role `custom` context messages.
+## 磁盘上的 JSONL 结构（观察自 pi 会话文件）
+- **`message` 条目：** `{ type: "message", ..., message: { role: "system"|"user"|"assistant"|"toolResult", content: string|array, timestamp: ms-number } }`。
+  System 消息携带提示词 `sections` 和/或 `toolsAdded`/`toolsRemoved`；首个请求持久化完整的 system
+  消息，之后的提示词/工具变化持久化为补丁。`isTranscriptMessageRole` 排除 system，
+  所以它不渲染对话记录行，也不占用 `messageIndex` 槽位。一个 `toolResult` 若其工具跑过嵌套
+  调用（`ctx.executeTool`），会携带一份有界的 `nestedCalls` 记录；它本身不是对话记录行。
+- **`usage` 条目：** `{ type: "usage", ..., kind, provider, model, usage, note? }`；它们对对话树
+  和上下文隐藏，但 pi 把其中的 token/成本数据计入会话总计。压缩条目可在其摘要之外携带一份
+  `systemMessage` 快照。
+- **`custom_message` 条目：** `{ type: "custom_message", customType: string, content: string|array, timestamp: ISO-string, display: boolean, ... }`。
+  它们没有 `message` 包装，会成为角色为 `custom` 的上下文消息。
 
-## pi file format (`@earendil-works/pi-coding-agent`, the catalog-pinned version)
-Verified against the installed `dist/core/session-manager.{js,d.ts}`. Re-verify these facts on a pi bump;
-`testFixtures.ts` and `historyIndex.ts` both depend on the discovery layout.
-- **Header:** pi writes `{ type: "session", version: 3, id, timestamp, cwd, parentSession? }`; `CURRENT_SESSION_VERSION = 3`.
-  Readers require the first *parseable* entry to be a session header with a string `id` (not necessarily physical line 1).
-  `cwd` is recovered from that header; a missing/invalid header rejects the file.
-- **Naming and custom directories:** discovery only considers direct children whose names end in `.jsonl`; pi writes
-  `<ISO timestamp with ':' and '.' replaced by '-'>_<sessionId>.jsonl`, but the filename otherwise has no meaning.
-  `list(cwd, sessionDir)` and `listAll(sessionDir)` use a flat, non-recursive custom directory; custom-list filtering
-  still compares the header `cwd` with `cwd`. Subdirectory placement is invisible.
-- **Default layout:** no-argument `listAll()` scans `<agentDir>/sessions/` one level deep, considering child directories
-  and symlinks, then their direct `.jsonl` children. Unreadable or broken symlink targets contribute no files. Each cwd
-  directory is `--<resolved cwd with a leading slash removed and slash/backslash/colon replaced by `-`>--`; `getDefaultSessionDirPath`
-  is private, while `getDefaultSessionDir` is not exported from the package root. `defaultSessionDirFor` replicates it.
-- **When a file appears:** a new session's file is first written once it holds a user or assistant message
-  (setup-only sessions leave no file), so a prompt whose first turn never completes is still on disk.
-- **Environment:** `getAgentDir()` reads `PI_CODING_AGENT_DIR` when called, so changing that variable before a SessionManager
-  discovery call changes the root used by pi.
+## pi 文件格式（`@earendil-works/pi-coding-agent`，目录钉定的版本）
+已对照已安装的 `dist/core/session-manager.{js,d.ts}` 核实。pi 升版时请重新核实这些事实；
+`testFixtures.ts` 与 `historyIndex.ts` 都依赖该发现布局。
+- **头部：** pi 写出 `{ type: "session", version: 3, id, timestamp, cwd, parentSession? }`；`CURRENT_SESSION_VERSION = 3`。
+  读取方要求第一个*可解析*条目是带字符串 `id` 的会话头部（不一定是物理第 1 行）。
+  `cwd` 从该头部恢复；头部缺失/非法则拒绝该文件。
+- **命名与自定义目录：** 发现过程只考虑名字以 `.jsonl` 结尾的直接子项；pi 写出
+  `<ISO timestamp with ':' and '.' replaced by '-'>_<sessionId>.jsonl`，但文件名除此以外没有含义。
+  `list(cwd, sessionDir)` 与 `listAll(sessionDir)` 使用扁平、非递归的自定义目录；自定义列表过滤
+  仍然把头部 `cwd` 与 `cwd` 比较。放在子目录里是不可见的。
+- **默认布局：** 无参 `listAll()` 扫描 `<agentDir>/sessions/` 一层深，先考虑子目录与符号链接，
+  再考虑它们的直接 `.jsonl` 子项。不可读或断链的目标不贡献文件。每个 cwd 目录是
+  `--<resolved cwd with a leading slash removed and slash/backslash/colon replaced by `-`>--`；
+  `getDefaultSessionDirPath` 是私有的，
+  而 `getDefaultSessionDir` 未从包根导出。`defaultSessionDirFor` 复刻它。
+- **文件何时出现：** 一个新会话的文件在它持有 user 或 assistant 消息后才首次写出（仅安装用的会话
+  不留文件），所以首轮永不完成的提示词仍然在磁盘上。
+- **环境：** `getAgentDir()` 在被调用时读取 `PI_CODING_AGENT_DIR`，所以在 SessionManager 发现
+  调用前改变该变量会改变 pi 使用的根。
 
-## Boundary
-- **Public surface (`index.ts`):** `HistoryIndex`, `getHistoryIndex()`, `matchesTerms`, `makeSnippet`,
-  `clampLimit`, `extractSession`, types. **No test helpers** — `writeFixtureSession`/`defaultSessionDirFor`
-  are disk-writing test-only builders and must not enter the runtime module graph; they're reachable only
-  through the server package's dedicated **`@thinkrail/server/history-test-fixtures`** subpath export
-  (package.json), the sanctioned test boundary — same pattern as `@thinkrail/server/agent`. In-package
-  tests import them relatively (`./testFixtures`); the e2e seeder imports the subpath.
-- **Allowed deps:** `@earendil-works/pi-coding-agent` (`getAgentDir` — the default sessions root — plus
-  the exported session-tree helpers `parseSessionEntries`/`migrateSessionEntries`/`buildSessionContext`
-  used by `extract.ts`; **not `SessionManager`** in production code — see Responsibility. Tests may use
-  `SessionManager` to *pin* layout/format facts against the real thing), `@thinkrail/contracts`,
-  `node:fs`, `node:fs/promises`, `node:path`.
-- **Forbidden:** importing `agent`/`workspaces`/`projects` (scope mapping is injected by the host handler
-  via the `filter`/`labels` callbacks passed into `search()`); writing anything to disk (`writeFixtureSession`
-  is test-only, never called from production code paths).
+## 边界
+- **Public surface（`index.ts`）：** `HistoryIndex`, `getHistoryIndex()`, `matchesTerms`, `makeSnippet`,
+  `clampLimit`, `extractSession`, types. **没有测试辅助函数** —— `writeFixtureSession`/`defaultSessionDirFor`
+  是写磁盘的仅测试构建器，绝不能进入运行时模块图；它们只能通过 server 包专门的
+  **`@thinkrail/server/history-test-fixtures`** 子路径导出（package.json）到达，这是被批准的测试
+  边界 —— 与 `@thinkrail/server/agent` 相同的模式。包内测试相对导入它们（`./testFixtures`）；
+  e2e 播种器导入该子路径。
+- **允许的依赖：** `@earendil-works/pi-coding-agent`（`getAgentDir` —— 默认会话根 —— 加上
+  `extract.ts` 使用的导出会话树辅助函数
+  `parseSessionEntries`/`migrateSessionEntries`/`buildSessionContext`；生产代码里**不用
+  `SessionManager`** —— 见职责。测试可以用 `SessionManager` 对着真家伙*钉定*布局/格式事实）、
+  `@thinkrail/contracts`、`node:fs`、`node:fs/promises`、`node:path`。
+- **绝不触碰：** 导入 `agent`/`workspaces`/`projects`（范围映射由宿主处理器通过传入 `search()`
+  的 `filter`/`labels` 回调注入）；向磁盘写任何东西（`writeFixtureSession` 仅测试用，绝不从
+  生产代码路径调用）。
