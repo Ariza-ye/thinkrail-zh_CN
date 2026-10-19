@@ -4,9 +4,6 @@ import type {
 	NativeUpdateState,
 } from "@thinkrail/contracts";
 
-const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const AUTO_CHECK_JITTER_RATIO = 0.1;
-const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000] as const;
 const MAX_ERROR_LENGTH = 1024;
 const SEMVER_PATTERN =
 	/^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -26,7 +23,6 @@ const PREPARING_STATUSES = new Set([
 	"preparing",
 ]);
 
-type CancelSchedule = () => void;
 type StatePatch = Partial<
 	Pick<NativeUpdateState, "status" | "availableVersion" | "progress" | "error" | "failedPhase">
 >;
@@ -66,12 +62,9 @@ export interface NativeUpdateControllerDependencies {
 	channel: string;
 	updater: NativeUpdaterDependency;
 	restartToUpdate(): Promise<void>;
-	schedule?(delayMs: number, callback: () => void): CancelSchedule;
-	random?(): number;
 }
 
 export interface NativeUpdateController extends NativeUpdateBridge {
-	start(): void;
 	dispose(): void;
 }
 
@@ -85,11 +78,6 @@ export function isStrictlyNewerVersion(currentVersion: string, candidateVersion:
 	return Bun.semver.order(currentVersion, candidateVersion) < 0;
 }
 
-function defaultSchedule(delayMs: number, callback: () => void): CancelSchedule {
-	const timer = setTimeout(callback, delayMs);
-	return () => clearTimeout(timer);
-}
-
 function progressFrom(entry: NativeUpdaterStatusEntry): number | null {
 	const progress = entry.details?.progress;
 	if (typeof progress !== "number" || !Number.isFinite(progress)) return null;
@@ -99,8 +87,6 @@ function progressFrom(entry: NativeUpdaterStatusEntry): number | null {
 export function createNativeUpdateController(
 	dependencies: NativeUpdateControllerDependencies,
 ): NativeUpdateController {
-	const schedule = dependencies.schedule ?? defaultSchedule;
-	const random = dependencies.random ?? Math.random;
 	const listeners = new Set<(state: NativeUpdateState) => void>();
 	let state: Readonly<NativeUpdateState> = Object.freeze({
 		revision: 0,
@@ -113,10 +99,7 @@ export function createNativeUpdateController(
 		failedPhase: null,
 	});
 	let preparedVersion: string | null = null;
-	let started = false;
 	let disposed = false;
-	let retryIndex = 0;
-	let cancelScheduled: CancelSchedule | undefined;
 	let activeCheck: ActiveCheck | undefined;
 	let activeDownload: ActiveDownload | undefined;
 	let restarting = false;
@@ -183,10 +166,10 @@ export function createNativeUpdateController(
 		});
 	};
 
-	const acceptCheckedInfo = (info: NativeUpdaterInfo): boolean => {
+	const acceptCheckedInfo = (info: NativeUpdaterInfo): void => {
 		if (info.error) {
 			fail("check", info.error);
-			return false;
+			return;
 		}
 		if (!isNewer(info)) {
 			if (preparedVersion) {
@@ -197,7 +180,7 @@ export function createNativeUpdateController(
 					error: null,
 					failedPhase: null,
 				});
-				return true;
+				return;
 			}
 			publish({
 				status: "idle",
@@ -206,9 +189,12 @@ export function createNativeUpdateController(
 				error: null,
 				failedPhase: null,
 			});
-			return true;
+			return;
 		}
-		if (info.updateReady) return setReady(info.version);
+		if (info.updateReady) {
+			setReady(info.version);
+			return;
+		}
 
 		preparedVersion = null;
 		publish({
@@ -218,10 +204,9 @@ export function createNativeUpdateController(
 			error: null,
 			failedPhase: null,
 		});
-		return true;
 	};
 
-	const performCheck = async (token: ActiveCheck): Promise<boolean> => {
+	const performCheck = async (token: ActiveCheck): Promise<void> => {
 		const retainedVersion = preparedVersion ?? state.availableVersion;
 		publish({
 			status: "checking",
@@ -232,11 +217,10 @@ export function createNativeUpdateController(
 		});
 		try {
 			const info = await dependencies.updater.checkForUpdate();
-			if (disposed || activeCheck !== token) return false;
-			return acceptCheckedInfo(info);
+			if (disposed || activeCheck !== token) return;
+			acceptCheckedInfo(info);
 		} catch (error) {
 			if (!disposed && activeCheck === token) fail("check", error);
-			return false;
 		}
 	};
 
@@ -267,54 +251,6 @@ export function createNativeUpdateController(
 			return false;
 		}
 	};
-
-	const clearScheduled = (): void => {
-		cancelScheduled?.();
-		cancelScheduled = undefined;
-	};
-
-	const scheduleCheck = (delayMs: number): void => {
-		if (!started || disposed) return;
-		clearScheduled();
-		cancelScheduled = schedule(delayMs, () => {
-			cancelScheduled = undefined;
-			if (!launchCheck()) scheduleRegularCheck();
-		});
-	};
-
-	const scheduleRegularCheck = (): void => {
-		if (!started || disposed || restarting) return;
-		retryIndex = 0;
-		const unit = Math.min(1, Math.max(0, random()));
-		const jitter = (unit * 2 - 1) * AUTO_CHECK_INTERVAL_MS * AUTO_CHECK_JITTER_RATIO;
-		scheduleCheck(Math.round(AUTO_CHECK_INTERVAL_MS + jitter));
-	};
-
-	const scheduleAfterCheck = (succeeded: boolean): void => {
-		if (!started || disposed || restarting) return;
-		const retryDelay = succeeded ? undefined : RETRY_DELAYS_MS[retryIndex];
-		if (retryDelay !== undefined) {
-			retryIndex += 1;
-			scheduleCheck(retryDelay);
-			return;
-		}
-		scheduleRegularCheck();
-	};
-
-	function launchCheck(): boolean {
-		if (!dependencies.enabled || disposed || activeCheck || activeDownload || restarting) {
-			return false;
-		}
-		const token: ActiveCheck = {};
-		activeCheck = token;
-		const operation = performCheck(token);
-		void operation.then((succeeded) => {
-			if (activeCheck !== token) return;
-			activeCheck = undefined;
-			scheduleAfterCheck(succeeded);
-		});
-		return true;
-	}
 
 	const launchDownload = (): boolean => {
 		if (!dependencies.enabled || disposed || activeCheck || activeDownload || restarting) {
@@ -434,16 +370,12 @@ export function createNativeUpdateController(
 	return {
 		getState: async () => ({ ...state }),
 		checkForUpdates: async () => {
-			if (!dependencies.enabled || disposed) return;
-			retryIndex = 0;
-			if (activeCheck) {
-				clearScheduled();
-				return;
-			}
-			if (!activeDownload && !restarting) {
-				clearScheduled();
-				launchCheck();
-			}
+			if (!dependencies.enabled || disposed || activeCheck || activeDownload || restarting) return;
+			const token: ActiveCheck = {};
+			activeCheck = token;
+			void performCheck(token).then(() => {
+				if (activeCheck === token) activeCheck = undefined;
+			});
 		},
 		downloadUpdate: async () => {
 			launchDownload();
@@ -459,7 +391,6 @@ export function createNativeUpdateController(
 			) {
 				return;
 			}
-			clearScheduled();
 			restarting = true;
 			const expectedVersion = preparedVersion;
 			const pendingDownload = activeDownload?.operation;
@@ -486,24 +417,15 @@ export function createNativeUpdateController(
 			})();
 			void operation.then(() => {
 				restarting = false;
-				if (state.status === "error" && state.failedPhase === "install") {
-					scheduleRegularCheck();
-				}
 			});
 		},
 		subscribe: (listener) => {
 			listeners.add(listener);
 			return () => listeners.delete(listener);
 		},
-		start: () => {
-			if (!dependencies.enabled || started || disposed) return;
-			started = true;
-			scheduleCheck(0);
-		},
 		dispose: () => {
 			if (disposed) return;
 			disposed = true;
-			clearScheduled();
 			listeners.clear();
 			if (dependencies.enabled) dependencies.updater.onStatusChange(null);
 		},

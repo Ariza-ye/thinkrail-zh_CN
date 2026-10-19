@@ -386,7 +386,6 @@ async function start(): Promise<void> {
 		if (ready) return;
 		ready = true;
 		startAttributionClaim();
-		updateController.start();
 		const readyPath = process.env.THINKRAIL_DESKTOP_READY_FILE;
 		if (readyPath) {
 			writeReady(readyPath, {

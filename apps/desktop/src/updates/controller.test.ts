@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import {
 	createNativeUpdateController,
 	isStrictlyNewerVersion,
@@ -64,36 +64,24 @@ class FakeUpdater implements NativeUpdaterDependency {
 	}
 }
 
-function scheduledController(updater: FakeUpdater, restartToUpdate = async () => {}) {
-	const scheduled: Array<{ delay: number; callback: () => void; cancelled: boolean }> = [];
-	const controller = createNativeUpdateController({
+function testController(updater: FakeUpdater, restartToUpdate = async () => {}) {
+	return createNativeUpdateController({
 		enabled: true,
 		version: "1.0.0",
 		channel: "stable",
 		updater,
 		restartToUpdate,
-		random: () => 0.5,
-		schedule: (delay, callback) => {
-			const entry = { delay, callback, cancelled: false };
-			scheduled.push(entry);
-			return () => {
-				entry.cancelled = true;
-			};
-		},
 	});
-	return { controller, scheduled };
 }
 
-async function findAvailable(
-	controller: ReturnType<typeof scheduledController>["controller"],
-): Promise<void> {
+async function findAvailable(controller: ReturnType<typeof testController>): Promise<void> {
 	await controller.checkForUpdates();
 	await settle();
 	expect((await controller.getState()).status).toBe("available");
 }
 
 async function prepareUpdate(
-	controller: ReturnType<typeof scheduledController>["controller"],
+	controller: ReturnType<typeof testController>,
 	updater: FakeUpdater,
 ): Promise<void> {
 	await findAvailable(controller);
@@ -137,17 +125,48 @@ test("enables only supported packaged production identities and blocks artifact 
 	expect(hasDesktopArtifactTestSeam({})).toBe(false);
 });
 
-test("automatic and prompt checks coalesce, stop at available, and schedule the next check", async () => {
+test("initialization, successful checks and failed operations never schedule automatic checks", async () => {
+	const timeout = spyOn(globalThis, "setTimeout");
+	const interval = spyOn(globalThis, "setInterval");
+	const updater = new FakeUpdater();
+	const controller = testController(updater, async () => {
+		throw new Error("restart was refused");
+	});
+	try {
+		await settle();
+		expect(updater.checkCalls).toBe(0);
+		expect((await controller.getState()).status).toBe("idle");
+
+		updater.checkResult = Promise.reject(new Error("offline"));
+		await controller.checkForUpdates();
+		await settle();
+		expect(updater.checkCalls).toBe(1);
+		expect((await controller.getState()).failedPhase).toBe("check");
+
+		updater.checkResult = undefined;
+		await prepareUpdate(controller, updater);
+		await controller.restartToUpdate();
+		await settle();
+		expect((await controller.getState()).failedPhase).toBe("install");
+		expect(updater.checkCalls).toBe(2);
+		expect(timeout).not.toHaveBeenCalled();
+		expect(interval).not.toHaveBeenCalled();
+	} finally {
+		controller.dispose();
+		timeout.mockRestore();
+		interval.mockRestore();
+	}
+});
+
+test("manual checks coalesce and only report availability without downloading", async () => {
 	const updater = new FakeUpdater();
 	const pendingCheck = deferred<NativeUpdaterInfo>();
 	updater.checkResult = pendingCheck.promise;
-	const { controller, scheduled } = scheduledController(updater);
+	const controller = testController(updater);
 	const revisions: number[] = [];
 	controller.subscribe((state) => revisions.push(state.revision));
 
-	controller.start();
-	expect(scheduled.map((entry) => entry.delay)).toEqual([0]);
-	scheduled[0]?.callback();
+	await controller.checkForUpdates();
 	expect((await controller.getState()).status).toBe("checking");
 	await controller.checkForUpdates();
 	await controller.checkForUpdates();
@@ -165,12 +184,11 @@ test("automatic and prompt checks coalesce, stop at available, and schedule the 
 	});
 	expect(revisions.length).toBeGreaterThan(1);
 	expect(revisions).toEqual([...revisions].sort((left, right) => left - right));
-	expect(scheduled.at(-1)?.delay).toBe(6 * 60 * 60 * 1000);
 });
 
 test("download is explicit and coalesced, publishes transfer then preparation, and requires matching readiness", async () => {
 	const updater = new FakeUpdater();
-	const { controller } = scheduledController(updater);
+	const controller = testController(updater);
 	await findAvailable(controller);
 	const pendingDownload = deferred<void>();
 	updater.downloadResult = pendingDownload.promise;
@@ -238,7 +256,7 @@ test("a matching ready callback wins over a late download rejection", async () =
 	const updater = new FakeUpdater();
 	const pendingDownload = deferred<void>();
 	updater.downloadResult = pendingDownload.promise;
-	const { controller } = scheduledController(updater);
+	const controller = testController(updater);
 	await findAvailable(controller);
 
 	await controller.downloadUpdate();
@@ -261,7 +279,7 @@ test("install clicked from updateReady waits for the coalesced download acknowle
 	const pendingDownload = deferred<void>();
 	updater.downloadResult = pendingDownload.promise;
 	let restartCalls = 0;
-	const { controller } = scheduledController(updater, async () => {
+	const controller = testController(updater, async () => {
 		restartCalls += 1;
 	});
 	await findAvailable(controller);
@@ -288,7 +306,7 @@ test("install clicked from updateReady waits for the coalesced download acknowle
 
 test("check and download failures retain their retry phase", async () => {
 	const updater = new FakeUpdater();
-	const { controller } = scheduledController(updater);
+	const controller = testController(updater);
 	updater.info = { ...updater.info, error: "offline" };
 	await controller.checkForUpdates();
 	await settle();
@@ -326,7 +344,7 @@ test("a prepared package survives an unrelated failed check and installs without
 	const updater = new FakeUpdater();
 	const restart = deferred<void>();
 	let restartCalls = 0;
-	const { controller } = scheduledController(updater, () => {
+	const controller = testController(updater, () => {
 		restartCalls += 1;
 		return restart.promise;
 	});
@@ -361,7 +379,7 @@ test("a prepared package survives an unrelated failed check and installs without
 test("a failed installation retains the local package and retry dispatches installation again", async () => {
 	const updater = new FakeUpdater();
 	let restartCalls = 0;
-	const { controller } = scheduledController(updater, async () => {
+	const controller = testController(updater, async () => {
 		restartCalls += 1;
 		if (restartCalls === 1) throw new Error("restart was refused");
 	});
@@ -383,7 +401,7 @@ test("a failed installation retains the local package and retry dispatches insta
 	expect((await controller.getState()).status).toBe("installing");
 });
 
-test("same and older versions are rejected and only checks receive bounded automatic retries", async () => {
+test("same and older versions are rejected", async () => {
 	expect(isStrictlyNewerVersion("0.1.0-nightly.45", "0.1.0-nightly.46")).toBe(true);
 	expect(isStrictlyNewerVersion("1.0.0", "1.0.0")).toBe(false);
 	expect(isStrictlyNewerVersion("1.0.0", "0.9.0")).toBe(false);
@@ -396,20 +414,15 @@ test("same and older versions are rejected and only checks receive bounded autom
 		updateReady: true,
 		error: "",
 	};
-	const { controller, scheduled } = scheduledController(updater);
+	const controller = testController(updater);
 	await controller.checkForUpdates();
 	await settle();
 	expect((await controller.getState()).status).toBe("idle");
 	expect(updater.downloadCalls).toBe(0);
 
-	updater.info = { ...updater.info, error: "offline" };
-	controller.start();
-	for (const expectedDelay of [0, 60_000, 5 * 60_000, 30 * 60_000]) {
-		const next = scheduled.at(-1);
-		expect(next?.delay).toBe(expectedDelay);
-		next?.callback();
-		await settle();
-	}
-	expect(scheduled.at(-1)?.delay).toBe(6 * 60 * 60 * 1000);
+	updater.info = { ...updater.info, version: "0.9.0" };
+	await controller.checkForUpdates();
+	await settle();
+	expect((await controller.getState()).status).toBe("idle");
 	expect(updater.downloadCalls).toBe(0);
 });
