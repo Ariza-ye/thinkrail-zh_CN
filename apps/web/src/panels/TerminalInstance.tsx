@@ -20,6 +20,7 @@ import { SettingsSection, useAppStore } from "../store";
 import { errorText, getTransport } from "../transport";
 import { createPtySizeSync, runAfterTerminalRelayout } from "./ptySizeSync";
 import { stripAnsiDim, terminalContrastFloor } from "./terminalContrast";
+import { installTerminalInputCompat } from "./terminalInputCompat";
 import { createTerminalPrebindBuffer } from "./terminalPrebindBuffer";
 
 const RESIZE_DEBOUNCE_MS = 60;
@@ -28,17 +29,6 @@ const RELAYOUT_TIMEOUT_MS = 4000;
 
 function sendTerminalWrite(send: Promise<unknown>): void {
 	void send.catch(() => {});
-}
-
-const IME_SENTINEL_KEYCODE = 229;
-
-// xterm #6065: an active IME reports keyCode 229, so xterm's chord table drops Ctrl+<letter>/Escape — see panels/SPEC.md.
-function imeControlBytes(event: KeyboardEvent): string | null {
-	if (event.altKey || event.metaKey) return null;
-	if (event.code === "Escape") return "\x1b";
-	if (!event.ctrlKey) return null;
-	const letter = /^Key([A-Z])$/.exec(event.code)?.[1];
-	return letter ? String.fromCharCode(letter.charCodeAt(0) - 64) : null;
 }
 
 function cssVar(name: string): string | undefined {
@@ -173,15 +163,7 @@ export default function TerminalInstance({ tabKey, workspaceId, initialCommand }
 		const onTerminalResize = term.onResize(updateScrollEdges);
 		updateScrollEdges();
 
-		term.attachCustomKeyEventHandler((event) => {
-			if (event.type !== "keydown" || event.keyCode !== IME_SENTINEL_KEYCODE) return true;
-			if (event.isComposing) return true;
-			const bytes = imeControlBytes(event);
-			if (bytes === null) return true;
-			const id = serverIdRef.current;
-			if (id) sendTerminalWrite(getTransport().request("terminal.write", { id, data: bytes }));
-			return false;
-		});
+		const inputCompat = installTerminalInputCompat(term);
 
 		const sizeSync = createPtySizeSync(({ cols, rows }) => {
 			const id = serverIdRef.current;
@@ -365,6 +347,7 @@ export default function TerminalInstance({ tabKey, workspaceId, initialCommand }
 			clearTimeout(fitTimer);
 			resizeObserver.disconnect();
 			stopThemeWatch();
+			inputCompat.dispose();
 			onData.dispose();
 			onViewportScroll.dispose();
 			onBufferWrite.dispose();
