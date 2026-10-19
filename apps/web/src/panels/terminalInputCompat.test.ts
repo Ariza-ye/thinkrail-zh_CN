@@ -82,6 +82,16 @@ for (const inputFirst of [true, false]) {
 	});
 }
 
+test("229 Backspace emits one DEL through its native deletion event", () => {
+	const term = new FakeTerminal();
+	const compat = installTerminalInputCompat(term);
+	expect(term.handler(key({ key: "Backspace", code: "Backspace" }))).toBe(false);
+	const event = term.text("", "deleteContentBackward");
+	expect(event.blocked).toBe(true);
+	expect(term.writes).toEqual([{ data: "\x7f", user: true }]);
+	compat.dispose();
+});
+
 test("ordinary printable keys and repeats also belong to input, not keydown/keypress", () => {
 	const term = new FakeTerminal();
 	const compat = installTerminalInputCompat(term);

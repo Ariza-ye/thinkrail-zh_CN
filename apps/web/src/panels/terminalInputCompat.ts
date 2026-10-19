@@ -50,9 +50,16 @@ export function installTerminalInputCompat(term: InputTerminal): { dispose(): vo
 	const onInput = (event: Event): void => {
 		if (event.target !== textarea) return;
 		const input = event as InputEvent;
-		if (composing || input.isComposing || input.inputType !== "insertText") return;
+		if (composing || input.isComposing) return;
+		const data =
+			input.inputType === "insertText"
+				? input.data
+				: input.inputType === "deleteContentBackward"
+					? "\x7f"
+					: null;
+		if (data === null) return;
 		event.stopPropagation();
-		if (!pendingComposition && input.data) term.input(input.data, true);
+		if (!pendingComposition && data) term.input(data, true);
 	};
 	term.attachCustomKeyEventHandler((event) => {
 		if (disposed || composing || event.isComposing) return true;

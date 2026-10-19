@@ -102,6 +102,35 @@ test("native English typing, repeated keys, paste and editing retain their bytes
 	await expect.poll(() => writes.join("")).toBe("abcABC09!? mmpasted text\x7f\x03");
 });
 
+test("IME Backspace preserves native deletion input exactly once", async ({ page }) => {
+	const writes = await captureTerminalInput(page);
+	await page.keyboard.type("mm");
+	await visibleTerminal(page)
+		.locator(".xterm-helper-textarea")
+		.evaluate((element) => {
+			if (!(element instanceof HTMLTextAreaElement)) throw new Error("Missing textarea");
+			element.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "Backspace",
+					code: "Backspace",
+					keyCode: 229,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+			element.value = element.value.slice(0, -1);
+			element.dispatchEvent(
+				new InputEvent("input", {
+					inputType: "deleteContentBackward",
+					bubbles: true,
+					composed: true,
+				}),
+			);
+		});
+	await page.keyboard.press("Control+c");
+	await expect.poll(() => writes.join("")).toBe("mm\x7f\x03");
+});
+
 test("IME control keys follow a pending composition commit", async ({ page }) => {
 	const writes = await captureTerminalInput(page);
 	await visibleTerminal(page)
