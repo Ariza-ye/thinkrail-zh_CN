@@ -1876,15 +1876,18 @@ land on the current branch.”** 在文件夹
 - **终端文本只有一个输入所有者。** 豆包输入法的英文模式仍报告 `keyCode=229`，且 `input` 可先于
   `keydown`；快速交叠按键会被 xterm 6.0.0 的 input 门禁吞掉（上游 #5887），229 的延迟 textarea
   差分还可能重复发送。因此 `terminalInputCompat` 在 xterm 元素的捕获阶段接管 textarea 的非组合态
-  `insertText` 与 `deleteContentBackward`，普通可打印键的 keydown/keypress 不再由 xterm 发送，
-  但不阻止浏览器编辑 textarea。229 不进入 xterm 的延迟差分路径；死键不遗留其内部待处理标志，
+  `insertText`；`deleteContentBackward` 由 beforeinput 发送 DEL 并取消原生删除，不能等待 input：
+  Enter 后 textarea 为空，即使 shell 历史行有内容，原生退格也可能只产生 beforeinput。普通可打印键
+  的 keydown/keypress 不再由 xterm 发送，但不阻止浏览器编辑 textarea。229 不进入 xterm 的延迟
+  差分路径；死键不遗留其内部待处理标志，
   修饰键产生的文本 keypress 也不能获得第二个发送出口。粘贴、导航与非 229 控制键仍由 xterm 处理。
   真正的中文组合由 xterm 拥有：compositionend 冒泡后，兼容层的收尾任务排在 xterm 的延迟提交之后，
   期间尾随 input 与紧接的文本仍由 xterm 从 textarea 一并提交，不能补发或清空 textarea；导航等
   会同步提交组合文本的按键则结束这一等待窗口。所有补偿均使用公开 `term.input(data, true)`，经
   `onData` 的活 PTY 门禁发送，历史重放隔离也不例外；不修改 xterm 私有字段或依赖源码。
   **IME 控制键救援**（上游 #6065）从物理 `event.code` 推导非组合态 229 的 `Ctrl+<letter>` 与
-  `Escape`；若组合提交尚在排队，救援字节必须在组合文本之后发送。组合中不抢走输入法的控制键。
+  `Escape`，并取消已救援按键的浏览器默认动作，避免 Ctrl+H 等同时触发原生删除而双发；若组合提交
+  尚在排队，救援字节必须在组合文本之后发送。组合中不抢走输入法的控制键。
   单元测试与 `e2e/terminal-ime.spec.ts` 钉住输入所有权与组合提交时序；xterm 升级必须重跑这些回归。
   浏览器测试使用合成 IME 事件，不代替桌面原生输入法实测。
 - 重型依赖（Monaco / shiki / xterm）通过 `React.lazy(() => import())` 加载，以留在急切打包之外。一个

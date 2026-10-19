@@ -2,7 +2,15 @@ import type { Terminal } from "@xterm/xterm";
 
 type KeyEvent = Pick<
 	KeyboardEvent,
-	"type" | "key" | "code" | "keyCode" | "isComposing" | "ctrlKey" | "altKey" | "metaKey"
+	| "type"
+	| "key"
+	| "code"
+	| "keyCode"
+	| "isComposing"
+	| "ctrlKey"
+	| "altKey"
+	| "metaKey"
+	| "preventDefault"
 >;
 
 type InputTerminal = Pick<Terminal, "input"> & {
@@ -47,19 +55,27 @@ export function installTerminalInputCompat(term: InputTerminal): { dispose(): vo
 			}
 		}, 0);
 	};
+	const onBeforeInput = (event: Event): void => {
+		if (event.target !== textarea) return;
+		const input = event as InputEvent;
+		if (
+			composing ||
+			pendingComposition ||
+			input.isComposing ||
+			input.inputType !== "deleteContentBackward"
+		) {
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		term.input("\x7f", true);
+	};
 	const onInput = (event: Event): void => {
 		if (event.target !== textarea) return;
 		const input = event as InputEvent;
-		if (composing || input.isComposing) return;
-		const data =
-			input.inputType === "insertText"
-				? input.data
-				: input.inputType === "deleteContentBackward"
-					? "\x7f"
-					: null;
-		if (data === null) return;
+		if (composing || input.isComposing || input.inputType !== "insertText") return;
 		event.stopPropagation();
-		if (!pendingComposition && data) term.input(data, true);
+		if (!pendingComposition && input.data) term.input(input.data, true);
 	};
 	term.attachCustomKeyEventHandler((event) => {
 		if (disposed || composing || event.isComposing) return true;
@@ -68,6 +84,7 @@ export function installTerminalInputCompat(term: InputTerminal): { dispose(): vo
 			if (event.type === "keydown") {
 				const bytes = imeControlBytes(event);
 				if (bytes !== null) {
+					event.preventDefault();
 					if (pendingComposition) pendingControlBytes += bytes;
 					else term.input(bytes, true);
 				}
@@ -83,6 +100,7 @@ export function installTerminalInputCompat(term: InputTerminal): { dispose(): vo
 		}
 		return handledByXterm;
 	});
+	element.addEventListener("beforeinput", onBeforeInput, true);
 	element.addEventListener("input", onInput, true);
 	element.addEventListener("compositionstart", onCompositionStart, true);
 	element.addEventListener("compositionend", onCompositionEnd);
@@ -90,6 +108,7 @@ export function installTerminalInputCompat(term: InputTerminal): { dispose(): vo
 		dispose() {
 			disposed = true;
 			clearTimeout(commitTimer);
+			element.removeEventListener("beforeinput", onBeforeInput, true);
 			element.removeEventListener("input", onInput, true);
 			element.removeEventListener("compositionstart", onCompositionStart, true);
 			element.removeEventListener("compositionend", onCompositionEnd);

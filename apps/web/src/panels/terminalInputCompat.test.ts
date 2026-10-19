@@ -14,6 +14,7 @@ function key(overrides: Partial<KeyEvent> = {}): KeyEvent {
 		ctrlKey: false,
 		altKey: false,
 		metaKey: false,
+		preventDefault() {},
 		...overrides,
 	};
 }
@@ -82,12 +83,15 @@ for (const inputFirst of [true, false]) {
 	});
 }
 
-test("229 Backspace emits one DEL through its native deletion event", () => {
+test("229 Backspace emits one DEL from beforeinput even for an empty textarea", () => {
 	const term = new FakeTerminal();
 	const compat = installTerminalInputCompat(term);
 	expect(term.handler(key({ key: "Backspace", code: "Backspace" }))).toBe(false);
-	const event = term.text("", "deleteContentBackward");
+	const event = new TextareaEvent("beforeinput", term.textarea, "", "deleteContentBackward");
+	term.element.dispatchEvent(event);
 	expect(event.blocked).toBe(true);
+	expect(event.defaultPrevented).toBe(true);
+	term.text("", "deleteContentBackward");
 	expect(term.writes).toEqual([{ data: "\x7f", user: true }]);
 	compat.dispose();
 });
@@ -170,9 +174,21 @@ test("composition event flags and local composition state both protect Ctrl229",
 test("229 Ctrl letters and Escape use public input with user-input semantics", () => {
 	const term = new FakeTerminal();
 	const compat = installTerminalInputCompat(term);
+	let prevented = 0;
 	for (const letter of ["A", "C", "Z"]) {
-		expect(term.handler(key({ ctrlKey: true, code: `Key${letter}` }))).toBe(false);
+		expect(
+			term.handler(
+				key({
+					ctrlKey: true,
+					code: `Key${letter}`,
+					preventDefault: () => {
+						prevented += 1;
+					},
+				}),
+			),
+		).toBe(false);
 	}
+	expect(prevented).toBe(3);
 	expect(term.handler(key({ code: "Escape" }))).toBe(false);
 	expect(term.handler(key({ type: "keyup", ctrlKey: true, code: "KeyC" }))).toBe(true);
 	expect(term.writes).toEqual(

@@ -102,33 +102,124 @@ test("native English typing, repeated keys, paste and editing retain their bytes
 	await expect.poll(() => writes.join("")).toBe("abcABC09!? mmpasted text\x7f\x03");
 });
 
-test("IME Backspace preserves native deletion input exactly once", async ({ page }) => {
+test("IME Backspace deletes shell history even with an empty textarea", async ({ page }) => {
 	const writes = await captureTerminalInput(page);
-	await page.keyboard.type("mm");
+	const textarea = visibleTerminal(page).locator(".xterm-helper-textarea");
+	await page.evaluate(() => {
+		document.addEventListener(
+			"keydown",
+			(event) => {
+				if (event.key === "Backspace") {
+					Object.defineProperty(event, "keyCode", { value: 229 });
+				}
+			},
+			true,
+		);
+	});
+	await page.keyboard.type("echo TR_IME_HISTORY");
+	await page.keyboard.press("Enter");
+	await expect(textarea).toHaveValue("");
+	await page.keyboard.press("ArrowUp");
+	await page.keyboard.press("Backspace");
+	await page.keyboard.press("Control+c");
+	await expect
+		.poll(() => writes.join("").replace("\x1bOA", "\x1b[A"))
+		.toBe("echo TR_IME_HISTORY\r\x1b[A\x7f\x03");
+});
+
+test("rescued IME control keys do not also perform native text editing", async ({ page }) => {
+	const writes = await captureTerminalInput(page);
+	const textarea = visibleTerminal(page).locator(".xterm-helper-textarea");
+	await page.evaluate(() => {
+		document.addEventListener(
+			"keydown",
+			(event) => {
+				if (event.ctrlKey && event.code === "KeyH") {
+					Object.defineProperty(event, "keyCode", { value: 229 });
+				}
+			},
+			true,
+		);
+	});
+	await page.keyboard.type("m");
+	await page.keyboard.press("Control+h");
+	await expect(textarea).toHaveValue("m");
+	await page.keyboard.press("Control+c");
+	await expect.poll(() => writes.join("")).toBe("m\x08\x03");
+});
+
+test("dead keys and macOS Option text do not duplicate text or swallow controls", async ({
+	page,
+}) => {
+	await page.addInitScript(() => {
+		Object.defineProperty(navigator, "platform", { get: () => "MacIntel" });
+	});
+	const writes = await captureTerminalInput(page);
 	await visibleTerminal(page)
 		.locator(".xterm-helper-textarea")
 		.evaluate((element) => {
 			if (!(element instanceof HTMLTextAreaElement)) throw new Error("Missing textarea");
 			element.dispatchEvent(
-				new KeyboardEvent("keydown", {
-					key: "Backspace",
-					code: "Backspace",
-					keyCode: 229,
+				new KeyboardEvent("keydown", { key: "Dead", keyCode: 222, bubbles: true }),
+			);
+			element.dispatchEvent(
+				new KeyboardEvent("keypress", {
+					key: "é",
+					keyCode: 233,
+					charCode: 233,
+					altKey: true,
 					bubbles: true,
-					cancelable: true,
 				}),
 			);
-			element.value = element.value.slice(0, -1);
+			element.value += "é";
 			element.dispatchEvent(
 				new InputEvent("input", {
-					inputType: "deleteContentBackward",
+					data: "é",
+					inputType: "insertText",
 					bubbles: true,
 					composed: true,
 				}),
 			);
 		});
 	await page.keyboard.press("Control+c");
-	await expect.poll(() => writes.join("")).toBe("mm\x7f\x03");
+	await page.keyboard.press("Control+c");
+	await expect.poll(() => writes.join("")).toBe("é\x03\x03");
+});
+
+test("navigation commits composition before the next text input", async ({ page }) => {
+	const writes = await captureTerminalInput(page);
+	await visibleTerminal(page)
+		.locator(".xterm-helper-textarea")
+		.evaluate(async (element) => {
+			if (!(element instanceof HTMLTextAreaElement)) throw new Error("Missing textarea");
+			element.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+			element.value += "你";
+			element.dispatchEvent(
+				new CompositionEvent("compositionupdate", { data: "你", bubbles: true }),
+			);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			element.dispatchEvent(new CompositionEvent("compositionend", { data: "你", bubbles: true }));
+			element.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "ArrowLeft",
+					code: "ArrowLeft",
+					keyCode: 37,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+			element.value += "m";
+			element.dispatchEvent(
+				new InputEvent("input", {
+					data: "m",
+					inputType: "insertText",
+					bubbles: true,
+					composed: true,
+				}),
+			);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		});
+	await expect.poll(() => writes.join("").replace("\x1bOD", "\x1b[D")).toBe("你\x1b[Dm");
 });
 
 test("IME control keys follow a pending composition commit", async ({ page }) => {
